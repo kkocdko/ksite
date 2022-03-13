@@ -48,8 +48,12 @@
   <form id="$form" method="post">
     <div>
       <input type="submit" value="Submit" />
-      <input type="button" value="Copy" />
+      <input
+        type="button"
+        value="Copy"
+        onclick="$value.select();document.execCommand('copy');value='Copied'"
+      />
     </div>
-    <textarea name="value" spellcheck="false">{content}</textarea>
+    <textarea name="value" id="$value" spellcheck="false">{value}</textarea>
   </form>
 </body>

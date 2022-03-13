@@ -8,16 +8,25 @@ use axum::{
 };
 use serde::Serialize;
 use serde::{de, Deserialize, Deserializer};
-use std::sync::Mutex;
+// use std::sync::Mutex;
 use std::{borrow::Cow, net::SocketAddr};
 use std::{fmt, str::FromStr};
 // static template: String = String::from_utf8_lossy(include_bytes!("page.html")).to_string();
-use rusty_leveldb::DB;
+use lazy_static::lazy_static;
+use std::env;
+use std::fs;
 use tokio::sync::Mutex;
+
 lazy_static! {
-    pub static ref db: Mutex<DB> = {
-        let path = env::current_exe().unwrap().with_file_name("db");
-        Mutex::new(rusqlite::Connection::open(path).unwrap())
+    static ref DB: Mutex<rusty_leveldb::DB> = {
+        let mut path = env::current_exe().unwrap().with_file_name("db");
+        fs::create_dir_all(&path);
+        path.push("paste");
+        let mut db = rusty_leveldb::DB::open(path, rusty_leveldb::Options::default()).unwrap();
+        if db.get(b"last_id").is_none() {
+            db.put(b"last_id", b"0");
+        }
+        Mutex::new(db)
     };
 }
 
@@ -25,19 +34,17 @@ lazy_static! {
 struct Params {
     id: Option<String>,
 }
-async fn get_handler(Query(params): Query<Params>) -> impl IntoResponse {
-    let value = db
-        .lock()
-        .await
-        .prepare_cached("SELECT value FROM paste WHERE id = (?)")
-        .unwrap()
-        .query_map([params.id.unwrap()], |row| row.get::<_, String>(0))
-        .unwrap()
-        .next()
-        .unwrap()
-        .unwrap();
+async fn get_handler(Query(mut params): Query<Params>) -> impl IntoResponse {
+    let value = if let Some(id) = &mut params.id {
+        id.insert_str(0, "value_");
+        DB.lock().await.get(id.as_bytes()).unwrap_or_default()
+    } else {
+        Default::default()
+    };
+    let value = &*String::from_utf8_lossy(&value);
+    let value = askama_escape::escape(value, askama_escape::Html).to_string();
     let template = String::from_utf8_lossy(include_bytes!("page.html"));
-    let response = template.replace("{content}", &value);
+    let response = template.replace("{value}", &value);
     Html(response)
 }
 
@@ -46,18 +53,22 @@ struct Submit {
     value: String,
 }
 async fn post_handler(Form(input): Form<Submit>) -> impl IntoResponse {
-    db.lock()
+    let mut id = DB.lock().await.get(b"last_id").unwrap();
+    let mut id: u128 = String::from_utf8_lossy(&id).parse().unwrap();
+    id += 1;
+    DB.lock()
         .await
-        .prepare_cached("INSERT INTO paste VALUES (NULL, ?)")
-        .unwrap()
-        .execute([input.value])
+        .put(format!("value_{id}").as_bytes(), input.value.as_bytes())
         .unwrap();
-    Redirect::to("/paste?id=fake_id".parse().unwrap())
+    DB.lock()
+        .await
+        .put(b"last_id", id.to_string().as_bytes())
+        .unwrap();
+    DB.lock().await.flush();
+    Redirect::to(format!("/paste?id={id}").parse().unwrap())
 }
 
 // paste_content_{id:date_order}
-pub async fn service() -> MethodRouter {
-    let sql = "CREATE TABLE paste (id INTEGER PRIMARY KEY AUTOINCREMENT, value TEXT)";
-    db.lock().await.execute(sql, []).ok();
+pub fn service() -> MethodRouter {
     get(get_handler).post(post_handler)
 }
