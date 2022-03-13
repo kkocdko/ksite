@@ -1,0 +1,25 @@
+{
+  // https://go.microsoft.com/fwlink/?LinkId=733558
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "run",
+      "type": "shell",
+      "command": "run",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    }
+    // {
+    //   "type": "cargo",
+    //   "command": "run",
+    //   "problemMatcher": ["$rustc"],
+    //   "label": "rust: cargo run",
+    //   "group": {
+    //     "kind": "build",
+    //     "isDefault": true
+    //   }
+    // }
+  ]
+}

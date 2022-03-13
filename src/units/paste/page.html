@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+
+<head>
+  <meta name="viewport" content="width=device-width" />
+  <title>Paste</title>
+</head>
+
+<style>
+  form {
+    font-family: sans-serif;
+    position: fixed;
+    left: 0.5em;
+    top: 0.5em;
+    width: calc(100% - 1em);
+    height: calc(100% - 1em);
+    display: grid;
+    grid: auto 1fr / none;
+  }
+  div > *,
+  textarea {
+    padding: 0.7em;
+    outline: none;
+    border: 1px solid #777;
+  }
+  div > * {
+    padding: 0.5em 0.7em;
+    cursor: pointer;
+    float: left;
+    margin: 0 -1px -1px 0;
+  }
+  div > *:active {
+    background: #7777;
+  }
+  textarea {
+    font-family: monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    html,
+    textarea,
+    div > * {
+      background: #000;
+      color: #fff;
+    }
+  }
+</style>
+
+<body>
+  <form id="$form" method="post">
+    <div>
+      <input type="submit" value="Submit" />
+      <input type="button" value="Copy" />
+    </div>
+    <textarea name="value" spellcheck="false">{content}</textarea>
+  </form>
+</body>
