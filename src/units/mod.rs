@@ -1,2 +1,3 @@
-pub mod paste;
 pub mod home;
+pub mod paste;
+pub mod qqbot;

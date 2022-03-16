@@ -9,51 +9,49 @@
   form {
     font-family: sans-serif;
     position: fixed;
-    left: 0.5em;
-    top: 0.5em;
-    width: calc(100% - 1em);
-    height: calc(100% - 1em);
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
     display: grid;
     grid: auto 1fr / none;
   }
   div > *,
   textarea {
-    padding: 0.7em;
+    background: none;
     outline: none;
     border: 1px solid #777;
   }
   div > * {
+    border-width: 0 1px 0 0;
     padding: 0.5em 0.7em;
     cursor: pointer;
     float: left;
-    margin: 0 -1px -1px 0;
   }
   div > *:active {
-    background: #7777;
+    background: #8887;
   }
   textarea {
+    padding: 0.7em;
+    border-width: 1px 0 0;
     font-family: monospace;
   }
   @media (prefers-color-scheme: dark) {
-    html,
-    textarea,
-    div > * {
+    form * {
       background: #000;
       color: #fff;
     }
   }
 </style>
 
-<body>
-  <form id="$form" method="post">
-    <div>
-      <input type="submit" value="Submit" />
-      <input
-        type="button"
-        value="Copy"
-        onclick="$value.select();document.execCommand('copy');value='Copied'"
-      />
-    </div>
-    <textarea name="value" id="$value" spellcheck="false">{value}</textarea>
-  </form>
-</body>
+<form method="post">
+  <div>
+    <input type="submit" value="Submit" />
+    <input
+      type="button"
+      value="Copy"
+      onclick="$v.select();document.execCommand('copy');value='Copied'"
+    />
+  </div>
+  <textarea name="value" id="$v" spellcheck="false">{value}</textarea>
+</form>
