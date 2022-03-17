@@ -20,8 +20,8 @@ async fn get_handler(Query(params): Query<Params>) -> impl IntoResponse {
         .and_then(|id| DB.get(&format!("value_{id}")))
         .map(|v| escape::escape(&v, escape::Html).to_string())
         .unwrap_or_else(|| "Hello world".to_string());
-    let html = Html(PAGE.replace("{value}", &value));
-    (Headers([("cache-control", "max-age=600")]), html)
+    let body = Html(PAGE.replace("{value}", &value));
+    (Headers([("cache-control", "max-age=600")]), body)
 }
 
 #[derive(Deserialize)]

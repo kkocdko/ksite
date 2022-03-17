@@ -1,47 +1,79 @@
-use crate::db::Database;
-use askama_escape as escape;
-use axum::extract::{Form, Json, Query};
-use axum::response;
-use axum::response::{Headers, Html, IntoResponse, Redirect};
+use axum::extract::Json;
 use axum::routing::MethodRouter;
-use axum::{routing::get, Router};
 use lazy_static::lazy_static;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::collections::HashMap;
+use tokio::sync::Mutex;
 
-// impl IntoResponse for Option<String>{
+lazy_static! {
+    static ref REPLIES: Mutex<HashMap<String, String>> = Mutex::new(HashMap::from([
+        ("呜".into(), "呜".into()),
+        ("你说对吧".into(), "啊对对对".into()),
+        ("运行平台".into(), "ksite / axum / mirai-go".into()),
+    ]));
+}
 
-// }
+async fn fetch_text(url: &str) -> String {
+    reqwest::get(url).await.unwrap().text().await.unwrap()
+}
+async fn fetch_json(url: &str) -> serde_json::Value {
+    serde_json::to_value(&fetch_text(url).await).unwrap()
+}
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 struct Event {
     self_id: Option<i64>,
     message_type: Option<String>, //group
     raw_message: Option<String>,
 }
-async fn post_handler(Json(event): Json<Event>) -> impl IntoResponse {
+async fn post_handler(Json(event): Json<Event>) -> Option<String> {
     match &event.message_type {
         Some(v) if v == "group" => {}
-        _ => return Default::default(),
+        _ => return Some(Default::default()),
     }
-    let tigger_mark = format!("[CQ:at,qq={}]", &event.self_id.unwrap());
+    let tigger_mark = format!("[CQ:at,qq={}]", &event.self_id?);
     match &event.raw_message {
         Some(v) if v.starts_with(&tigger_mark) => {}
-        _ => return Default::default(),
+        _ => return Some(Default::default()),
     }
-    let msg = event
-        .raw_message
-        .unwrap()
-        .strip_prefix(&tigger_mark)
-        .unwrap()
-        .trim();
-    // msg.split_whitespace().nth_back(0);
 
-    // println!("{:?}", event);
-    let reply = "hi";
-    format!("{{ \"reply\": \"{reply}\"  }}")
+    let msg = event.raw_message.as_ref()?.strip_prefix(&tigger_mark)?;
+    let mut msg = msg.trim().split_whitespace();
+    let reply = |v| Some(format!(r#"{{ "reply": "[BOT] {v}" }}"#));
+    match msg.next()? {
+        "乌克兰" | "俄罗斯" | "俄乌" => reply("嘘！"),
+        "吟诗" => {
+            let r = fetch_json("https://v1.jinrishici.com/all.json").await;
+            reply(r["content"].as_str()?)
+        }
+        "比特币" | "BTC" => {
+            let r = fetch_json("https://chain.so/api/v2/get_info/BTC").await;
+            let price = r["data"]["price"].as_str()?.trim_matches('0');
+            reply(&format!("比特币当前价格 {price} 美元"))
+        }
+        "垃圾分类" => {
+            let i = msg.next()?;
+            let r = fetch_json(&format!("https://api.muxiaoguo.cn/api/lajifl?m={i}")).await;
+            reply(&match r["data"]["type"].as_str() {
+                Some(v) => format!("{i} {v}"),
+                None => format!("鬼知道 {i} 是什么垃圾呢"),
+            })
+        }
+        "聊天" => {
+            let i = msg.next()?;
+            let url = format!("http://api.api.kingapi.cloud/api/xiaoai.php?msg={i}");
+            reply(fetch_text(&url).await.split('\n').nth(2)?)
+        }
+        "设置回复" => {
+            let mut replies = REPLIES.lock().await;
+            replies.insert(msg.next()?.into(), msg.next()?.into());
+            reply("记住啦")
+        }
+        k if REPLIES.lock().await.contains_key(k) => reply(REPLIES.lock().await.get(k).unwrap()),
+        _ => reply("未知指令"),
+    }
 }
 
 pub fn service() -> MethodRouter {
-    MethodRouter::new().post(post_handler)
+    MethodRouter::new().post(|e| async { post_handler(e).await.unwrap() })
 }
