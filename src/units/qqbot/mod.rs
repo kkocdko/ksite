@@ -18,7 +18,7 @@ async fn fetch_text(url: &str) -> String {
     reqwest::get(url).await.unwrap().text().await.unwrap()
 }
 async fn fetch_json(url: &str) -> serde_json::Value {
-    serde_json::to_value(&fetch_text(url).await).unwrap()
+    serde_json::from_str(&fetch_text(url).await).unwrap()
 }
 
 #[derive(Deserialize)]
