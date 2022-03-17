@@ -48,7 +48,7 @@ async fn post_handler(Form(submit): Form<Submit>) -> impl IntoResponse {
     Redirect::to(format!("/paste?id={id}").parse().unwrap())
 }
 
-pub fn service() -> MethodRouter {
+pub fn main() -> MethodRouter {
     if DB.get("next_id").is_none() {
         DB.put("next_id", "1");
     }

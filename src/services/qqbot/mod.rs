@@ -67,6 +67,6 @@ async fn post_handler(Json(event): Json<Event>) -> impl IntoResponse {
     }
 }
 
-pub fn service() -> MethodRouter {
+pub fn main() -> MethodRouter {
     MethodRouter::new().post(post_handler)
 }

@@ -1,5 +1,5 @@
 pub mod db;
-mod units;
+mod services;
 use axum::Router;
 use std::env;
 use std::io;
@@ -10,9 +10,9 @@ use std::thread;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = Router::new()
-        .route("/", units::home::service())
-        .route("/paste", units::paste::service())
-        .route("/qqbot", units::qqbot::service())
+        .route("/", services::home::main())
+        .route("/paste", services::paste::main())
+        .route("/qqbot", services::qqbot::main())
         .into_make_service();
     let addr = match env::args().nth(1) {
         Some(v) => v.parse().unwrap(),
