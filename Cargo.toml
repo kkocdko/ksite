@@ -5,7 +5,7 @@ edition = "2021"
 
 [profile.release]
 strip = true
-panic = "abort"
+# panic = "abort" # DO NOT USE THIS! cause tokio worker abort
 
 [dependencies]
 axum = "0.4"
