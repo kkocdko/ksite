@@ -24,25 +24,17 @@ async fn fetch_json(url: &str) -> serde_json::Value {
 #[derive(Deserialize)]
 struct Event {
     self_id: Option<i64>,
-    message_type: Option<String>, //group
     raw_message: Option<String>,
 }
 async fn post_handler(Json(event): Json<Event>) -> impl IntoResponse {
-    match &event.message_type {
-        Some(v) if v == "group" => {}
+    let trigger = format!("[CQ:at,qq={}]", &event.self_id.unwrap_or_default());
+    let msg = match &event.raw_message {
+        Some(v) if v.starts_with(&trigger) => v.strip_prefix(&trigger).unwrap(),
         _ => return Default::default(),
-    }
-    let tigger_mark = format!("[CQ:at,qq={}]", &event.self_id.unwrap());
-    match &event.raw_message {
-        Some(v) if v.starts_with(&tigger_mark) => {}
-        _ => return Default::default(),
-    }
-
-    let msg = event.raw_message.as_ref().unwrap();
-    let msg = msg.strip_prefix(&tigger_mark).unwrap();
-    let mut msg = msg.trim().split_whitespace();
+    };
+    let msg: Vec<&str> = msg.trim().split_whitespace().collect();
     let reply = |v| format!(r#"{{ "reply": "[BOT] {v}" }}"#);
-    match msg.next().unwrap() {
+    match msg[0] {
         "乌克兰" | "俄罗斯" | "俄乌" => reply("嘘！"),
         "吟诗" => {
             let r = fetch_json("https://v1.jinrishici.com/all.json").await;
@@ -54,7 +46,7 @@ async fn post_handler(Json(event): Json<Event>) -> impl IntoResponse {
             reply(&format!("比特币当前价格 {price} 美元"))
         }
         "垃圾分类" => {
-            let i = msg.next().unwrap();
+            let i = msg[1];
             let r = fetch_json(&format!("https://api.muxiaoguo.cn/api/lajifl?m={i}")).await;
             reply(&match r["data"]["type"].as_str() {
                 Some(v) => format!("{i} {v}"),
@@ -62,16 +54,15 @@ async fn post_handler(Json(event): Json<Event>) -> impl IntoResponse {
             })
         }
         "聊天" => {
-            let i = msg.next().unwrap();
-            let url = format!("http://api.api.kingapi.cloud/api/xiaoai.php?msg={i}");
+            let url = format!("http://api.api.kingapi.cloud/api/xiaoai.php?msg={}", msg[1]);
             reply(fetch_text(&url).await.split('\n').nth(2).unwrap())
         }
         "设置回复" => {
             let mut replies = REPLIES.lock().await;
-            replies.insert(msg.next().unwrap().into(), msg.next().unwrap().into());
+            replies.insert(msg[1].into(), msg[2].into());
             reply("记住啦")
         }
-        k if REPLIES.lock().await.contains_key(k) => reply(REPLIES.lock().await.get(k).unwrap()),
+        k if REPLIES.lock().await.contains_key(k) => reply(&REPLIES.lock().await[k]),
         _ => reply("未知指令"),
     }
 }

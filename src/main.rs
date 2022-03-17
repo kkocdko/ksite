@@ -3,7 +3,7 @@ mod units;
 use axum::Router;
 use std::env;
 use std::io;
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::SocketAddr;
 use std::process;
 use std::thread;
 
@@ -16,7 +16,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .into_make_service();
     let addr = match env::args().nth(1) {
         Some(v) => v.parse().unwrap(),
-        None => SocketAddr::from((Ipv4Addr::LOCALHOST, 9304)),
+        None => SocketAddr::from(([0, 0, 0, 0], 9304)),
     };
     println!("listening on {addr}");
     thread::spawn(|| loop {
