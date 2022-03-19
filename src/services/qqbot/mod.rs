@@ -4,6 +4,7 @@ use axum::routing::MethodRouter;
 use lazy_static::lazy_static;
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::time::SystemTime;
 use tokio::sync::Mutex;
 
 lazy_static! {
@@ -21,6 +22,13 @@ async fn fetch_json(url: &str) -> serde_json::Value {
     serde_json::from_str(&fetch_text(url).await).unwrap()
 }
 
+fn elapse(time: f64) -> f64 {
+    // javascript: new Date("2001.01.01 06:00").getTime()
+    let epoch = SystemTime::UNIX_EPOCH;
+    let now = SystemTime::now().duration_since(epoch).unwrap().as_millis() as f64;
+    (now - time) / 864e5
+}
+
 #[derive(Deserialize)]
 struct Event {
     self_id: Option<i64>,
@@ -36,6 +44,9 @@ async fn post_handler(Json(event): Json<Event>) -> impl IntoResponse {
     let reply = |v| format!(r#"{{ "reply": "[BOT] {v}" }}"#);
     match msg[0] {
         "乌克兰" | "俄罗斯" | "俄乌" => reply("嘘！"),
+        "kk单身多久了" => reply(&format!("kk已连续单身 {:.2} 天了", elapse(10485432e5))),
+        "暑假倒计时" => reply(&format!("距 2022 暑假仅 {:.2} 天", -elapse(16574688e5))),
+        "高考倒计时" => reply(&format!("距 2022 高考仅 {:.2} 天", -elapse(16545636e5))),
         "吟诗" => {
             let r = fetch_json("https://v1.jinrishici.com/all.json").await;
             reply(r["content"].as_str().unwrap())
@@ -54,8 +65,10 @@ async fn post_handler(Json(event): Json<Event>) -> impl IntoResponse {
             })
         }
         "聊天" => {
-            let url = format!("http://api.api.kingapi.cloud/api/xiaoai.php?msg={}", msg[1]);
-            reply(fetch_text(&url).await.split('\n').nth(2).unwrap())
+            // let url = format!("http://api.api.kingapi.cloud/api/xiaoai.php?msg={}", msg[1]);
+            // reply(fetch_text(&url).await.split('\n').nth(2).unwrap())
+            let url = format!("http://jiuli.xiaoapi.cn/i/xiaoai_tts.php?msg={}", msg[1]);
+            reply(fetch_json(&url).await["text"].as_str().unwrap())
         }
         "设置回复" => {
             let mut replies = REPLIES.lock().await;
