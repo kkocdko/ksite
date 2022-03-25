@@ -8,7 +8,7 @@ use serde::Deserialize;
 
 lazy_static! {
     static ref DB: Database = Database::open("paste");
-    static ref PAGE: String = String::from_utf8(include_bytes!("page.html").to_vec()).unwrap();
+    static ref PAGE: &'static str = include_str!("page.html");
 }
 
 #[derive(Deserialize)]

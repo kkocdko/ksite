@@ -44,12 +44,20 @@ async fn post_handler(Json(event): Json<Event>) -> impl IntoResponse {
     let reply = |v| format!(r#"{{ "reply": "[BOT] {v}" }}"#);
     match msg[0] {
         "乌克兰" | "俄罗斯" | "俄乌" => reply("嘘！"),
-        "kk单身多久了" => reply(&format!("kk已连续单身 {:.2} 天了", elapse(10485432e5))),
-        "暑假倒计时" => reply(&format!("距 2022 暑假仅 {:.2} 天", -elapse(16574688e5))),
-        "高考倒计时" => reply(&format!("距 2022 高考仅 {:.2} 天", -elapse(16545636e5))),
+        "kk单身多久了" => reply(&format!("kk已连续单身 {:.3} 天了", elapse(10485432e5))),
+        "暑假倒计时" => reply(&format!("距 2022 暑假仅 {:.3} 天", -elapse(16574688e5))),
+        "高考倒计时" => reply(&format!("距 2022 高考仅 {:.3} 天", -elapse(16545636e5))),
+        "驶向深蓝" => {
+            let url = "https://api.lovelive.tools/api/SweetNothings?genderType=M";
+            reply(&fetch_text(url).await)
+        }
         "吟诗" => {
-            let r = fetch_json("https://v1.jinrishici.com/all.json").await;
-            reply(r["content"].as_str().unwrap())
+            let url = "https://v1.jinrishici.com/all.json";
+            reply(fetch_json(url).await["content"].as_str().unwrap())
+        }
+        "新闻" => {
+            let url = "http://api.21jingji.com/news/getListV2?subcat=801&page=1";
+            reply(fetch_json(url).await["list"][0]["title"].as_str().unwrap())
         }
         "比特币" | "BTC" => {
             let r = fetch_json("https://chain.so/api/v2/get_info/BTC").await;
@@ -65,14 +73,14 @@ async fn post_handler(Json(event): Json<Event>) -> impl IntoResponse {
             })
         }
         "聊天" => {
-            // let url = format!("http://api.api.kingapi.cloud/api/xiaoai.php?msg={}", msg[1]);
-            // reply(fetch_text(&url).await.split('\n').nth(2).unwrap())
-            let url = format!("http://jiuli.xiaoapi.cn/i/xiaoai_tts.php?msg={}", msg[1]);
-            reply(fetch_json(&url).await["text"].as_str().unwrap())
+            let url = format!("http://api.api.kingapi.cloud/api/xiaoai.php?msg={}", msg[1]);
+            reply(fetch_text(&url).await.split('\n').nth(2).unwrap())
+            // http://jiuli.xiaoapi.cn/i/xiaoai_tts.php?msg=
+            // let url = format!("http://qxu66.top/api/xiaoai.php?msg={}", msg[1]);
+            // reply(fetch_json(&url).await["text"].as_str().unwrap())
         }
         "设置回复" => {
-            let mut replies = REPLIES.lock().await;
-            replies.insert(msg[1].into(), msg[2].into());
+            REPLIES.lock().await.insert(msg[1].into(), msg[2].into());
             reply("记住啦")
         }
         k if REPLIES.lock().await.contains_key(k) => reply(&REPLIES.lock().await[k]),

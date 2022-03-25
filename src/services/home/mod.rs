@@ -3,8 +3,8 @@ use axum::{
     routing::{get, MethodRouter},
 };
 
-async fn get_handler() -> Html<&'static [u8]> {
-    Html(include_bytes!("page.html"))
+async fn get_handler() -> Html<&'static str> {
+    Html(include_str!("page.html"))
 }
 
 pub fn main() -> MethodRouter {
