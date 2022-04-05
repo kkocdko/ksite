@@ -56,8 +56,9 @@ async fn post_handler(Json(event): Json<Event>) -> impl IntoResponse {
             reply(fetch_json(url).await["content"].as_str().unwrap())
         }
         "新闻" => {
-            let url = "http://api.21jingji.com/news/getListV2?subcat=801&page=1";
-            reply(fetch_json(url).await["list"][0]["title"].as_str().unwrap())
+            let r = fetch_text("https://m.cnbeta.com/wap").await;
+            let n = elapse(0.0) as usize % 20 + 3;
+            reply(r.split("htm\">").nth(n).unwrap().split_once('<').unwrap().0)
         }
         "比特币" | "BTC" => {
             let r = fetch_json("https://chain.so/api/v2/get_info/BTC").await;
@@ -73,11 +74,9 @@ async fn post_handler(Json(event): Json<Event>) -> impl IntoResponse {
             })
         }
         "聊天" => {
-            let url = format!("http://api.api.kingapi.cloud/api/xiaoai.php?msg={}", msg[1]);
-            reply(fetch_text(&url).await.split('\n').nth(2).unwrap())
-            // http://jiuli.xiaoapi.cn/i/xiaoai_tts.php?msg=
-            // let url = format!("http://qxu66.top/api/xiaoai.php?msg={}", msg[1]);
-            // reply(fetch_json(&url).await["text"].as_str().unwrap())
+            let url = format!("https://api.ownthink.com/bot?spoken={}", msg[1]);
+            let r = fetch_json(&url).await;
+            reply(r["data"]["info"]["text"].as_str().unwrap())
         }
         "设置回复" => {
             REPLIES.lock().await.insert(msg[1].into(), msg[2].into());
