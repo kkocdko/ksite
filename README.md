@@ -1,3 +1,9 @@
+# ksite
+
+All in one solution for my server.
+
 ## TODO
 
-- `impl IntoResponse for Option<String>`?
+- `services::paste`: modify value, crypt.
+
+- `services::health`: just health check in.
