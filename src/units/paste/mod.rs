@@ -59,10 +59,10 @@ async fn post_handler(
     } else {
         db_insert(&submit.value)
     };
-    Redirect::to(format!("./?id={id}").parse().unwrap())
+    Redirect::to(format!("/paste?id={id}").parse().unwrap())
 }
 
-pub fn main() -> MethodRouter {
+pub fn service() -> MethodRouter {
     db_init();
     MethodRouter::new().get(get_handler).post(post_handler)
 }

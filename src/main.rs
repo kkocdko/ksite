@@ -1,4 +1,4 @@
-mod services;
+mod units;
 use axum::Router;
 use std::env;
 use std::io;
@@ -27,12 +27,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let app = Router::new()
-        .route("/", services::home::main())
-        .route("/paste", services::paste::main())
-        .route("/qqbot", services::qqbot::main())
+        .route("/", units::home::service())
+        .route("/paste", units::paste::service())
+        .route("/qqbot", units::qqbot::service())
         .into_make_service();
     let addr = SocketAddr::from(([0, 0, 0, 0], 9304));
     println!("listening on {addr}");
-    axum::Server::bind(&addr).serve(app).await?;
+    let server = axum::Server::bind(&addr).serve(app);
+    server.await?;
     Ok(())
 }
