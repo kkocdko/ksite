@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+
+<head>
+  <meta name="viewport" content="width=device-width" />
+  <link rel="icon" href="data:" />
+  <title>Health - ksite</title>
+</head>
+
+<style>
+  body {
+    display: grid;
+    margin: 0;
+    min-height: 100vh;
+    font-family: sans-serif;
+  }
+  form {
+    display: grid;
+    grid: auto auto auto 1fr / none;
+  }
+  header > *,
+  header ~ * {
+    padding: 7px 10px;
+    background: none;
+    border: solid #777;
+    outline: none;
+  }
+  header > * {
+    float: left;
+    border-width: 0 1px 0 0;
+  }
+  header > :active {
+    background: #8887;
+  }
+  header ~ * {
+    font-family: monospace;
+    border-width: 1px 0 0;
+  }
+  textarea {
+    white-space: pre;
+  }
+  @media (prefers-color-scheme: dark) {
+    * {
+      color: #fff;
+      background: #000;
+    }
+  }
+</style>
+
+<form method="post" onsubmit="onSubmit(event)">
+  <header>
+    <input type="submit" value="Submit" />
+  </header>
+  <input name="id" id="$id" placeholder="ID" spellcheck="false" />
+  <input name="token" placeholder="TOKEN" spellcheck="false" />
+  <input name="body" id="$body" style="display: none" spellcheck="false" />
+  <textarea readonly>{log}</textarea>
+</form>
+
+<script>
+  const encrypt = (data) => {
+    const words = CryptoJS.enc.Utf8.parse(data);
+    const keyWords = [1947217763, 1550666530, -1301273701, -1041739952];
+    const key = { words: keyWords, sigBytes: 16 }; // CryptoJS.MD5("zntb666666666666")
+    const cfg = { mode: CryptoJS.mode.ECB, padding: CryptoJS.pad.Pkcs7 };
+    return btoa(CryptoJS.AES.encrypt(words, key, cfg).toString());
+  };
+  const onSubmit = (event) => {
+    event.preventDefault();
+    const raw = `{"formWid":"a5e94ae0b0e04193bae67c86cfd6e223","dataMap":{"INPUT_L11NMC9H":"${$id.value}","LOCATION_L1OELUCJ":"江苏省镇江市京口区","RADIO_L11NMCA8":"梦溪","RADIO_L11NMCAA":"正常","RADIO_L1RTT90Y":"正常","RADIO_L11NMCAC":"绿码","RADIO_L11NMCAF":"绿码","RADIO_L11NMCAJ":"否","INPUT_L11NMCAO":"36","INPUT_L11NMCAM":"36","RADIO_L11NMCAK":"否","RADIO_L15XZ9SA":"否","RADIO_L1MVAKG2":"是","RADIO_L1WY3PV5":"承诺"}}`;
+    $body.value = encrypt(raw);
+    event.target.submit();
+  };
+</script>
+
+<!-- <script src="//cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script> -->
+<!-- <script src="crypto-js.min.js"></script> -->

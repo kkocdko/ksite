@@ -2,37 +2,41 @@
 
 <head>
   <meta name="viewport" content="width=device-width" />
-  <title>Paste</title>
+  <link rel="icon" href="data:" />
+  <title>Paste - ksite</title>
 </head>
 
 <style>
-  form {
-    position: fixed;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    left: 0;
+  body {
     display: grid;
-    grid: auto 1fr / none;
+    margin: 0;
+    min-height: 100vh;
     font-family: sans-serif;
   }
-  input,
-  textarea {
+  form {
+    display: grid;
+    grid: auto 1fr / none;
+  }
+  header > *,
+  header ~ * {
     padding: 7px 10px;
     background: none;
     border: solid #777;
     outline: none;
   }
-  input {
+  header > * {
     float: left;
     border-width: 0 1px 0 0;
   }
-  input:active {
+  header > :active {
     background: #8887;
   }
-  textarea {
+  header ~ * {
     font-family: monospace;
     border-width: 1px 0 0;
+  }
+  textarea {
+    white-space: pre;
   }
   @media (prefers-color-scheme: dark) {
     * {
@@ -43,13 +47,13 @@
 </style>
 
 <form method="post">
-  <div>
+  <header>
     <input type="submit" value="Save" />
     <input
       type="button"
       value="Copy"
       onclick="$v.select();document.execCommand('copy')"
     />
-  </div>
+  </header>
   <textarea name="value" id="$v" spellcheck="false">{value}</textarea>
 </form>

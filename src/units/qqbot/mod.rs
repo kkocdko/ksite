@@ -1,13 +1,13 @@
 use axum::extract::Json;
 use axum::response::IntoResponse;
 use axum::routing::MethodRouter;
-use lazy_static::lazy_static;
+use axum::Router;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::time::SystemTime;
 use tokio::sync::Mutex;
 
-lazy_static! {
+lazy_static::lazy_static! {
     static ref REPLIES: Mutex<HashMap<String, String>> = Mutex::new(HashMap::from([
         ("呜".into(), "呜".into()),
         ("你说对吧".into(), "啊对对对".into()),
@@ -87,6 +87,8 @@ async fn post_handler(Json(event): Json<Event>) -> impl IntoResponse {
     }
 }
 
-pub fn service() -> MethodRouter {
-    MethodRouter::new().post(post_handler)
+pub fn service() -> Router {
+    Router::new().route("/qqbot", MethodRouter::new().post(post_handler))
 }
+
+pub async fn tick() {}
