@@ -1,5 +1,6 @@
 mod units;
 use axum::Router;
+use once_cell::sync::Lazy;
 use std::env;
 use std::io;
 use std::net::SocketAddr;
@@ -45,14 +46,12 @@ async fn main() {
     let _ = tokio::join!(server, oscillator);
 }
 
-lazy_static::lazy_static! {
-    /// Use `db!()` macro instead of access directly
-    pub static ref DATABASE: Mutex<rusqlite::Connection> = {
-        let path = env::current_exe().unwrap().with_extension("db");
-        let db = rusqlite::Connection::open(path).unwrap();
-        Mutex::new(db)
-    };
-}
+/// Use `db!()` macro instead of access directly
+pub static DATABASE: Lazy<Mutex<rusqlite::Connection>> = Lazy::new(|| {
+    let path = env::current_exe().unwrap().with_extension("db");
+    let db = rusqlite::Connection::open(path).unwrap();
+    Mutex::new(db)
+});
 
 #[macro_export]
 macro_rules! db {

@@ -2,18 +2,19 @@ use axum::extract::Json;
 use axum::response::IntoResponse;
 use axum::routing::MethodRouter;
 use axum::Router;
+use once_cell::sync::Lazy;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::time::SystemTime;
 use tokio::sync::Mutex;
 
-lazy_static::lazy_static! {
-    static ref REPLIES: Mutex<HashMap<String, String>> = Mutex::new(HashMap::from([
+static REPLIES: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(|| {
+    Mutex::new(HashMap::from([
         ("呜".into(), "呜".into()),
         ("你说对吧".into(), "啊对对对".into()),
         ("运行平台".into(), "ksite / axum / mirai-go".into()),
-    ]));
-}
+    ]))
+});
 
 async fn fetch_text(url: &str) -> String {
     reqwest::get(url).await.unwrap().text().await.unwrap()
