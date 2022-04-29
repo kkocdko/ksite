@@ -1,11 +1,10 @@
+mod database;
+mod ticker;
 mod units;
 use axum::Router;
-use once_cell::sync::Lazy;
-use std::env;
 use std::io;
 use std::net::SocketAddr;
 use std::process;
-use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 
@@ -29,11 +28,11 @@ async fn main() {
             .merge(units::qqbot::service())
             .merge(units::welcome::service())
             .into_make_service();
-        axum::Server::bind(&addr).serve(app).await
+        axum::Server::bind(&addr).serve(app).await.unwrap();
     };
 
     let oscillator = async {
-        let interval = Duration::from_secs(60);
+        let interval = Duration::from_secs(30);
         println!("oscillator interval = {:?}", &interval);
 
         let mut interval = tokio::time::interval(interval);
@@ -43,38 +42,5 @@ async fn main() {
         }
     };
 
-    let _ = tokio::join!(server, oscillator);
-}
-
-/// Use `db!()` macro instead of access directly
-pub static DATABASE: Lazy<Mutex<rusqlite::Connection>> = Lazy::new(|| {
-    let path = env::current_exe().unwrap().with_extension("db");
-    let db = rusqlite::Connection::open(path).unwrap();
-    Mutex::new(db)
-});
-
-#[macro_export]
-macro_rules! db {
-    ($sql:expr) => {{
-        { crate::DATABASE.lock().unwrap() }
-            .prepare_cached($sql)
-            .and_then(|mut s| s.execute([]))
-    }};
-    ($sql:expr, [ $($param:tt)* ] ) => {{
-        { crate::DATABASE.lock().unwrap() }
-            .prepare_cached($sql)
-            .and_then(|mut s| s.execute(rusqlite::params![$($param)*]))
-    }};
-    ($sql:expr, [ $($param:tt)* ], ( $( $idx:expr ),* ) ) => {(||{
-        let database = crate::DATABASE.lock().unwrap();
-        let mut stmd = database.prepare_cached($sql)?;
-        let mut ret = Vec::new();
-        for entry in stmd.query_map(
-            rusqlite::params![$($param)*],
-            |r| Ok(( $( r.get($idx)?, )* ))
-        )? {
-            ret.push(entry?);
-        }
-        Result::<_, rusqlite::Error>::Ok(ret)
-    })()};
+    tokio::join!(server, oscillator);
 }

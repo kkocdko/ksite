@@ -1,10 +1,12 @@
-use crate::db;
+use crate::{db, ticker::Ticker};
 use axum::extract::Form;
 use axum::http::Uri;
 use axum::response::{Html, IntoResponse, Redirect};
 use axum::routing::MethodRouter;
 use axum::Router;
+use once_cell::sync::Lazy;
 use serde::Deserialize;
+use std::sync::Mutex;
 
 fn db_init() {
     db!("CREATE TABLE health_list (id INTEGER, token TEXT, body TEXT)").ok();
@@ -71,30 +73,15 @@ pub fn service() -> Router {
     // .layer(tower_http::compression::CompressionLayer::new().br(true))
 }
 
+static TICKER: Lazy<Mutex<Ticker>> = Lazy::new(|| {
+    let patterns = [(03, 00, 00), (05, 00, 00), (07, 00, 00)];
+    Mutex::new(Ticker::new_p8(&patterns))
+});
 pub async fn tick() {
-    // static a: i32 = 1;
-    // let aa=time::OffsetDateTime::now_local().unwrap();
-    // aa.t
-    // #[macro_export]
-    // macro_rules! runat {
-    //     () => {
-    //         return;
-    //     }
-    // }
-    // only_at!([00:01:00]);
-    // println!("{}", time::OffsetDateTime::now_local().unwrap());
-    // static last_time: time::OffsetDateTime =
-    // time::OffsetDateTime::now_local().unwrap();
-    // return;
-    (03, 00, 00);
-    (05, 00, 00);
+    if !TICKER.lock().unwrap().tick() {
+        return;
+    }
 
-    (01, 23, 45); // at every day's 01:23:45
-    (-1, 15, 00); // at every hour's 15m
-    (18, -1, 03); // at 18h's every minute's 03s
-
-    // TODO: run at (03,00,00) and (05,00,00)
-    return;
     println!("units::health::tick()");
     let list = db_list_get();
     let client = reqwest::Client::new();
