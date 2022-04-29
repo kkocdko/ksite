@@ -6,8 +6,8 @@ use std::sync::Mutex;
 pub static _DB: Lazy<Mutex<rusqlite::Connection>> = Lazy::new(|| {
     let path = env::current_exe().unwrap().with_extension("db");
     let db = rusqlite::Connection::open(path).unwrap();
-    // db.execute("PRAGMA synchronous = OFF", []).unwrap();
-    // db.execute("PRAGMA locking_mode = EXCLUSIVE", []).unwrap();
+    db.pragma_update(None, "synchronous", "OFF").unwrap();
+    db.pragma_update(None, "locking_mode", "EXCLUSIVE").unwrap();
     Mutex::new(db)
 });
 
