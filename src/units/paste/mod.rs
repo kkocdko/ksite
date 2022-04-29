@@ -22,7 +22,7 @@ fn db_get(id: u64) -> Option<String> {
 
 async fn read(id: Option<u64>) -> impl IntoResponse {
     let value = id
-        .and_then(|id| db_get(id))
+        .and_then(db_get)
         .map(|v| askama_escape::escape(&v, askama_escape::Html).to_string())
         .unwrap_or_else(|| "New entry".to_string());
     Html(include_str!("page.html").replace("{value}", &value))
@@ -35,12 +35,12 @@ struct Submit {
 
 async fn insert(Form(submit): Form<Submit>) -> impl IntoResponse {
     let id = db_insert(&submit.value);
-    Redirect::to(format!("/paste/{id}").parse().unwrap())
+    Redirect::to(&format!("/paste/{id}"))
 }
 
 async fn update((Path(id), Form(submit)): (Path<u64>, Form<Submit>)) -> impl IntoResponse {
     db_update(id, &submit.value);
-    Redirect::to(format!("/paste/{id}").parse().unwrap())
+    Redirect::to(&format!("/paste/{id}"))
 }
 
 pub fn service() -> Router {

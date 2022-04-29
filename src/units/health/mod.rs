@@ -1,6 +1,5 @@
 use crate::{db, ticker::Ticker};
 use axum::extract::Form;
-use axum::http::Uri;
 use axum::response::{Html, IntoResponse, Redirect};
 use axum::routing::MethodRouter;
 use axum::Router;
@@ -59,9 +58,9 @@ async fn get_handler() -> impl IntoResponse {
     )
 }
 
-async fn post_handler((Form(member), uri): (Form<Member>, Uri)) -> impl IntoResponse {
+async fn post_handler(Form(member): Form<Member>) -> impl IntoResponse {
     db_list_insert(&member);
-    Redirect::to(uri)
+    Redirect::to("/health")
 }
 
 pub fn service() -> Router {
@@ -74,7 +73,7 @@ pub fn service() -> Router {
 }
 
 static TICKER: Lazy<Mutex<Ticker>> = Lazy::new(|| {
-    let patterns = [(03, 00, 00), (05, 00, 00), (07, 00, 00)];
+    let patterns = [(3, 0, 0), (5, 0, 0), (7, 0, 0)];
     Mutex::new(Ticker::new_p8(&patterns))
 });
 pub async fn tick() {
@@ -82,7 +81,6 @@ pub async fn tick() {
         return;
     }
 
-    println!("units::health::tick()");
     let list = db_list_get();
     let client = reqwest::Client::new();
     for member in list {

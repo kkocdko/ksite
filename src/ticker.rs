@@ -30,7 +30,7 @@ fn gen_next(now: i64, cfg: (i64, i64, i64)) -> i64 {
             // generate
             (true, true, _) if s < cs && s < 59 => {
                 floor_by(&mut stamp, 60);
-                stamp += 1 * if cs == ANY_VAL { s + 1 } else { cs };
+                stamp += if cs == ANY_VAL { s + 1 } else { cs };
             }
             (true, _, _) if m < cm && m < 59 => {
                 floor_by(&mut stamp, 60 * 60);
@@ -68,7 +68,7 @@ impl Ticker {
             false
         }
     }
-    fn new(patterns: impl Iterator<Item = (i64, i64, i64)>) -> Self {
+    pub fn new(patterns: impl Iterator<Item = (i64, i64, i64)>) -> Self {
         let mut cfgs = Vec::new();
         for (h, m, s) in patterns {
             assert!(h <= 24 && m <= 60 && s <= 60);
@@ -81,11 +81,6 @@ impl Ticker {
         let mut ret = Ticker { next: 0, cfgs };
         ret.tick();
         ret
-    }
-    pub fn new_utc(patterns: &[(i64, i64, i64)]) -> Self {
-        const TIME_ZONE: i64 = 0;
-        let transform = |&(h, m, s)| ((h + 24 - TIME_ZONE) % 24, m, s);
-        Self::new(patterns.iter().map(transform))
     }
     pub fn new_p8(patterns: &[(i64, i64, i64)]) -> Self {
         const TIME_ZONE: i64 = 8;

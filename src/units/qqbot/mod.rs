@@ -92,4 +92,6 @@ pub fn service() -> Router {
     Router::new().route("/qqbot", MethodRouter::new().post(post_handler))
 }
 
-pub async fn tick() {}
+pub async fn tick() {
+    // TODO: Chrome update notifications?
+}
