@@ -70,6 +70,7 @@ pub fn service() -> Router {
         MethodRouter::new().get(get_handler).post(post_handler),
     )
     // .layer(tower_http::compression::CompressionLayer::new().br(true))
+    // .layer(tower_http::auth::RequireAuthorizationLayer::basic("", "password"))
 }
 
 static TICKER: Lazy<Mutex<Ticker>> = Lazy::new(|| {

@@ -38,7 +38,10 @@ async fn main() {
         let mut interval = tokio::time::interval(interval);
         loop {
             interval.tick().await;
-            tokio::join!(units::health::tick(), units::qqbot::tick());
+            let _ = tokio::join!(
+                tokio::spawn(units::health::tick()),
+                tokio::spawn(units::qqbot::tick()),
+            );
         }
     };
 
