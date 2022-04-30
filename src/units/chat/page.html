@@ -2,29 +2,53 @@
 
 <head>
   <meta name="viewport" content="width=device-width" />
-  <title>Chat</title>
+  <link rel="icon" href="data:" />
+  <title>Chat - ksite</title>
 </head>
 
 <style>
   body {
     display: grid;
-    height: calc(100vh - 16px);
-    grid: 1fr auto / auto;
+    grid: 1fr auto / none;
+    min-height: 100vh;
+    margin: 0;
+    font-family: sans-serif;
+  }
+  p {
+    margin: 7px;
   }
   input {
-    line-height: 2em;
+    position: sticky;
+    bottom: 0;
+    padding: 7px 10px;
+    background: none;
     border: none;
+    border-top: 1px solid #777;
     outline: none;
+  }
+  @media (prefers-color-scheme: dark) {
+    html * {
+      color: #fff;
+      background: #000;
+    }
   }
 </style>
 
 <body>
-  <div>
-    <p>Hello World</p>
-  </div>
-  <input id="$i" placeholder="Input here" />
+  <br />
+  <input id="$send" placeholder="Input here" />
 </body>
 
 <script>
-  // $i.on
+  const ws = new WebSocket(`ws://${location.host}/chat/ws`);
+  ws.onmessage = (e) => {
+    const el = document.createElement("p");
+    el.textContent = e.data;
+    $send.parentNode.insertBefore(el, $send).scrollIntoView();
+  };
+  $send.onkeyup = (e) => {
+    if (e.key !== "Enter") return;
+    ws.send($send.value);
+    $send.value = "";
+  };
 </script>

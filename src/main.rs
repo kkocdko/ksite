@@ -23,6 +23,7 @@ async fn main() {
         println!("server addr = {addr}");
 
         let app = Router::new()
+            .merge(units::chat::service())
             .merge(units::health::service())
             .merge(units::paste::service())
             .merge(units::qqbot::service())
@@ -32,7 +33,7 @@ async fn main() {
     };
 
     let oscillator = async {
-        let interval = Duration::from_secs(30);
+        let interval = Duration::from_secs(60);
         println!("oscillator interval = {:?}", &interval);
 
         let mut interval = tokio::time::interval(interval);
