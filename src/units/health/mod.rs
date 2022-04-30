@@ -74,7 +74,7 @@ pub fn service() -> Router {
 }
 
 static TICKER: Lazy<Mutex<Ticker>> = Lazy::new(|| {
-    let patterns = [(3, 0, 0), (5, 0, 0), (7, 0, 0)];
+    let patterns = [(3, 0, 0), (5, 0, 0)];
     Mutex::new(Ticker::new_p8(&patterns))
 });
 pub async fn tick() {

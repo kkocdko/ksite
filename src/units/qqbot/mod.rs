@@ -58,7 +58,7 @@ async fn post_handler(Json(event): Json<Event>) -> impl IntoResponse {
         }
         "新闻" => {
             let r = fetch_text("https://m.cnbeta.com/wap").await;
-            let n = elapse(0.0) as usize % 20 + 3;
+            let n = (elapse(0.0) * 864e5) as usize % 20 + 3;
             reply(r.split("htm\">").nth(n).unwrap().split_once('<').unwrap().0)
         }
         "比特币" | "BTC" => {
@@ -94,4 +94,5 @@ pub fn service() -> Router {
 
 pub async fn tick() {
     // TODO: Chrome update notifications?
+    // https://noki.top/chrome/info
 }

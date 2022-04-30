@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+
+<head>
+  <meta name="viewport" content="width=device-width" />
+  <link rel="icon" href="data:" />
+  <title>Record - ksite</title>
+</head>
+
+<style>
+  main {
+    display: grid;
+    padding-top: 20px;
+    justify-content: center;
+    gap: 20px;
+  }
+  @media (prefers-color-scheme: dark) {
+    html,
+    body {
+      background: #000;
+    }
+    main > * {
+      filter: invert(1);
+      background: #fff;
+      border: 1px solid #777;
+      line-height: 30px;
+      border-radius: 8px;
+      text-shadow: 0 0 black;
+      color: #000;
+      width: 90vw;
+      box-sizing: border-box;
+      max-width: 400px;
+    }
+  }
+</style>
+
+<main>
+  <button id="$stop">Stop</button>
+  <audio id="$player" controls></audio>
+</main>
+
+<script type="module">
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const recorder = new MediaRecorder(stream, { bitsPerSecond: 64e3 });
+  window.rec = recorder;
+  recorder.start();
+  $stop.onclick = () => recorder.stop();
+  let chunks = [];
+  recorder.ondataavailable = (e) => {
+    console.log({ e });
+    chunks.push(e.data);
+  };
+  recorder.onstop = () => {
+    $player.src = URL.createObjectURL(new Blob(chunks));
+    chunks = [];
+  };
+  // https://cn.bing.com/search?q=websocket+MediaRecorder
+</script>
