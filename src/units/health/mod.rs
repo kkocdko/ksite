@@ -65,12 +65,13 @@ async fn post_handler(Form(member): Form<Member>) -> impl IntoResponse {
 
 pub fn service() -> Router {
     db_init();
-    Router::new().route(
-        "/health",
-        MethodRouter::new().get(get_handler).post(post_handler),
-    )
+    Router::new()
+        .route(
+            "/health",
+            MethodRouter::new().get(get_handler).post(post_handler),
+        )
+        .layer(crate::auth::auth_layer())
     // .layer(tower_http::compression::CompressionLayer::new().br(true))
-    // .layer(tower_http::auth::RequireAuthorizationLayer::basic("", "password"))
 }
 
 static TICKER: Lazy<Mutex<Ticker>> = Lazy::new(|| {

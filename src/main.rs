@@ -1,3 +1,4 @@
+mod auth;
 mod database;
 mod ticker;
 mod units;
@@ -10,10 +11,13 @@ use std::time::Duration;
 
 #[tokio::main]
 async fn main() {
+    println!("[ksite]");
+    println!("enter `:q` to shutdown");
+    println!("auth token = {}", *auth::TOKEN);
+
     thread::spawn(|| loop {
         let input = &mut String::new();
-        io::stdin().read_line(input).unwrap();
-        if input.trim() == ":q" {
+        if io::stdin().read_line(input).is_ok() && input.trim() == ":q" {
             process::exit(0);
         }
     });

@@ -4,12 +4,12 @@ All in one solution for my server.
 
 ## TODO
 
-- `units::chat`: c2c crypto.
+- `units::chat`: c2c crypto. try implememt a simple algorithm?
 
-- `units::paste`: crypto.
+- `units::paste`: auth?
 
 - `units::qqbot`: ticks.
 
-- `units::health`: auth.
+- `units::qqbot`: pure-rust using [rs-qq](https://github.com/lz1998/rs-qq)?
 
-- Generate random admin password at server launch?
+- `crate::update`: basic implement.

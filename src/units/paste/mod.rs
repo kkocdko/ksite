@@ -56,5 +56,4 @@ pub fn service() -> Router {
                 .get(|Path(id): Path<u64>| read(Some(id)))
                 .post(update),
         )
-    // .layer(tower_http::compression::CompressionLayer::new().br(true))
 }
