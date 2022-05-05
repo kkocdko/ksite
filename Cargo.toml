@@ -3,6 +3,10 @@ name = "ksite"
 version = "0.2.3"
 edition = "2021"
 
+[profile.dev]
+debug = false
+strip = true
+
 [profile.release]
 strip = true
 lto = "fat"
