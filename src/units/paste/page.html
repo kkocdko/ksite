@@ -21,22 +21,20 @@
   header ~ * {
     padding: 8px 10px;
     background: none;
-    border: solid #777;
+    border: 0 solid #777;
     outline: none;
   }
   header > * {
     float: left;
-    border-width: 0 1px 0 0;
+    border-right-width: 1px;
   }
   header > :active {
     background: #8887;
   }
-  header ~ * {
+  header ~ :not(:fullscreen) {
     font-family: monospace;
-    border-width: 1px 0 0;
-  }
-  textarea {
     white-space: pre;
+    border-top-width: 1px;
   }
   @media (prefers-color-scheme: dark) {
     * {
@@ -54,6 +52,7 @@
       value="Copy"
       onclick="$v.select();document.execCommand('copy')"
     />
+    <input type="button" value="Zen mode" onclick="$v.requestFullscreen()" />
   </header>
   <textarea name="value" id="$v" spellcheck="false">{value}</textarea>
 </form>

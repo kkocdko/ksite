@@ -51,4 +51,29 @@
     ws.send($send.value);
     $send.value = "";
   };
+
+  // thanks to https://github.com/mdn/dom-examples/blob/master/web-crypto/encrypt-decrypt/rsa-oaep.js
+  throw "WIP";
+  const algo = {
+    name: "RSA-OAEP",
+    modulusLength: 2048,
+    publicExponent: new Uint8Array([1, 0, 1]),
+    hash: "SHA-256",
+  };
+  async function encryptMessage(i, key) {
+    const data = new TextEncoder().encode(i);
+    return crypto.subtle.encrypt(algo, key, data);
+  }
+  async function decryptMessage(i, key) {
+    const data = await crypto.subtle.decrypt(algo, key, i);
+    return new TextDecoder().decode(data);
+  }
+  (async () => {
+    const usages = ["encrypt", "decrypt"];
+    const keyPair = await crypto.subtle.generateKey(algo, true, usages);
+    const { publicKey, privateKey } = keyPair;
+    const d = await encryptMessage("abc", publicKey);
+    const r = await decryptMessage(d, privateKey);
+    console.log({ r });
+  })();
 </script>

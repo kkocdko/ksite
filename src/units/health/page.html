@@ -21,22 +21,20 @@
   header ~ * {
     padding: 8px 10px;
     background: none;
-    border: solid #777;
+    border: 0 solid #777;
     outline: none;
   }
   header > * {
     float: left;
-    border-width: 0 1px 0 0;
+    border-right-width: 1px;
   }
   header > :active {
     background: #8887;
   }
   header ~ * {
     font-family: monospace;
-    border-width: 1px 0 0;
-  }
-  textarea {
     white-space: pre;
+    border-top-width: 1px;
   }
   @media (prefers-color-scheme: dark) {
     * {
@@ -48,7 +46,7 @@
 
 <form method="post" onsubmit="onSubmit(event)">
   <header>
-    <input type="submit" value="Submit" disabled />
+    <input type="submit" value="Submit" />
   </header>
   <input name="id" id="$id" placeholder="ID" spellcheck="false" />
   <input name="token" placeholder="TOKEN" spellcheck="false" />
@@ -73,5 +71,5 @@
   // `sessionStorage.jwToken` on http://dc.just.edu.cn/#/v2/formReportDetail/zGO2n4p7
 </script>
 
-<!-- <script src="//cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script> -->
+<!-- <script src="//cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.js"></script> -->
 <!-- <script src="crypto-js.min.js"></script> -->

@@ -31,7 +31,7 @@ fn db_log_insert(id: u64, ret: &str) {
 fn db_log_get() -> Vec<(String, u64, String)> {
     let sql = "
         SELECT datetime(time,'unixepoch','localtime'), id, ret FROM health_log
-        WHERE strftime('%s','now') - time <= 3600 * 48
+        WHERE strftime('%s','now') - time <= 3600 * 72
         ORDER BY time DESC
     ";
     db!(sql, [], (0, 1, 2)).unwrap()
@@ -65,19 +65,17 @@ async fn post_handler(Form(member): Form<Member>) -> impl IntoResponse {
 
 pub fn service() -> Router {
     db_init();
-    Router::new()
-        .route(
-            "/health",
-            MethodRouter::new().get(get_handler).post(post_handler),
-        )
-        .layer(crate::auth::auth_layer())
-    // .layer(tower_http::compression::CompressionLayer::new().br(true))
+    Router::new().route(
+        "/health",
+        MethodRouter::new()
+            .post(post_handler)
+            .layer(crate::auth::auth_layer()) // require auth only for post
+            .get(get_handler),
+    )
 }
 
-static TICKER: Lazy<Mutex<Ticker>> = Lazy::new(|| {
-    let patterns = [(3, 0, 0), (5, 0, 0)];
-    Mutex::new(Ticker::new_p8(&patterns))
-});
+static TICKER: Lazy<Mutex<Ticker>> =
+    Lazy::new(|| Mutex::new(Ticker::new_p8(&[(3, 22, 0), (5, 22, 0)])));
 pub async fn tick() {
     if !TICKER.lock().unwrap().tick() {
         return;
@@ -94,5 +92,3 @@ pub async fn tick() {
         db_log_insert(member.id, &ret);
     }
 }
-
-// https://docs.rs/tower-http/latest/tower_http/auth/
