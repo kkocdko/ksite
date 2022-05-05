@@ -1,3 +1,4 @@
+use crate::{db, ticker::Ticker};
 use axum::extract::Json;
 use axum::response::IntoResponse;
 use axum::routing::MethodRouter;
@@ -5,8 +6,8 @@ use axum::Router;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::sync::Mutex;
 use std::time::SystemTime;
-use tokio::sync::Mutex;
 
 static REPLIES: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(|| {
     Mutex::new(HashMap::from([
@@ -79,11 +80,16 @@ async fn post_handler(Json(event): Json<Event>) -> impl IntoResponse {
             let r = fetch_json(&url).await;
             reply(r["data"]["info"]["text"].as_str().unwrap())
         }
+        "订阅通知" => {
+            let group_id: u64 = msg[1].parse().unwrap();
+            db_groups_insert(group_id);
+            reply("订阅成功")
+        }
         "设置回复" => {
-            REPLIES.lock().await.insert(msg[1].into(), msg[2].into());
+            REPLIES.lock().unwrap().insert(msg[1].into(), msg[2].into());
             reply("记住啦")
         }
-        k if REPLIES.lock().await.contains_key(k) => reply(&REPLIES.lock().await[k]),
+        k if REPLIES.lock().unwrap().contains_key(k) => reply(&REPLIES.lock().unwrap()[k]),
         _ => reply("未知指令"),
     }
 }
@@ -92,7 +98,51 @@ pub fn service() -> Router {
     Router::new().route("/qqbot", MethodRouter::new().post(post_handler))
 }
 
+fn db_init() {
+    db!("CREATE TABLE qqbot_groups (group_id INTEGER)").ok();
+}
+fn db_groups_get() -> Vec<u64> {
+    let result = db!("SELECT * FROM qqbot_groups", [], (0));
+    result.unwrap().into_iter().map(|r| r.0).collect()
+}
+fn db_groups_insert(group_id: u64) {
+    db!("INSERT INTO qqbot_groups VALUES (?)", [group_id]).unwrap();
+}
+
+async fn broadcast(msg: &str) {
+    for id in db_groups_get() {
+        let url = format!("http://127.0.0.1:5700/send_group_msg?group_id={id}&message={msg}");
+        reqwest::get(url).await.unwrap();
+    }
+}
+
+async fn tick_chrome() {
+    static STAMP: Lazy<Mutex<u64>> = Lazy::new(|| {
+        let now = elapse(0.0) * 864e5;
+        Mutex::new(now as u64)
+    });
+    let r = fetch_json("https://noki.top/chrome/info").await;
+    let stamp = r["win_stable_x64"]["time"].as_u64().unwrap();
+    if stamp > *STAMP.lock().unwrap() {
+        *STAMP.lock().unwrap() = stamp;
+        let version = r["win_stable_x64"]["version"].as_str().unwrap();
+        let sha1 = r["win_stable_x64"]["sha1"].as_str().unwrap();
+        let msg = format!("Chrome {version} released!\ntime = {stamp}\nsha1= {sha1}");
+        broadcast(&msg).await;
+    }
+}
+
+static TICKER: Lazy<Mutex<Ticker>> = Lazy::new(|| {
+    db_init();
+    Mutex::new(Ticker::new_p8(&[(-1, 20, 0), (-1, 50, 0)]))
+});
 pub async fn tick() {
-    // TODO: Chrome update notifications?
-    // https://noki.top/chrome/info
+    if !TICKER.lock().unwrap().tick() {
+        return;
+    }
+
+    let _ = tokio::join!(
+        tokio::spawn(tick_chrome()),
+        // tokio::spawn(units::qqbot::tick()),
+    );
 }

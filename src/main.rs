@@ -12,19 +12,19 @@ use std::time::Duration;
 #[tokio::main]
 async fn main() {
     println!("[ksite]");
-    println!("enter `:q` to shutdown");
-    println!("auth token = {}", *auth::TOKEN);
+    println!("enter :q to shutdown");
+    println!("authorization token = {}", *auth::TOKEN);
 
     thread::spawn(|| loop {
-        let input = &mut String::new();
-        if io::stdin().read_line(input).is_ok() && input.trim() == ":q" {
+        let buf = &mut String::new();
+        if io::stdin().read_line(buf).is_ok() && buf.trim() == ":q" {
             process::exit(0);
         }
     });
 
     let server = async {
         let addr = SocketAddr::from(([0, 0, 0, 0], 9304));
-        println!("server addr = {addr}");
+        println!("server address = {addr}");
 
         let app = Router::new()
             .merge(units::chat::service())

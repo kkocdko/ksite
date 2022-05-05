@@ -13,34 +13,34 @@ fn hms(v: i64) -> (i64, i64, i64) {
 fn floor_by(v: i64, r: i64) -> i64 {
     v - v % r
 }
-fn gen_next(now: i64, cfg: (i64, i64, i64)) -> i64 {
-    let mut stamp = now + 1;
+fn gen_next(mut now: i64, cfg: (i64, i64, i64)) -> i64 {
+    now += 1;
     let (ch, cm, cs) = cfg;
     loop {
-        let (h, m, s) = hms(stamp);
-        stamp = match (
+        let (h, m, s) = hms(now);
+        now = match (
             h == ch || ch == ANY,
             m == cm || cm == ANY,
             s == cs || cs == ANY,
         ) {
             // legal
             (true, true, true) => {
-                return stamp;
+                return now;
             }
 
             // generate
             (true, true, _) if s < cs && s < 59 => {
-                floor_by(stamp, 60) + if cs == ANY { s + 1 } else { cs }
+                floor_by(now, 60) + if cs == ANY { s + 1 } else { cs }
             }
             (true, _, _) if m < cm && m < 59 => {
-                floor_by(stamp, 60 * 60) + 60 * if cm == ANY { m + 1 } else { cm }
+                floor_by(now, 60 * 60) + 60 * if cm == ANY { m + 1 } else { cm }
             }
             (_, _, _) if h < ch && h < 23 => {
-                floor_by(stamp, 60 * 60 * 24) + 60 * 60 * if ch == ANY { h + 1 } else { ch }
+                floor_by(now, 60 * 60 * 24) + 60 * 60 * if ch == ANY { h + 1 } else { ch }
             }
 
             // next day
-            _ => floor_by(stamp, 60 * 60 * 24) + 60 * 60 * 24,
+            _ => floor_by(now, 60 * 60 * 24) + 60 * 60 * 24,
         };
     }
 }
