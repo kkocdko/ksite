@@ -8,15 +8,9 @@ All in one solution for my server.
 
 - `units::chat`: room.
 
-- `units::paste`: auth?
+- `units::qqbot`: websocket.
 
-- `units::paste`: clipboard sync.
-
-- `units::qqbot`: ticks.
-
-- `units::qqbot`: using websocket.
-
-- `units::qqbot`: pure-rust using [rs-qq](https://github.com/lz1998/rs-qq)?
+- `units::qqbot`: pure-rust ~~using [ricq](https://github.com/lz1998/ricq)~~?
 
 - `crate::update`: basic implement.
 

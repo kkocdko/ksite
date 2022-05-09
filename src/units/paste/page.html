@@ -31,7 +31,7 @@
   header > :active {
     background: #8887;
   }
-  header ~ :not(:fullscreen) {
+  header ~ * {
     font-family: monospace;
     white-space: pre;
     border-top-width: 1px;
@@ -52,7 +52,11 @@
       value="Copy"
       onclick="$v.select();document.execCommand('copy')"
     />
-    <input type="button" value="Zen mode" onclick="$v.requestFullscreen()" />
+    <input
+      type="button"
+      value="Zen mode"
+      onclick="$v.parentNode.replaceWith($v),$v.style.border='0'"
+    />
   </header>
   <textarea name="value" id="$v" spellcheck="false">{value}</textarea>
 </form>

@@ -5,5 +5,5 @@ use tower_http::auth::require_authorization::{Basic, RequireAuthorizationLayer};
 pub static TOKEN: Lazy<String> = Lazy::new(|| format!("{:x}", rand::random::<u64>()));
 
 pub fn auth_layer<T: HttpBody + Default>() -> RequireAuthorizationLayer<Basic<T>> {
-    tower_http::auth::RequireAuthorizationLayer::basic("", &TOKEN)
+    RequireAuthorizationLayer::basic("", &TOKEN)
 }

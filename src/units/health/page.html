@@ -55,8 +55,8 @@
 </form>
 
 <script>
-  const encrypt = (data) => {
-    const words = CryptoJS.enc.Utf8.parse(data);
+  const encrypt = (str) => {
+    const words = CryptoJS.enc.Utf8.parse(str);
     const keyWords = [1947217763, 1550666530, -1301273701, -1041739952];
     const key = { words: keyWords, sigBytes: 16 }; // CryptoJS.MD5("zntb666666666666")
     const cfg = { mode: CryptoJS.mode.ECB, padding: CryptoJS.pad.Pkcs7 };
@@ -64,11 +64,12 @@
   };
   const onSubmit = (event) => {
     event.preventDefault();
-    const raw = `{"formWid":"a5e94ae0b0e04193bae67c86cfd6e223","dataMap":{"INPUT_L11NMC9H":"${$id.value}","LOCATION_L1OELUCJ":"江苏省镇江市京口区","RADIO_L11NMCA8":"梦溪","RADIO_L11NMCAA":"正常","RADIO_L1RTT90Y":"正常","RADIO_L11NMCAC":"绿码","RADIO_L11NMCAF":"绿码","RADIO_L11NMCAJ":"否","INPUT_L11NMCAO":"36","INPUT_L11NMCAM":"36","RADIO_L11NMCAK":"否","RADIO_L15XZ9SA":"否","RADIO_L1MVAKG2":"是","RADIO_L1WY3PV5":"承诺"}}`;
+    const raw = `{"formWid":"a5e94ae0b0e04193bae67c86cfd6e223","dataMap":{"INPUT_L11NMC9H":"${$id.value}","LOCATION_L1OELUCJ":"江苏省镇江市京口区","RADIO_L11NMCA8":"梦溪","RADIO_L11NMCAA":"正常","RADIO_L1RTT90Y":"正常","RADIO_L11NMCAC":"绿码","RADIO_L11NMCAF":"绿码","RADIO_L11NMCAJ":"否","INPUT_L11NMCAO":"36","INPUT_L11NMCAM":"36","RADIO_L11NMCAK":"是","RADIO_L15XZ9SA":"否","RADIO_L1MVAKG2":"是","RADIO_L1WY3PV5":"承诺"}}`;
     $body.value = encrypt(raw);
     event.target.submit();
   };
-  // `sessionStorage.jwToken` on http://dc.just.edu.cn/#/v2/formReportDetail/zGO2n4p7
+  // token = `sessionStorage.jwToken` on http://dc.just.edu.cn
+  // search `formData/saveFormSubmitDataEncryption` in `umi.js`, dump data
 </script>
 
 <!-- <script src="//cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.js"></script> -->

@@ -46,16 +46,13 @@ struct Member {
 
 async fn get_handler() -> impl IntoResponse {
     let mut log = String::new();
-    for (timestamp, id, ret) in db_log_get() {
-        log += &format!("{timestamp} | {id} | {ret}\n");
+    for (time, id, ret) in db_log_get() {
+        log += &format!("{time} | {id} | {ret}\n");
     }
     log = askama_escape::escape(&log, askama_escape::Html).to_string();
-    Html(
-        include_str!("page.html").replace("{log}", &log)
-            + "<script>"
-            + include_str!("crypto-js.min.js")
-            + "</script>",
-    )
+    const PAGE: &str = include_str!("page.html");
+    const CRYPTJS: &str = include_str!("crypto-js.min.js");
+    Html(PAGE.replace("{log}", &log) + "<script>" + CRYPTJS + "</script>")
 }
 
 async fn post_handler(Form(member): Form<Member>) -> impl IntoResponse {

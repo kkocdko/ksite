@@ -1,10 +1,9 @@
 use once_cell::sync::Lazy;
-use std::env;
 use std::sync::Mutex;
 
 /// ## Use `db!()` macro instead of access directly!
 pub static _DB: Lazy<Mutex<rusqlite::Connection>> = Lazy::new(|| {
-    let path = env::current_exe().unwrap().with_extension("db");
+    let path = std::env::current_exe().unwrap().with_extension("db");
     let db = rusqlite::Connection::open(path).unwrap();
     db.pragma_update(None, "synchronous", "OFF").unwrap();
     db.pragma_update(None, "locking_mode", "EXCLUSIVE").unwrap();
