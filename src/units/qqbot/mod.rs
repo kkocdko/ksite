@@ -109,40 +109,43 @@ fn db_groups_insert(group_id: u64) {
     db!("INSERT INTO qqbot_groups VALUES (?)", [group_id]).unwrap();
 }
 
-async fn broadcast(msg: &str) {
-    for id in db_groups_get() {
-        let url = format!("http://127.0.0.1:5700/send_group_msg?group_id={id}&message={msg}");
-        reqwest::get(url).await.unwrap();
-    }
-}
-
-async fn tick_chrome() {
-    static STAMP: Lazy<Mutex<u64>> = Lazy::new(|| {
-        let now = elapse(0.0) * 864e5;
-        Mutex::new(now as u64)
-    });
-    let r = fetch_json("https://noki.top/chrome/info").await;
-    let stamp = r["win_stable_x64"]["time"].as_u64().unwrap();
-    if stamp > *STAMP.lock().unwrap() {
-        *STAMP.lock().unwrap() = stamp;
-        let version = r["win_stable_x64"]["version"].as_str().unwrap();
-        let sha1 = r["win_stable_x64"]["sha1"].as_str().unwrap();
-        let msg = format!("Chrome {version} released!\ntime = {stamp}\nsha1= {sha1}");
-        broadcast(&msg).await;
-    }
-}
-
 static TICKER: Lazy<Mutex<Ticker>> = Lazy::new(|| {
     db_init();
-    Mutex::new(Ticker::new_p8(&[(-1, 20, 0), (-1, 50, 0)]))
+    Mutex::new(Ticker::new_p8(&[(-1, 10, 0), (-1, 30, 0), (-1, 50, 0)]))
 });
 pub async fn tick() {
     if !TICKER.lock().unwrap().tick() {
         return;
     }
 
+    async fn broadcast(msg: &str) {
+        for id in db_groups_get() {
+            let url = format!("http://127.0.0.1:5700/send_group_msg?group_id={id}&message={msg}");
+            reqwest::get(url).await.unwrap();
+        }
+    }
+
+    let task_chrome_update = async {
+        static S: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
+        let r = fetch_json("https://noki.top/chrome/info").await;
+        let v = r["win_stable_x64"]["version"].as_str().unwrap();
+        if {
+            // bypass the `Sync` trait limitations?
+            let mut s = S.lock().unwrap();
+            let ret = !s.is_empty() && *s != v;
+            if *s != v {
+                *s = v.to_string();
+            }
+            ret
+        } {
+            broadcast(&format!("Chrome {v} released!")).await;
+        }
+    };
+
+    let task_rust_update = async {};
+
     let _ = tokio::join!(
-        tokio::spawn(tick_chrome()),
-        // tokio::spawn(units::qqbot::tick()),
+        tokio::spawn(task_chrome_update),
+        tokio::spawn(task_rust_update),
     );
 }
