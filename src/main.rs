@@ -29,6 +29,7 @@ async fn main() {
         let app = Router::new()
             .merge(units::chat::service())
             .merge(units::health::service())
+            .merge(units::magazine::service())
             .merge(units::paste::service())
             .merge(units::qqbot::service())
             .merge(units::welcome::service())

@@ -544,6 +544,7 @@ version = "0.2.6"
 dependencies = [
  "askama_escape",
  "axum",
+ "brotli",
  "futures-util",
  "once_cell",
  "rand",

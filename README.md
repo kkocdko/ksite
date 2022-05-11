@@ -8,9 +8,9 @@ All in one solution for my server.
 
 - `units::chat`: room.
 
-- `units::qqbot`: websocket.
-
 - `units::qqbot`: pure-rust ~~using [ricq](https://github.com/lz1998/ricq)~~?
+
+- `units::magazine` basic implement.
 
 - `crate::update`: basic implement.
 

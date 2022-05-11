@@ -17,11 +17,15 @@ static REPLIES: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(|| {
     ]))
 });
 
-async fn fetch_text(url: &str) -> String {
-    reqwest::get(url).await.unwrap().text().await.unwrap()
+fn db_init() {
+    db!("CREATE TABLE qqbot_groups (group_id INTEGER)").ok();
 }
-async fn fetch_json(url: &str) -> serde_json::Value {
-    serde_json::from_str(&fetch_text(url).await).unwrap()
+fn db_groups_get() -> Vec<u64> {
+    let result = db!("SELECT * FROM qqbot_groups", [], (0));
+    result.unwrap().into_iter().map(|r| r.0).collect()
+}
+fn db_groups_insert(group_id: u64) {
+    db!("INSERT INTO qqbot_groups VALUES (?)", [group_id]).unwrap();
 }
 
 fn elapse(time: f64) -> f64 {
@@ -31,19 +35,25 @@ fn elapse(time: f64) -> f64 {
     (now - time) / 864e5
 }
 
+async fn fetch_text(url: &str) -> String {
+    reqwest::get(url).await.unwrap().text().await.unwrap()
+}
+async fn fetch_json(url: &str) -> serde_json::Value {
+    serde_json::from_str(&fetch_text(url).await).unwrap()
+}
+
 #[derive(Deserialize)]
 struct Event {
     self_id: Option<i64>,
     raw_message: Option<String>,
 }
 async fn post_handler(Json(event): Json<Event>) -> impl IntoResponse {
-    let trigger = format!("[CQ:at,qq={}]", &event.self_id.unwrap_or_default());
-    let msg = match &event.raw_message {
-        Some(v) if v.starts_with(&trigger) => v.strip_prefix(&trigger).unwrap(),
-        _ => return Default::default(),
+    let prefix = format!("[CQ:at,qq={}]", &event.self_id.unwrap_or_default());
+    let msg: Vec<&str> = match &event.raw_message {
+        Some(v) if v.starts_with(&prefix) => v.split_whitespace().skip(1).collect(),
+        _ => return Err(()),
     };
-    let msg: Vec<&str> = msg.trim().split_whitespace().collect();
-    let reply = |v| format!(r#"{{ "reply": "[BOT] {v}" }}"#);
+    let reply = |v| Ok(format!(r#"{{ "reply": "[BOT] {v}" }}"#));
     match msg[0] {
         "乌克兰" | "俄罗斯" | "俄乌" => reply("嘘！"),
         "kk单身多久了" => reply(&format!("kk已连续单身 {:.3} 天了", elapse(10485432e5))),
@@ -95,24 +105,12 @@ async fn post_handler(Json(event): Json<Event>) -> impl IntoResponse {
 }
 
 pub fn service() -> Router {
+    db_init();
     Router::new().route("/qqbot", MethodRouter::new().post(post_handler))
 }
 
-fn db_init() {
-    db!("CREATE TABLE qqbot_groups (group_id INTEGER)").ok();
-}
-fn db_groups_get() -> Vec<u64> {
-    let result = db!("SELECT * FROM qqbot_groups", [], (0));
-    result.unwrap().into_iter().map(|r| r.0).collect()
-}
-fn db_groups_insert(group_id: u64) {
-    db!("INSERT INTO qqbot_groups VALUES (?)", [group_id]).unwrap();
-}
-
-static TICKER: Lazy<Mutex<Ticker>> = Lazy::new(|| {
-    db_init();
-    Mutex::new(Ticker::new_p8(&[(-1, 10, 0), (-1, 30, 0), (-1, 50, 0)]))
-});
+static TICKER: Lazy<Mutex<Ticker>> =
+    Lazy::new(|| Mutex::new(Ticker::new_p8(&[(-1, 20, 0), (-1, 50, 0)])));
 pub async fn tick() {
     if !TICKER.lock().unwrap().tick() {
         return;
@@ -130,19 +128,19 @@ pub async fn tick() {
         let r = fetch_json("https://noki.top/chrome/info").await;
         let v = r["win_stable_x64"]["version"].as_str().unwrap();
         if {
-            // bypass the `Sync` trait limitations?
+            // bypass the `Sync` trait limitations
             let mut s = S.lock().unwrap();
-            let ret = !s.is_empty() && *s != v;
-            if *s != v {
-                *s = v.to_string();
-            }
-            ret
+            let flag = !s.is_empty() && *s != v;
+            *s = v.to_string();
+            flag
         } {
             broadcast(&format!("Chrome {v} released!")).await;
         }
     };
 
-    let task_rust_update = async {};
+    let task_rust_update = async {
+        
+    };
 
     let _ = tokio::join!(
         tokio::spawn(task_chrome_update),
