@@ -2,7 +2,7 @@ mod auth;
 mod database;
 mod ticker;
 mod units;
-use axum::Router;
+use axum::{Router, Server};
 use std::io;
 use std::net::SocketAddr;
 use std::process;
@@ -34,7 +34,7 @@ async fn main() {
             .merge(units::qqbot::service())
             .merge(units::welcome::service())
             .into_make_service();
-        axum::Server::bind(&addr).serve(app).await.unwrap();
+        Server::bind(&addr).serve(app).await.unwrap();
     };
 
     let oscillator = async {
@@ -46,6 +46,7 @@ async fn main() {
             interval.tick().await;
             let _ = tokio::join!(
                 tokio::spawn(units::health::tick()),
+                tokio::spawn(units::magazine::tick()),
                 tokio::spawn(units::qqbot::tick()),
             );
         }

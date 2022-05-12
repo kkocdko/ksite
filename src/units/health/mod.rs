@@ -72,7 +72,7 @@ pub fn service() -> Router {
 }
 
 static TICKER: Lazy<Mutex<Ticker>> =
-    Lazy::new(|| Mutex::new(Ticker::new_p8(&[(3, 22, 0), (5, 22, 0)])));
+    Lazy::new(|| Mutex::new(Ticker::new_p8(&[(3, 20, 0), (5, 20, 0)])));
 pub async fn tick() {
     if !TICKER.lock().unwrap().tick() {
         return;
@@ -81,11 +81,11 @@ pub async fn tick() {
     let list = db_list_get();
     let client = reqwest::Client::new();
     for member in list {
-        let req = client
+        let request = client
             .post("http://dc.just.edu.cn/dfi/formData/saveFormSubmitDataEncryption")
             .header("authentication", member.token)
             .body(member.body);
-        let ret = req.send().await.unwrap().text().await.unwrap();
+        let ret = request.send().await.unwrap().text().await.unwrap();
         db_log_insert(member.id, &ret);
     }
 }

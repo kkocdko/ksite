@@ -1,1 +1,0 @@
-//! Convenient self update.

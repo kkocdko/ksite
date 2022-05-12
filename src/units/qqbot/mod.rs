@@ -127,20 +127,21 @@ pub async fn tick() {
         static S: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
         let r = fetch_json("https://noki.top/chrome/info").await;
         let v = r["win_stable_x64"]["version"].as_str().unwrap();
-        if {
-            // bypass the `Sync` trait limitations
+        // bypass the `Sync` trait limitations
+        let changed = {
             let mut s = S.lock().unwrap();
             let flag = !s.is_empty() && *s != v;
-            *s = v.to_string();
+            if flag {
+                *s = v.to_string();
+            }
             flag
-        } {
+        };
+        if changed {
             broadcast(&format!("Chrome {v} released!")).await;
         }
     };
 
-    let task_rust_update = async {
-        
-    };
+    let task_rust_update = async {};
 
     let _ = tokio::join!(
         tokio::spawn(task_chrome_update),

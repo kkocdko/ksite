@@ -8,10 +8,8 @@ All in one solution for my server.
 
 - `units::chat`: room.
 
+- `units::qqbot`: use post events to send tick message.
+
 - `units::qqbot`: pure-rust ~~using [ricq](https://github.com/lz1998/ricq)~~?
-
-- `units::magazine` basic implement.
-
-- `crate::update`: basic implement.
 
 - http2?

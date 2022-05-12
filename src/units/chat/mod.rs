@@ -1,5 +1,7 @@
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::{response::Html, routing::MethodRouter, Router};
+use axum::response::Html;
+use axum::routing::MethodRouter;
+use axum::Router;
 use futures_util::{SinkExt, StreamExt};
 use once_cell::sync::Lazy;
 use tokio::sync::broadcast::{self, Sender};

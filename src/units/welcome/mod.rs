@@ -1,5 +1,6 @@
+use axum::response::Html;
+use axum::routing::MethodRouter;
 use axum::Router;
-use axum::{response::Html, routing::MethodRouter};
 
 async fn get_handler() -> Html<&'static str> {
     // it's weak but still work fine!
