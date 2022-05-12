@@ -69,22 +69,20 @@ static CACHE: Lazy<Mutex<Res>> = Lazy::new(|| {
 });
 
 async fn refresh() {
-    let mut body = Vec::new();
-    body.push(PAGE.0);
+    let mut o = vec![PAGE.0];
     let g = |u| async move { reqwest::get(u).await.unwrap().text().await.unwrap() };
     let r = tokio::join!(
         g("https://rss.itggg.cn/zhihu/daily"),
         g("https://rss.itggg.cn/cnbeta"),
         g("https://rss.itggg.cn/oschina/news/industry")
     );
-    generate(&r.0, &mut body, 20);
-    generate(&r.1, &mut body, 20);
-    generate(&r.2, &mut body, 20);
-    body.push(PAGE.1);
+    generate(&r.0, &mut o, 20);
+    generate(&r.1, &mut o, 20);
+    generate(&r.2, &mut o, 20);
+    o.push(PAGE.1);
 
-    let mut buf = Vec::<u8>::new();
-    brotli::BrotliCompress(&mut body.join("").as_bytes(), &mut buf, &Default::default()).unwrap();
-    *CACHE.lock().unwrap() = ([("content-encoding", "br")], Html(buf));
+    let o = miniz_oxide::deflate::compress_to_vec(o.join("").as_bytes(), 10);
+    *CACHE.lock().unwrap() = ([("content-encoding", "deflate")], Html(o));
 }
 
 pub fn service() -> Router {

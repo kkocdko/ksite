@@ -1,6 +1,6 @@
 [package]
 name = "ksite"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2021"
 
 [profile.dev]
@@ -13,15 +13,15 @@ lto = "fat"
 # panic = "abort" # DO NOT USE THIS! cause tokio worker abort
 
 [dependencies]
-tokio = { version = "1.18.0", features = ["macros", "rt-multi-thread"] }
-axum = { version = "0.5.4", features = ["ws"] }
-tower-http = { version = "0.3.1", features = ["compression-br", "auth"]}
-reqwest = "0.11.10"
+tokio = { version = "1.18.2", features = ["macros", "rt-multi-thread"] }
+axum = { version = "0.5.5", features = ["ws", "http2"] }
+tower-http = { version = "0.3.3", features = ["auth"]}
+reqwest = "0.11.10" # remove this?
 futures-util = "0.3.21"
 rusqlite = { version = "0.27.0", features = ["bundled"] }
-serde = { version = "1.0.136", features = ["derive"] }
-serde_json = "1.0.79"
+serde = { version = "1.0.137", features = ["derive"] }
+serde_json = "1.0.81"
 once_cell = "1.10.0"
 askama_escape = "0.10.3"
 rand = "0.8.5"
-brotli = "3.3.4"
+miniz_oxide = "0.5.1"
