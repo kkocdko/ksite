@@ -73,9 +73,9 @@ async fn refresh() {
     body.push(PAGE.0);
     let g = |u| async move { reqwest::get(u).await.unwrap().text().await.unwrap() };
     let r = tokio::join!(
-        g("https://rsshub.app/zhihu/daily"),
-        g("https://rsshub.app/cnbeta"),
-        g("https://rsshub.app/oschina/news/industry")
+        g("https://rss.itggg.cn/zhihu/daily"),
+        g("https://rss.itggg.cn/cnbeta"),
+        g("https://rss.itggg.cn/oschina/news/industry")
     );
     generate(&r.0, &mut body, 20);
     generate(&r.1, &mut body, 20);
