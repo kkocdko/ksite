@@ -51,8 +51,9 @@ async fn get_handler() -> impl IntoResponse {
     }
     log = askama_escape::escape(&log, askama_escape::Html).to_string();
     const PAGE: &str = include_str!("page.html");
-    const CRYPTJS: &str = include_str!("crypto-js.min.js");
-    Html(PAGE.replace("{log}", &log) + "<script>" + CRYPTJS + "</script>")
+    const CRYPTOJS: &str = include_str!("crypto-js.min.js");
+    // TODO: use `crate::slot` instead
+    Html(PAGE.replace("/*{slot}*/", &log) + "<script>" + CRYPTOJS + "</script>")
 }
 
 async fn post_handler(Form(member): Form<Member>) -> impl IntoResponse {
@@ -72,7 +73,7 @@ pub fn service() -> Router {
 }
 
 static TICKER: Lazy<Mutex<Ticker>> =
-    Lazy::new(|| Mutex::new(Ticker::new_p8(&[(3, 20, 0), (5, 20, 0)])));
+    Lazy::new(|| Mutex::new(Ticker::new_p8(&[(3, 10, 0), (5, 10, 0)])));
 pub async fn tick() {
     if !TICKER.lock().unwrap().tick() {
         return;

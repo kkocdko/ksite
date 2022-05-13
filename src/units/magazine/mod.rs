@@ -1,3 +1,4 @@
+use crate::slot::slot;
 use crate::ticker::Ticker;
 use axum::response::Html;
 use axum::routing::MethodRouter;
@@ -22,8 +23,8 @@ fn generate<'a>(mut i: &'a str, o: &mut Vec<&'a str>, mut limit: usize) {
         i = p.1.split_once("<![CDATA[").unwrap().1;
         p = i.split_once("]]>").unwrap();
         o.push("<section>");
-        let list = [
-            "p>", "p ", "/p>", "div>", "div ", "/div>", "li>", "li ", "/li>",
+        let break_marks = [
+            "br>", "p>", "p ", "/p>", "div>", "div ", "/div>", "li>", "li ", "/li>",
         ];
         while let Some(v) = p.0.split_once('<') {
             p.0 = v.1.split_once('>').unwrap().1;
@@ -32,7 +33,7 @@ fn generate<'a>(mut i: &'a str, o: &mut Vec<&'a str>, mut limit: usize) {
                 o.push(c);
             }
             if *o.last().unwrap() != "<br>" {
-                for mark in list {
+                for mark in break_marks {
                     if v.1.starts_with(mark) {
                         o.push("<br>");
                         break;
@@ -47,7 +48,7 @@ fn generate<'a>(mut i: &'a str, o: &mut Vec<&'a str>, mut limit: usize) {
         p = i.split_once("</link>").unwrap();
         o.push("<a href=\"");
         o.push(p.0);
-        o.push("\">Original Link</a>\n");
+        o.push("\">[ Original Link ]</a>\n");
 
         o.push("</details>\n");
         i = p.1;
@@ -56,12 +57,12 @@ fn generate<'a>(mut i: &'a str, o: &mut Vec<&'a str>, mut limit: usize) {
             break;
         }
     }
+    o.push("\n<br>\n");
 }
 
 type Res = ([(&'static str, &'static str); 1], Html<Vec<u8>>);
 
-static PAGE: Lazy<(&str, &str)> =
-    Lazy::new(|| include_str!("page.html").split_once("{main}").unwrap());
+const PAGE: (&str, &str) = slot(include_str!("page.html"));
 
 static CACHE: Lazy<Mutex<Res>> = Lazy::new(|| {
     let body = format!("{}<h2>Magazine is generating ...</h2>{}", PAGE.0, PAGE.1);
@@ -74,11 +75,13 @@ async fn refresh() {
     let r = tokio::join!(
         g("https://rss.itggg.cn/zhihu/daily"),
         g("https://rss.itggg.cn/cnbeta"),
-        g("https://rss.itggg.cn/oschina/news/industry")
+        g("https://rss.itggg.cn/oschina/news/industry"),
+        g("https://rss.itggg.cn/1point3acres/post/hot")
     );
     generate(&r.0, &mut o, 20);
     generate(&r.1, &mut o, 20);
     generate(&r.2, &mut o, 20);
+    generate(&r.3, &mut o, 10);
     o.push(PAGE.1);
 
     let o = miniz_oxide::deflate::compress_to_vec(o.join("").as_bytes(), 10);
@@ -93,7 +96,7 @@ pub fn service() -> Router {
     )
 }
 
-static TICKER: Lazy<Mutex<Ticker>> = Lazy::new(|| Mutex::new(Ticker::new_p8(&[(-1, 20, 0)])));
+static TICKER: Lazy<Mutex<Ticker>> = Lazy::new(|| Mutex::new(Ticker::new_p8(&[(-1, 15, 0)])));
 pub async fn tick() {
     if !TICKER.lock().unwrap().tick() {
         return;

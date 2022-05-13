@@ -51,9 +51,9 @@ async fn post_handler(Json(event): Json<Event>) -> impl IntoResponse {
     let prefix = format!("[CQ:at,qq={}]", &event.self_id.unwrap_or_default());
     let msg: Vec<&str> = match &event.raw_message {
         Some(v) if v.starts_with(&prefix) => v.split_whitespace().skip(1).collect(),
-        _ => return Err(()),
+        _ => return Default::default(),
     };
-    let reply = |v| Ok(format!(r#"{{ "reply": "[BOT] {v}" }}"#));
+    let reply = |v| format!(r#"{{ "reply": "[BOT] {v}" }}"#);
     match msg[0] {
         "乌克兰" | "俄罗斯" | "俄乌" => reply("嘘！"),
         "kk单身多久了" => reply(&format!("kk已连续单身 {:.3} 天了", elapse(10485432e5))),

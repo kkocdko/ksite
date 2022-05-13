@@ -1,6 +1,7 @@
 use crate::db;
+use crate::slot::slot;
 use axum::extract::{Form, Path};
-use axum::response::{Html, IntoResponse, Redirect};
+use axum::response::{Html, Redirect};
 use axum::routing::MethodRouter;
 use axum::Router;
 use serde::Deserialize;
@@ -20,26 +21,29 @@ fn db_get(id: u64) -> Option<String> {
     result.ok()?.pop().map(|v| v.0)
 }
 
-async fn read(id: Option<u64>) -> impl IntoResponse {
-    let value = id
-        .and_then(db_get)
-        .map(|v| askama_escape::escape(&v, askama_escape::Html).to_string())
-        .unwrap_or_else(|| "New entry".to_string());
-    Html(include_str!("page.html").replace("{value}", &value))
+fn escape(v: &str) -> String {
+    askama_escape::escape(v, askama_escape::Html).to_string()
+}
+
+async fn read(id: Option<u64>) -> Html<String> {
+    let value = id.and_then(db_get);
+    let value = value.unwrap_or_else(|| "New entry".to_string());
+    const PAGE: (&str, &str) = slot(include_str!("page.html"));
+    Html(format!("{}{value}{}", PAGE.0, PAGE.1))
 }
 
 #[derive(Deserialize)]
-struct Submit {
+struct Data {
     value: String,
 }
 
-async fn insert(Form(submit): Form<Submit>) -> impl IntoResponse {
-    let id = db_insert(&submit.value);
+async fn insert(form: Form<Data>) -> Redirect {
+    let id = db_insert(&escape(&form.value));
     Redirect::to(&format!("/paste/{id}"))
 }
 
-async fn update((Path(id), Form(submit)): (Path<u64>, Form<Submit>)) -> impl IntoResponse {
-    db_update(id, &submit.value);
+async fn update((Path(id), form): (Path<u64>, Form<Data>)) -> Redirect {
+    db_update(id, &escape(&form.value));
     Redirect::to(&format!("/paste/{id}"))
 }
 
