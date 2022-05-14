@@ -28,8 +28,8 @@ fn escape(v: &str) -> String {
 async fn read(id: Option<u64>) -> Html<String> {
     let value = id.and_then(db_get);
     let value = value.unwrap_or_else(|| "New entry".to_string());
-    const PAGE: (&str, &str) = slot(include_str!("page.html"));
-    Html(format!("{}{value}{}", PAGE.0, PAGE.1))
+    const PAGE: [&str; 2] = slot(include_str!("page.html"));
+    Html([PAGE[0], &value, PAGE[1]].join(""))
 }
 
 #[derive(Deserialize)]

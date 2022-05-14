@@ -1,4 +1,6 @@
-use crate::{db, ticker::Ticker};
+use crate::db;
+use crate::slot::slot;
+use crate::ticker::Ticker;
 use axum::extract::Form;
 use axum::response::{Html, IntoResponse, Redirect};
 use axum::routing::MethodRouter;
@@ -50,10 +52,9 @@ async fn get_handler() -> impl IntoResponse {
         log += &format!("{time} | {id} | {ret}\n");
     }
     log = askama_escape::escape(&log, askama_escape::Html).to_string();
-    const PAGE: &str = include_str!("page.html");
-    const CRYPTOJS: &str = include_str!("crypto-js.min.js");
-    // TODO: use `crate::slot` instead
-    Html(PAGE.replace("/*{slot}*/", &log) + "<script>" + CRYPTOJS + "</script>")
+    const PAGE: [&str; 3] = slot(include_str!("page.html"));
+    const CRYPTOJS: &str = include_str!("crypto-js.min.js"); // cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.js
+    Html([PAGE[0], &log, PAGE[1], CRYPTOJS, PAGE[2]].join(""))
 }
 
 async fn post_handler(Form(member): Form<Member>) -> impl IntoResponse {

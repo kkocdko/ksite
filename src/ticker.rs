@@ -91,3 +91,5 @@ impl Ticker {
         Self::new(patterns, 8)
     }
 }
+
+// TODO: add tests here?

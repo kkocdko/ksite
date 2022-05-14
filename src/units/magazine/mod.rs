@@ -62,15 +62,15 @@ fn generate<'a>(mut i: &'a str, o: &mut Vec<&'a str>, mut limit: usize) {
 
 type Res = ([(&'static str, &'static str); 1], Html<Vec<u8>>);
 
-const PAGE: (&str, &str) = slot(include_str!("page.html"));
+const PAGE: [&str; 2] = slot(include_str!("page.html"));
 
 static CACHE: Lazy<Mutex<Res>> = Lazy::new(|| {
-    let body = format!("{}<h2>Magazine is generating ...</h2>{}", PAGE.0, PAGE.1);
+    let body = format!("{}<h2>Magazine is generating ...</h2>{}", PAGE[0], PAGE[1]);
     Mutex::new(([("refresh", "2")], Html(body.into_bytes())))
 });
 
 async fn refresh() {
-    let mut o = vec![PAGE.0];
+    let mut o = vec![PAGE[0]];
     let g = |u| async move { reqwest::get(u).await.unwrap().text().await.unwrap() };
     let r = tokio::join!(
         g("https://rss.itggg.cn/zhihu/daily"),
@@ -82,7 +82,7 @@ async fn refresh() {
     generate(&r.1, &mut o, 20);
     generate(&r.2, &mut o, 20);
     generate(&r.3, &mut o, 10);
-    o.push(PAGE.1);
+    o.push(PAGE[1]);
 
     let o = miniz_oxide::deflate::compress_to_vec(o.join("").as_bytes(), 10);
     *CACHE.lock().unwrap() = ([("content-encoding", "deflate")], Html(o));
