@@ -1,11 +1,16 @@
 [package]
 name = "ksite"
-version = "0.3.9"
+version = "0.3.10"
 edition = "2021"
 
 [profile.dev]
 debug = false
 strip = true
+
+[profile.dev.package."*"]
+debug = false
+strip = true
+opt-level = "z"
 
 [profile.release]
 strip = true
