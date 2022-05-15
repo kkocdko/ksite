@@ -35,23 +35,25 @@
 
 <main>
   <button id="$stop">Stop</button>
-  <audio id="$player" controls></audio>
+  <rec-state></rec-state>
 </main>
 
 <script type="module">
+  const ws = new WebSocket(`ws://${location.host}/record/ws`); // to ensure ws has opened?
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   const recorder = new MediaRecorder(stream, { bitsPerSecond: 64e3 });
-  window.rec = recorder;
-  recorder.start();
+  recorder.ondataavailable = ({ data }) => ws.send(data);
+  recorder.start(500);
   $stop.onclick = () => recorder.stop();
-  let chunks = [];
-  recorder.ondataavailable = (e) => {
-    console.log({ e });
-    chunks.push(e.data);
-  };
-  recorder.onstop = () => {
-    $player.src = URL.createObjectURL(new Blob(chunks));
-    chunks = [];
-  };
+
+  // <audio id="$player" controls></audio>
+  // let chunks = [];
+  // recorder.ondataavailable = (e) => {
+  //   chunks.push(e.data);
+  // };
+  // recorder.onstop = () => {
+  //   $player.src = URL.createObjectURL(new Blob(chunks));
+  //   chunks = [];
+  // };
   // https://cn.bing.com/search?q=websocket+MediaRecorder
 </script>

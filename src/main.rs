@@ -33,6 +33,7 @@ async fn main() {
             .merge(units::magazine::service())
             .merge(units::paste::service())
             .merge(units::qqbot::service())
+            .merge(units::record::service())
             .merge(units::welcome::service())
             .into_make_service();
         Server::bind(&addr).serve(app).await.unwrap();

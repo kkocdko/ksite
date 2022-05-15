@@ -24,7 +24,6 @@ const fn slot_once(raw: &str) -> (&str, &str) {
 /// # Panics
 ///
 /// This function panics if `raw` doesn't have enough slot marks.
-///
 pub const fn slot<const N: usize>(raw: &str) -> [&str; N] {
     let mut p = raw;
     let mut ret = [""; N];

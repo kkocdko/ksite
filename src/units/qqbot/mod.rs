@@ -51,7 +51,7 @@ struct Event {
 async fn post_handler(Json(event): Json<Event>) -> impl IntoResponse {
     let prefix = format!("[CQ:at,qq={}]", &event.self_id.unwrap_or_default());
     let msg: Vec<&str> = match &event.raw_message {
-        Some(v) if v.starts_with(&prefix) => v.split_whitespace().skip(1).collect(),
+        Some(v) if v.starts_with(&prefix) => v.split(' ').skip(1).collect(),
         _ => return Default::default(),
     };
     let reply = |v| format!(r#"{{ "reply": "[BOT] {v}" }}"#);
@@ -110,21 +110,46 @@ pub fn service() -> Router {
     Router::new().route("/qqbot", MethodRouter::new().post(post_handler))
 }
 
-async fn latest_ver(name: &str) -> String {
-    let client = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none());
-    let client = client.build().unwrap();
-    let url = format!("https://community.chocolatey.org/api/v2/package/{name}");
-    let ret = client.get(&url).send().await.unwrap().text().await.unwrap();
-    let (ret, _) = ret.rsplit_once(".nupkg").unwrap();
-    let (_, ret) = ret.rsplit_once('/').unwrap();
-    let (_, ret) = ret.split_once('.').unwrap();
-    ret.to_string()
-}
-
-async fn broadcast(msg: &str) {
+async fn notify(msg: &str) {
     for id in db_groups_get() {
         let url = format!("http://127.0.0.1:5700/send_group_msg?group_id={id}&message={msg}");
         reqwest::get(url).await.unwrap();
+    }
+}
+
+struct UpNotify {
+    name: &'static str,
+    pkg_id: &'static str,
+    last: Mutex<String>,
+}
+
+impl UpNotify {
+    async fn query(pkg_id: &str) -> String {
+        let client = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none());
+        let client = client.build().unwrap();
+        let url = format!("https://community.chocolatey.org/api/v2/package/{pkg_id}");
+        let ret = client.get(&url).send().await.unwrap().text().await.unwrap();
+        let ret = ret.rsplit_once(".nupkg").unwrap().0;
+        let ret = ret.rsplit_once('/').unwrap().1;
+        ret.split_once('.').unwrap().1.to_string()
+    }
+    async fn trigger(&self) {
+        let v = Self::query(self.pkg_id).await;
+        let changed = {
+            let last = self.last.lock().unwrap();
+            !last.is_empty() && *last != v
+        };
+        if changed {
+            notify(&format!("{} {v} released!", self.name)).await;
+            *self.last.lock().unwrap() = v;
+        }
+    }
+    fn new(name: &'static str, pkg_id: &'static str) -> Self {
+        Self {
+            name,
+            pkg_id,
+            last: Mutex::new(String::new()),
+        }
     }
 }
 
@@ -135,36 +160,12 @@ pub async fn tick() {
         return;
     }
 
-    let task_chrome_update = async {
-        static S: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
-        let v = latest_ver("GoogleChrome").await;
-        // bypass the `Sync` trait limitations
-        let changed = {
-            let s = S.lock().unwrap();
-            !s.is_empty() && *s != v
-        };
-        if changed {
-            broadcast(&format!("Chrome {v} released!")).await;
-            *S.lock().unwrap() = v;
-        }
-    };
-
-    let task_rust_update = async {
-        static S: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
-        let v = latest_ver("rust").await;
-        // bypass the `Sync` trait limitations
-        let changed = {
-            let s = S.lock().unwrap();
-            !s.is_empty() && *s != v
-        };
-        if changed {
-            broadcast(&format!("Rust {v} released!")).await;
-            *S.lock().unwrap() = v;
-        }
-    };
-
+    static UP_CHROME: Lazy<UpNotify> = Lazy::new(|| UpNotify::new("Chrome", "googlechrome"));
+    static UP_VSCODE: Lazy<UpNotify> = Lazy::new(|| UpNotify::new("VSCode", "vscode"));
+    static UP_RUST: Lazy<UpNotify> = Lazy::new(|| UpNotify::new("Rust", "rust"));
     let _ = tokio::join!(
-        tokio::spawn(task_chrome_update),
-        tokio::spawn(task_rust_update),
+        tokio::spawn(UP_CHROME.trigger()),
+        tokio::spawn(UP_VSCODE.trigger()),
+        tokio::spawn(UP_RUST.trigger()),
     );
 }
