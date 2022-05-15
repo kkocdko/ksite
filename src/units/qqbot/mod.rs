@@ -1,4 +1,5 @@
-use crate::{db, ticker::Ticker};
+use crate::db;
+use crate::ticker::Ticker;
 use axum::extract::Json;
 use axum::response::IntoResponse;
 use axum::routing::MethodRouter;
@@ -91,7 +92,7 @@ async fn post_handler(Json(event): Json<Event>) -> impl IntoResponse {
             reply(r["data"]["info"]["text"].as_str().unwrap())
         }
         "订阅通知" => {
-            let group_id: u64 = msg[1].parse().unwrap();
+            let group_id = msg[1].parse().unwrap();
             db_groups_insert(group_id);
             reply("订阅成功")
         }
@@ -109,6 +110,24 @@ pub fn service() -> Router {
     Router::new().route("/qqbot", MethodRouter::new().post(post_handler))
 }
 
+async fn latest_ver(name: &str) -> String {
+    let client = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none());
+    let client = client.build().unwrap();
+    let url = format!("https://community.chocolatey.org/api/v2/package/{name}");
+    let ret = client.get(&url).send().await.unwrap().text().await.unwrap();
+    let (ret, _) = ret.rsplit_once(".nupkg").unwrap();
+    let (_, ret) = ret.rsplit_once('/').unwrap();
+    let (_, ret) = ret.split_once('.').unwrap();
+    ret.to_string()
+}
+
+async fn broadcast(msg: &str) {
+    for id in db_groups_get() {
+        let url = format!("http://127.0.0.1:5700/send_group_msg?group_id={id}&message={msg}");
+        reqwest::get(url).await.unwrap();
+    }
+}
+
 static TICKER: Lazy<Mutex<Ticker>> =
     Lazy::new(|| Mutex::new(Ticker::new_p8(&[(-1, 20, 0), (-1, 50, 0)])));
 pub async fn tick() {
@@ -116,32 +135,33 @@ pub async fn tick() {
         return;
     }
 
-    async fn broadcast(msg: &str) {
-        for id in db_groups_get() {
-            let url = format!("http://127.0.0.1:5700/send_group_msg?group_id={id}&message={msg}");
-            reqwest::get(url).await.unwrap();
-        }
-    }
-
     let task_chrome_update = async {
         static S: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
-        let r = fetch_json("https://noki.top/chrome/info").await;
-        let v = r["win_stable_x64"]["version"].as_str().unwrap();
+        let v = latest_ver("GoogleChrome").await;
         // bypass the `Sync` trait limitations
         let changed = {
-            let mut s = S.lock().unwrap();
-            let flag = !s.is_empty() && *s != v;
-            if flag {
-                *s = v.to_string();
-            }
-            flag
+            let s = S.lock().unwrap();
+            !s.is_empty() && *s != v
         };
         if changed {
             broadcast(&format!("Chrome {v} released!")).await;
+            *S.lock().unwrap() = v;
         }
     };
 
-    let task_rust_update = async {};
+    let task_rust_update = async {
+        static S: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
+        let v = latest_ver("rust").await;
+        // bypass the `Sync` trait limitations
+        let changed = {
+            let s = S.lock().unwrap();
+            !s.is_empty() && *s != v
+        };
+        if changed {
+            broadcast(&format!("Rust {v} released!")).await;
+            *S.lock().unwrap() = v;
+        }
+    };
 
     let _ = tokio::join!(
         tokio::spawn(task_chrome_update),

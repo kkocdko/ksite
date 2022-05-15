@@ -4,6 +4,8 @@ All in one solution for my server.
 
 ## TODO
 
+- `units::record`: record evidence picture, audio and video in real-time.
+
 - `units::chat`: c2c crypto. ~~try implememt the RSA~~.
 
 - `units::chat`: room.
