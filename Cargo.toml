@@ -1,6 +1,6 @@
 [package]
 name = "ksite"
-version = "0.3.10"
+version = "0.4.0-alpha-1"
 edition = "2021"
 
 [profile.dev]
@@ -31,3 +31,8 @@ askama_escape = "0.10.3"
 rand = "0.8.5"
 miniz_oxide = "0.5.1"
 konst = { version = "0.2.13", features = ["rust_1_55"] }
+hyper-rustls = "0.23.0"
+hyper = "0.14.18"
+rustls = "0.20.5"
+rustls-pemfile = "1.0.0"
+tokio-rustls = "0.23.0"

@@ -2,6 +2,7 @@ mod auth;
 mod database;
 mod slot;
 mod ticker;
+mod tls;
 mod units;
 use axum::{Router, Server};
 use std::io;
@@ -36,7 +37,9 @@ async fn main() {
             .merge(units::record::service())
             .merge(units::welcome::service())
             .into_make_service();
-        Server::bind(&addr).serve(app).await.unwrap();
+        // let server = Server::bind(&addr).serve(app);
+        let server = Server::builder(tls::incoming(&addr)).serve(app);
+        server.await.unwrap();
     };
 
     let oscillator = async {
