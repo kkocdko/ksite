@@ -97,7 +97,8 @@ async fn post_handler(Json(event): Json<Event>) -> impl IntoResponse {
             reply("订阅成功")
         }
         "设置回复" => {
-            REPLIES.lock().unwrap().insert(msg[1].into(), msg[2].into());
+            let (k, v) = (msg[1].into(), msg[2].into());
+            REPLIES.lock().unwrap().insert(k, v);
             reply("记住啦")
         }
         k if REPLIES.lock().unwrap().contains_key(k) => reply(&REPLIES.lock().unwrap()[k]),
