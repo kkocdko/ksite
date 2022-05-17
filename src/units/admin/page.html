@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+
+<head>
+  <meta name="viewport" content="width=device-width" />
+  <link rel="icon" href="data:" />
+  <title>Admin - ksite</title>
+</head>
+
+<style>
+  body {
+    display: grid;
+    min-height: 100vh;
+    margin: 0;
+    font-family: sans-serif;
+  }
+  form {
+    display: grid;
+    grid: auto auto 1fr / none;
+  }
+  header > *,
+  header ~ * {
+    padding: 8px 10px;
+    background: none;
+    border: 0 solid #777;
+    outline: none;
+  }
+  header > * {
+    float: left;
+    border-right-width: 1px;
+  }
+  header > :active {
+    background: #8887;
+  }
+  header ~ * {
+    font-family: monospace;
+    white-space: pre;
+    border-top-width: 1px;
+  }
+  @media (prefers-color-scheme: dark) {
+    * {
+      color: #fff;
+      background: #000;
+    }
+  }
+</style>
+
+<form onsubmit="onSubmit(event)">
+  <header>
+    <input type="submit" value="Set" />
+  </header>
+  <select id="$k">
+    <option value="ssl_key">ssl_key</option>
+    <option value="ssl_cert">ssl_cert</option>
+  </select>
+  <textarea id="$v" placeholder="VALUE" spellcheck="false"></textarea>
+</form>
+
+<script>
+  const onSubmit = async (event) => {
+    event.preventDefault();
+    if (!$v.value.startsWith("-----BEGIN")) return alert("only PEM");
+    const v = ($v.value + "\n").replace(/(^|\n)-.+-\n/g, "").trim();
+    const blob = await fetch(`data:;base64,${v}`).then((v) => v.blob());
+    fetch(`/admin?k=${$k.value}`, { method: "post", body: blob });
+  };
+</script>

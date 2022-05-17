@@ -29,6 +29,7 @@ async fn main() {
         println!("server address = {addr}");
 
         let app = Router::new()
+            .merge(units::admin::service())
             .merge(units::chat::service())
             .merge(units::health::service())
             .merge(units::magazine::service())
