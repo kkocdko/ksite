@@ -101,5 +101,6 @@ pub async fn tick() {
     if !TICKER.lock().unwrap().tick() {
         return;
     }
+
     refresh().await;
 }

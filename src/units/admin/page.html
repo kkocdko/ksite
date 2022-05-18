@@ -56,11 +56,9 @@
 </form>
 
 <script>
-  const onSubmit = async (event) => {
+  const onSubmit = (event) => {
     event.preventDefault();
-    if (!$v.value.startsWith("-----BEGIN")) return alert("only PEM");
-    const v = ($v.value + "\n").replace(/(^|\n)-.+-\n/g, "").trim();
-    const blob = await fetch(`data:;base64,${v}`).then((v) => v.blob());
-    fetch(`/admin?k=${$k.value}`, { method: "post", body: blob });
+    const body = new Blob([$v.value]);
+    fetch(`/admin?k=${$k.value}`, { method: "post", body });
   };
 </script>

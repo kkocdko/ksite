@@ -34,3 +34,6 @@ konst = { version = "0.2.13", features = ["rust_1_55"] }
 
 hyper = "0.14.18"
 tokio-rustls = "0.23.0"
+
+tokio-native-tls = "0.3.0"
+tls-listener = { version = "0.5.1", default-features = false, features = ["native-tls","hyper-h1","hyper-h2"] }

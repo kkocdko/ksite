@@ -134,6 +134,7 @@ impl UpNotify {
         let ret = ret.rsplit_once('/').unwrap().1;
         ret.split_once('.').unwrap().1.to_string()
     }
+
     async fn trigger(&self) {
         let v = Self::query(self.pkg_id).await;
         let changed = {
@@ -145,6 +146,7 @@ impl UpNotify {
             *self.last.lock().unwrap() = v;
         }
     }
+
     fn new(name: &'static str, pkg_id: &'static str) -> Self {
         Self {
             name,
