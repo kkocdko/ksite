@@ -19,9 +19,9 @@ lto = "fat"
 
 [dependencies]
 tokio = { version = "1.18.2", features = ["macros", "rt-multi-thread"] }
-axum = { version = "0.5.5", features = ["ws"] }
+axum = { version = "0.5.5", features = ["ws","http2"] }
 tower-http = { version = "0.3.3", features = ["auth"] }
-reqwest = { version = "0.11.10", default-features = false, features = ["rustls-tls"] }
+reqwest ="0.11.10"
 futures-util = "0.3.21"
 rusqlite = { version = "0.27.0", features = ["bundled"] }
 serde = { version = "1.0.137", features = ["derive"] }
@@ -33,7 +33,5 @@ miniz_oxide = "0.5.1"
 konst = { version = "0.2.13", features = ["rust_1_55"] }
 
 hyper = "0.14.18"
-tokio-rustls = "0.23.0"
-
 tokio-native-tls = "0.3.0"
 tls-listener = { version = "0.5.1", default-features = false, features = ["native-tls","hyper-h1","hyper-h2"] }
