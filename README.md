@@ -10,8 +10,12 @@ All in one solution for my server.
 
 - `units::chat`: room.
 
+- `units::qqbot`: websocket.
+
 - `units::qqbot`: pure-rust ~~using [ricq](https://github.com/lz1998/ricq)~~?
 
 - `units::status`: speed, latency, network status. ssl cert remain.
 
 - HTTP2? **OMG it's much more complex than I think!**
+
+- use current-thread tokio on dev.
