@@ -12,19 +12,19 @@ use std::sync::Arc;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, ReadBuf};
 use tokio_rustls::rustls::{Certificate, PrivateKey, ServerConfig};
 
-pub enum TlsStream {
+pub enum Connection {
     Handshaking(tokio_rustls::Accept<AddrStream>),
     Streaming(tokio_rustls::server::TlsStream<AddrStream>),
 }
 
-impl TlsStream {
+impl Connection {
     fn new(stream: AddrStream, cfg: Arc<ServerConfig>) -> Self {
         let accept = tokio_rustls::TlsAcceptor::from(cfg).accept(stream);
         Self::Handshaking(accept)
     }
 }
 
-impl AsyncRead for TlsStream {
+impl AsyncRead for Connection {
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut Context,
@@ -44,7 +44,7 @@ impl AsyncRead for TlsStream {
     }
 }
 
-impl AsyncWrite for TlsStream {
+impl AsyncWrite for Connection {
     fn poll_write(
         mut self: Pin<&mut Self>,
         cx: &mut Context,
@@ -78,13 +78,13 @@ impl AsyncWrite for TlsStream {
     }
 }
 
-pub struct TlsAcceptor {
+pub struct Acceptor {
     cfg: Arc<ServerConfig>,
     incoming: AddrIncoming,
 }
 
-impl Accept for TlsAcceptor {
-    type Conn = TlsStream;
+impl Accept for Acceptor {
+    type Conn = Connection;
     type Error = io::Error;
     fn poll_accept(
         mut self: Pin<&mut Self>,
@@ -92,17 +92,11 @@ impl Accept for TlsAcceptor {
     ) -> Poll<Option<Result<Self::Conn, Self::Error>>> {
         match ready!(Pin::new(&mut self.incoming).poll_accept(cx)) {
             Some(Ok(mut sock)) => {
-                // let flag = ready!(sock.read_i8()).unwrap();
+                // redirect http to https?
                 // let mut flag = [0];
-                // match ready!(sock.poll_peek(cx, &mut tokio::io::ReadBuf)) {
-                //     Ok(_) => {}
-                //     Err(e) => return Poll::Ready(Some(Err(e))),
-                // }
-                // if flag != [0x16] {
-                //     println!("NO TLS");
-                //     return Poll::Ready(None);
-                // }
-                Poll::Ready(Some(Ok(TlsStream::new(sock, self.cfg.clone()))))
+                // ready!(sock.poll_peek(cx, &mut tokio::io::ReadBuf::new(&mut flag)))
+                // dbg!(flag == [0x16]);
+                Poll::Ready(Some(Ok(Connection::new(sock, self.cfg.clone()))))
             }
             Some(Err(e)) => Poll::Ready(Some(Err(e))),
             None => Poll::Ready(None),
@@ -110,24 +104,22 @@ impl Accept for TlsAcceptor {
     }
 }
 
-pub fn incoming(addr: &SocketAddr) -> TlsAcceptor {
+pub fn incoming(addr: &SocketAddr) -> Acceptor {
     fn db_get(k: &str) -> Vec<u8> {
         let result = db!("SELECT v FROM admin WHERE k = ?", [k], (0));
         result.unwrap().pop().unwrap().0
     }
 
+    let certs = vec![Certificate(db_get("ssl_cert"))];
+    let key = PrivateKey(db_get("ssl_key"));
     let mut cfg = ServerConfig::builder()
         .with_safe_defaults()
-        .with_no_client_auth() // see warp's source code?
-        .with_single_cert(
-            vec![Certificate(db_get("ssl_cert"))],
-            PrivateKey(db_get("ssl_key")),
-        )
+        .with_no_client_auth() // vertify? see warp's source code?
+        .with_single_cert(certs, key)
         .unwrap();
-    // configure ALPN to accept HTTP/2, HTTP/1.1 in that order
     cfg.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
 
-    TlsAcceptor {
+    Acceptor {
         cfg: Arc::new(cfg),
         incoming: AddrIncoming::bind(&addr).unwrap(),
     }

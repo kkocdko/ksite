@@ -2,8 +2,8 @@ mod auth;
 mod database;
 mod slot;
 mod ticker;
+#[cfg(feature = "tls")]
 mod tls;
-mod tls_3rd;
 mod units;
 use axum::{Router, Server};
 use std::io;
@@ -39,8 +39,12 @@ async fn main() {
             .merge(units::record::service())
             .merge(units::welcome::service())
             .into_make_service();
-        // let server = Server::bind(&addr).serve(app);
+
+        #[cfg(not(feature = "tls"))]
+        let server = Server::bind(&addr).serve(app);
+        #[cfg(feature = "tls")]
         let server = Server::builder(tls::incoming(&addr)).serve(app);
+
         server.await.unwrap();
     };
 
