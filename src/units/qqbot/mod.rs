@@ -1,6 +1,8 @@
 use crate::db;
 use crate::ticker::Ticker;
+use anyhow::Result;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use axum::http::request;
 use axum::routing::MethodRouter;
 use axum::Router;
 use futures_util::{SinkExt, StreamExt};
@@ -10,6 +12,18 @@ use std::sync::Arc;
 use std::time::SystemTime;
 use tokio::sync::broadcast::{self, Sender};
 use tokio::sync::Mutex;
+
+macro_rules! touch {
+    ($result:expr) => {{
+        match $result {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("touched error {}:{} {:?}", file!(), line!(), e);
+                return;
+            }
+        }
+    }};
+}
 
 fn db_init() {
     db!("CREATE TABLE qqbot_groups (group_id INTEGER)").ok();
@@ -22,11 +36,16 @@ fn db_groups_insert(group_id: i64) {
     db!("INSERT INTO qqbot_groups VALUES (?)", [group_id]).unwrap();
 }
 
-async fn fetch_text(url: &str) -> String {
-    reqwest::get(url).await.unwrap().text().await.unwrap()
+async fn fetch_text(url: &str) -> reqwest::Result<String> {
+    reqwest::get(url).await?.text().await
 }
-async fn fetch_json(url: &str) -> serde_json::Value {
-    serde_json::from_str(&fetch_text(url).await).unwrap()
+async fn fetch_json(url: &str, path: &str) -> Result<String> {
+    let res: serde_json::Value = serde_json::from_str(&fetch_text(url).await?)?;
+    let mut v = &res;
+    for k in path.split('.') {
+        v = v.get(k).o()?;
+    }
+    Ok(v.as_str().o()?.to_string())
 }
 
 fn elapse(time: f64) -> f64 {
@@ -52,92 +71,102 @@ static REPLIES: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(|| {
     ]))
 });
 
-async fn event_handler(event: serde_json::Value) -> Option<String> {
-    let self_id = event.get("self_id")?.as_i64()?;
-    let group_id = event.get("group_id")?.as_i64()?;
-    let raw_message = event.get("raw_message")?.as_str()?;
-    let msg = raw_message.strip_prefix(&format!("[CQ:at,qq={self_id}]"))?;
-    let msg: Vec<&str> = msg.trim().split(' ').collect();
-    let reply = |v| Some(op_send_group_msg(group_id, v));
-    match msg[0] {
-        "乌克兰" | "俄罗斯" | "俄乌" => reply("嘘！"),
-        "kk单身多久了" => reply(&format!("kk已连续单身 {:.3} 天了", elapse(10485432e5))),
-        "暑假倒计时" => reply(&format!("距 2022 暑假仅 {:.3} 天", -elapse(16574688e5))),
-        "高考倒计时" => reply(&format!("距 2022 高考仅 {:.3} 天", -elapse(16545636e5))),
+async fn event_handler(group_id: i64, msg: Vec<&str>) -> anyhow::Result<String> {
+    let reply = match *msg.get(0).o()? {
+        "乌克兰" | "俄罗斯" | "俄乌" => "嘘！".into(),
+        "kk单身多久了" => format!("kk已连续单身 {:.3} 天了", elapse(10485432e5)),
+        "暑假倒计时" => format!("距 2022 暑假仅 {:.3} 天", -elapse(16574688e5)),
+        "高考倒计时" => format!("距 2022 高考仅 {:.3} 天", -elapse(16545636e5)),
         "驶向深蓝" => {
             let url = "https://api.lovelive.tools/api/SweetNothings?genderType=M";
-            reply(&fetch_text(url).await)
+            fetch_text(url).await?
         }
         "吟诗" => {
             let url = "https://v1.jinrishici.com/all.json";
-            reply(fetch_json(url).await["content"].as_str().unwrap())
+            fetch_json(url, "content").await?
         }
-        "新闻" => {
-            let r = fetch_text("https://m.cnbeta.com/wap").await;
-            let n = (elapse(0.0) * 864e5) as usize % 20 + 3;
-            reply(r.split("htm\">").nth(n).unwrap().split_once('<').unwrap().0)
-        }
+        // "新闻" => {
+        //     let res = fetch_text("https://m.cnbeta.com/wap").await;
+        //     let n = (elapse(0.0) * 864e5) as usize % 20 + 3;
+        //     reply(
+        //         res.split("htm\">")
+        //             .nth(n)
+        //             .unwrap()
+        //             .split_once('<')
+        //             .unwrap()
+        //             .0,
+        //     )
+        // }
         "比特币" | "BTC" => {
-            let r = fetch_json("https://chain.so/api/v2/get_info/BTC").await;
-            let price = r["data"]["price"].as_str().unwrap().trim_matches('0');
-            reply(&format!("比特币当前价格 {price} 美元"))
+            let url = "https://chain.so/api/v2/get_info/BTC";
+            let price = fetch_json(url, "data.price").await?;
+            format!("比特币当前价格 {} 美元", price.trim_matches('0'))
         }
         "垃圾分类" => {
-            let i = msg[1];
-            let r = fetch_json(&format!("https://api.muxiaoguo.cn/api/lajifl?m={i}")).await;
-            reply(&match r["data"]["type"].as_str() {
-                Some(v) => format!("{i} {v}"),
-                None => format!("鬼知道 {i} 是什么垃圾呢"),
-            })
+            let url = format!("https://api.muxiaoguo.cn/api/lajifl?m={}", msg[1]);
+            match fetch_json(&url, "data.type").await {
+                Ok(v) => format!("{} {v}", msg[1]),
+                Err(_) => format!("鬼知道 {} 是什么垃圾呢", msg[1]),
+            }
         }
         "聊天" => {
             let url = format!("https://api.ownthink.com/bot?spoken={}", msg[1]);
-            let r = fetch_json(&url).await;
-            reply(r["data"]["info"]["text"].as_str().unwrap())
+            fetch_json(&url, "data.info.text").await?
         }
         "订阅通知" => {
             db_groups_insert(group_id);
-            reply("订阅成功")
+            format!("已为当前群 {group_id} 订阅通知")
         }
         "设置回复" => {
-            let (k, v) = (msg[1].into(), msg[2].into());
+            let (k, v) = (msg[1].into(), msg[2].into()); // pregenerate pair to avoid mutex posion error
             REPLIES.lock().await.insert(k, v);
-            reply("记住啦")
+            "记住啦".into()
         }
-        k if REPLIES.lock().await.contains_key(k) => reply(&REPLIES.lock().await[k]),
-        _ => reply("未知指令"),
-    }
+        k if REPLIES.lock().await.contains_key(k) => REPLIES.lock().await[k].clone(),
+        _ => "未知指令".into(),
+    };
+    Ok(op_send_group_msg(group_id, &reply))
 }
 
 static BROADCAST: Lazy<Sender<String>> = Lazy::new(|| broadcast::channel(16).0);
 
 async fn ws_handler(ws: WebSocket) {
     let (sender, mut receiver) = ws.split();
-    let sender = Arc::new(Mutex::new(sender));
-    let mut task1 = tokio::spawn({
-        let sender = sender.clone();
+    let sender = Mutex::new(sender);
+    let task1 = async {
         let mut broadcast = BROADCAST.subscribe();
-        async move {
-            while let Ok(v) = broadcast.recv().await {
-                if sender.lock().await.send(Message::Text(v)).await.is_err() {
-                    break;
-                }
+        while let Ok(v) = broadcast.recv().await {
+            if sender.lock().await.send(Message::Text(v)).await.is_err() {
+                break;
             }
         }
-    });
-    let mut task2 = tokio::spawn(async move {
-        while let Some(Ok(Message::Text(event))) = receiver.next().await {
-            if let Some(v) = event_handler(serde_json::from_str(&event).unwrap()).await {
-                if sender.lock().await.send(Message::Text(v)).await.is_err() {
-                    break;
-                }
-            }
-        }
-    });
-    tokio::select! {
-        _ = (&mut task1) => task2.abort(),
-        _ = (&mut task2) => task1.abort(),
+        return;
     };
+
+    fn parse_event(event: &serde_json::Value) -> Option<(i64, Vec<&str>)> {
+        let self_id = event.get("self_id")?.as_i64()?;
+        let group_id = event.get("group_id")?.as_i64()?;
+        let raw_message = event.get("raw_message")?.as_str()?;
+        let msg = raw_message.strip_prefix(&format!("[CQ:at,qq={self_id}]"))?;
+        Some((group_id, msg.trim().split(' ').collect()))
+    }
+
+    let task2 = async {
+        while let Some(Ok(Message::Text(event))) = receiver.next().await {
+            let event = touch!(serde_json::from_str(&event));
+            let (group_id, msg) = match parse_event(&event) {
+                Some(v) => v,
+                None => continue,
+            };
+            // if let Ok(v) = event_handler(group_id, msg).await {
+            //     if sender.lock().await.send(Message::Text(v)).await.is_err() {
+            //         break;
+            //     }
+            // }
+        }
+        return;
+    };
+    tokio::join!(task1, task2);
 }
 
 pub fn service() -> Router {
@@ -160,19 +189,32 @@ struct UpNotify {
     last: Mutex<String>,
 }
 
+trait O2E<T> {
+    fn o(self) -> anyhow::Result<T>;
+}
+
+impl<T> O2E<T> for Option<T> {
+    fn o(self) -> anyhow::Result<T> {
+        match self {
+            Some(v) => Ok(v),
+            None => Err(anyhow::anyhow!("option is None")),
+        }
+    }
+}
+
 impl UpNotify {
-    async fn query(pkg_id: &str) -> String {
+    async fn query(pkg_id: &str) -> anyhow::Result<String> {
         let client = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none());
         let client = client.build().unwrap();
         let url = format!("https://community.chocolatey.org/api/v2/package/{pkg_id}");
-        let ret = client.get(&url).send().await.unwrap().text().await.unwrap();
-        let ret = ret.rsplit_once(".nupkg").unwrap().0;
-        let ret = ret.rsplit_once('/').unwrap().1;
-        ret.split_once('.').unwrap().1.to_string()
+        let ret = client.get(&url).send().await?.text().await?;
+        let ret = ret.rsplit_once(".nupkg").o()?.0;
+        let ret = ret.rsplit_once('/').o()?.1;
+        Ok(ret.split_once('.').o()?.1.to_string())
     }
 
     async fn trigger(&self) {
-        let v = Self::query(self.pkg_id).await;
+        let v = touch!(Self::query(self.pkg_id).await);
         let changed = {
             let last = self.last.lock().await;
             !last.is_empty() && *last != v
@@ -202,9 +244,6 @@ pub async fn tick() {
     static UP_CHROME: Lazy<UpNotify> = Lazy::new(|| UpNotify::new("Chrome", "googlechrome"));
     static UP_VSCODE: Lazy<UpNotify> = Lazy::new(|| UpNotify::new("VSCode", "vscode"));
     static UP_RUST: Lazy<UpNotify> = Lazy::new(|| UpNotify::new("Rust", "rust"));
-    let _ = tokio::join!(
-        tokio::spawn(UP_CHROME.trigger()),
-        tokio::spawn(UP_VSCODE.trigger()),
-        tokio::spawn(UP_RUST.trigger()),
-    );
+
+    let _ = tokio::join!(UP_CHROME.trigger(), UP_VSCODE.trigger(), UP_RUST.trigger(),);
 }
