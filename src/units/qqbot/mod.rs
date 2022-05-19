@@ -7,6 +7,7 @@ use futures_util::{SinkExt, StreamExt};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::fmt;
+use std::sync::Arc;
 use std::time::SystemTime;
 use tokio::sync::broadcast::{self, Sender};
 use tokio::sync::Mutex;
@@ -78,6 +79,7 @@ fn elapse(time: f64) -> f64 {
 }
 
 fn op_send_group_msg(group_id: i64, msg: &str) -> String {
+    let msg = "[BOT] ".to_string() + msg;
     serde_json::json!({
         "action": "send_group_msg",
         "params": { "group_id": group_id, "message": msg }
@@ -96,29 +98,29 @@ static REPLIES: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(|| {
 /// generate reply from message parts, returns `""` for inner error (by `touch` macro)
 async fn gen_reply(msg: Vec<&str>) -> String {
     match msg[..] {
-        ["kk单身多久了", ..] => format!("kk已连续单身 {:.3} 天了", elapse(10485432e5)),
-        ["暑假倒计时", ..] => format!("距 2022 暑假仅 {:.3} 天", -elapse(16574688e5)),
-        ["高考倒计时", ..] => format!("距 2022 高考仅 {:.3} 天", -elapse(16545636e5)),
-        ["驶向深蓝", ..] => {
+        ["kk单身多久了"] => format!("kk已连续单身 {:.3} 天了", elapse(10485432e5)),
+        ["暑假倒计时"] => format!("距 2022 暑假仅 {:.3} 天", -elapse(16574688e5)),
+        ["高考倒计时"] => format!("距 2022 高考仅 {:.3} 天", -elapse(16545636e5)),
+        ["驶向深蓝"] => {
             let url = "https://api.lovelive.tools/api/SweetNothings?genderType=M";
             touch!(fetch(url).await)
         }
-        ["吟诗", ..] => {
+        ["吟诗"] => {
             let url = "https://v1.jinrishici.com/all.json";
             touch!(fetch_json(url, "content").await)
         }
-        ["新闻", ..] => {
+        ["新闻"] => {
             let n = (elapse(0.0) * 864e5) as usize % 20 + 3;
             let r = touch!(fetch("https://m.cnbeta.com/wap").await);
             let r = touch!(r.split("htm\">").nth(n).e());
             touch!(r.split_once('<').e()).0.into()
         }
-        ["比特币", ..] | ["BTC", ..] => {
+        ["比特币"] | ["BTC"] => {
             let url = "https://chain.so/api/v2/get_info/BTC";
             let price = touch!(fetch_json(url, "data.price").await);
             format!("比特币当前价格 {} 美元", price.trim_matches('0'))
         }
-        ["垃圾分类", i, ..] => {
+        ["垃圾分类", i] => {
             let url = format!("https://api.muxiaoguo.cn/api/lajifl?m={i}");
             match fetch_json(&url, "data.type").await {
                 Ok(v) => format!("{i} {v}"),
@@ -129,20 +131,20 @@ async fn gen_reply(msg: Vec<&str>) -> String {
             let url = format!("https://api.ownthink.com/bot?spoken={i}");
             touch!(fetch_json(&url, "data.info.text").await)
         }
-        ["订阅通知", v, ..] => {
+        ["订阅通知", v] => {
             db_groups_insert(touch!(v.parse()));
             format!("已为当前群 {v} 订阅通知")
         }
-        ["设置回复", k, v, ..] => {
+        ["设置回复", k, v] => {
             let (k, v) = (k.into(), v.into()); // pregenerate pair to avoid mutex posion error
             REPLIES.lock().await.insert(k, v);
             "记住啦".into()
         }
         [k, ..] => match REPLIES.lock().await.get(k) {
             Some(v) => v.clone(),
-            None => "未知指令".into(),
+            None => "指令有误".into(),
         },
-        _ => "指令有误".into(),
+        [] => "你没有附加任何指令呢".into(),
     }
 }
 
@@ -151,7 +153,7 @@ static BROADCAST: Lazy<Sender<String>> = Lazy::new(|| broadcast::channel(16).0);
 
 async fn ws_handler(ws: WebSocket) {
     let (sender, mut receiver) = ws.split();
-    let sender = Mutex::new(sender);
+    let sender = Arc::new(Mutex::new(sender));
 
     /// returns (group_id, message_parts) or `None` if don't care (chaos events)
     fn parse_event(event: &serde_json::Value) -> Option<(i64, Vec<&str>)> {
@@ -162,7 +164,18 @@ async fn ws_handler(ws: WebSocket) {
         Some((group_id, msg.trim().split(' ').collect()))
     }
 
-    let task_reply = async {
+    let mut task_broadcast = tokio::spawn({
+        let sender = sender.clone();
+        async move {
+            let mut broadcast = BROADCAST.subscribe();
+            loop {
+                let v = touch!(broadcast.recv().await);
+                touch!(sender.lock().await.send(Message::Text(v)).await);
+            }
+        }
+    });
+
+    let mut task_reply = tokio::spawn(async move {
         while let Some(Ok(Message::Text(event))) = receiver.next().await {
             let event = touch!(serde_json::from_str(&event));
             let (group_id, msg) = match parse_event(&event) {
@@ -170,21 +183,16 @@ async fn ws_handler(ws: WebSocket) {
                 None => continue,
             };
             let v = gen_reply(msg).await;
-            let v = op_send_group_msg(group_id, if v == "" { "内部错误" } else { &v });
+            let v = op_send_group_msg(group_id, if v.is_empty() { "内部错误" } else { &v });
             touch!(sender.lock().await.send(Message::Text(v)).await);
         }
-        return;
-    };
+    });
 
-    let task_broadcast = async {
-        let mut broadcast = BROADCAST.subscribe();
-        loop {
-            let v = touch!(broadcast.recv().await);
-            touch!(sender.lock().await.send(Message::Text(v)).await);
-        }
+    // if any one of the tasks exit, abort another
+    tokio::select! {
+        _ = (&mut task_reply) => task_broadcast.abort(),
+        _ = (&mut task_broadcast) => task_reply.abort(),
     };
-
-    tokio::join!(task_reply, task_broadcast);
 }
 
 pub fn service() -> Router {
