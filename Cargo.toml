@@ -1,6 +1,6 @@
 [package]
 name = "ksite"
-version = "0.4.0-alpha-4"
+version = "0.4.0-alpha-5"
 edition = "2021"
 
 [profile.dev]
@@ -17,11 +17,8 @@ strip = true
 lto = "fat"
 # panic = "abort" # DO NOT USE THIS! cause tokio worker abort
 
-[features]
-# default = ["tls"]
-tls = ["hyper", "tokio-rustls"]
-
 [dependencies]
+anyhow = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 axum = { version = "0.5", features = ["ws"] }
 tower-http = { version = "0.3", features = ["auth"] }
@@ -35,9 +32,5 @@ askama_escape = "0.10"
 rand = "0.8"
 miniz_oxide = "0.5"
 konst = { version = "0.2", features = ["rust_1_55"] }
-
-hyper = { version = "0.14", optional = true }
-tokio-rustls = { version = "0.23", optional = true }
-
-[dev-dependencies]
-tokio = { version = "1", features = ["macros", "rt"] }
+# hyper = "0.14"
+# tokio-rustls = "0.23"

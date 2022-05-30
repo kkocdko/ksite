@@ -35,13 +35,12 @@ impl fmt::Display for AnyError {
     }
 }
 type AnyResult<T> = std::result::Result<T, AnyError>;
-
 macro_rules! touch {
     ($result:expr) => {{
         match $result {
             Ok(v) => v,
             Err(e) => {
-                eprintln!("touched error {}:{} {}", file!(), line!(), e);
+                eprintln!("[touched error] {}:{} {}", file!(), line!(), e);
                 return Default::default();
             }
         }
@@ -63,12 +62,12 @@ async fn fetch(url: &str) -> AnyResult<String> {
     Ok(reqwest::get(url).await?.text().await?)
 }
 async fn fetch_json(url: &str, path: &str) -> AnyResult<String> {
-    let res: serde_json::Value = serde_json::from_str(&fetch(url).await?)?;
-    let mut v = &res;
+    let text = fetch(url).await?;
+    let mut v = &serde_json::from_str::<serde_json::Value>(&text)?;
     for k in path.split('.') {
-        v = v.get(k).e()?;
+        v = v.get(k).ok_or("field not found")?;
     }
-    Ok(v.as_str().e()?.to_string())
+    Ok(v.to_string())
 }
 
 fn elapse(time: f64) -> f64 {
@@ -112,8 +111,8 @@ async fn gen_reply(msg: Vec<&str>) -> String {
         ["新闻"] => {
             let n = (elapse(0.0) * 864e5) as usize % 20 + 3;
             let r = touch!(fetch("https://m.cnbeta.com/wap").await);
-            let r = touch!(r.split("htm\">").nth(n).e());
-            touch!(r.split_once('<').e()).0.into()
+            let r = r.split("htm\">").nth(n).and_then(|v| v.split_once('<'));
+            touch!(r.ok_or("process text failed")).0.into()
         }
         ["比特币"] | ["BTC"] => {
             let url = "https://chain.so/api/v2/get_info/BTC";
