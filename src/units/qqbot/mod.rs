@@ -1,47 +1,26 @@
 use crate::db;
 use crate::ticker::Ticker;
+use crate::utils::OptionResult;
+use anyhow::Result;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use axum::extract::ConnectInfo;
 use axum::routing::MethodRouter;
 use axum::Router;
 use futures_util::{SinkExt, StreamExt};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
-use std::fmt;
 use std::sync::Arc;
 use std::time::SystemTime;
 use tokio::sync::broadcast::{self, Sender};
 use tokio::sync::Mutex;
 
-trait OptionToResult<T> {
-    fn e(self) -> AnyResult<T>;
-}
-impl<T> OptionToResult<T> for Option<T> {
-    fn e(self) -> AnyResult<T> {
-        match self {
-            Some(v) => Ok(v),
-            None => Err(AnyError("Option is None".into())),
-        }
-    }
-}
-struct AnyError(String);
-impl<T: fmt::Debug> From<T> for AnyError {
-    fn from(i: T) -> Self {
-        AnyError(format!("{:?}", i))
-    }
-}
-impl fmt::Display for AnyError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-type AnyResult<T> = std::result::Result<T, AnyError>;
 macro_rules! touch {
     ($result:expr) => {{
         match $result {
             Ok(v) => v,
             Err(e) => {
-                eprintln!("[touched error] {}:{} {}", file!(), line!(), e);
-                return Default::default();
+                eprintln!("[touched error] {}:{} {:?}", file!(), line!(), e);
+                Default::default()
             }
         }
     }};
@@ -58,14 +37,14 @@ fn db_groups_insert(group_id: i64) {
     db!("INSERT INTO qqbot_groups VALUES (?)", [group_id]).unwrap();
 }
 
-async fn fetch(url: &str) -> AnyResult<String> {
+async fn fetch_text(url: &str) -> Result<String> {
     Ok(reqwest::get(url).await?.text().await?)
 }
-async fn fetch_json(url: &str, path: &str) -> AnyResult<String> {
-    let text = fetch(url).await?;
+async fn fetch_json(url: &str, path: &str) -> Result<String> {
+    let text = fetch_text(url).await?;
     let mut v = &serde_json::from_str::<serde_json::Value>(&text)?;
     for k in path.split('.') {
-        v = v.get(k).ok_or("field not found")?;
+        v = v.get(k).e()?;
     }
     Ok(v.to_string())
 }
@@ -95,28 +74,28 @@ static REPLIES: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(|| {
 });
 
 /// generate reply from message parts, returns `""` for inner error (by `touch` macro)
-async fn gen_reply(msg: Vec<&str>) -> String {
-    match msg[..] {
+async fn gen_reply(msg: Vec<&str>) -> Result<String> {
+    Ok(match msg[..] {
         ["kk单身多久了"] => format!("kk已连续单身 {:.3} 天了", elapse(10485432e5)),
         ["暑假倒计时"] => format!("距 2022 暑假仅 {:.3} 天", -elapse(16574688e5)),
         ["高考倒计时"] => format!("距 2022 高考仅 {:.3} 天", -elapse(16545636e5)),
         ["驶向深蓝"] => {
             let url = "https://api.lovelive.tools/api/SweetNothings?genderType=M";
-            touch!(fetch(url).await)
+            fetch_text(url).await?
         }
         ["吟诗"] => {
             let url = "https://v1.jinrishici.com/all.json";
-            touch!(fetch_json(url, "content").await)
+            fetch_json(url, "content").await?
         }
         ["新闻"] => {
             let n = (elapse(0.0) * 864e5) as usize % 20 + 3;
-            let r = touch!(fetch("https://m.cnbeta.com/wap").await);
-            let r = r.split("htm\">").nth(n).and_then(|v| v.split_once('<'));
-            touch!(r.ok_or("process text failed")).0.into()
+            let r = fetch_text("https://m.cnbeta.com/wap").await?;
+            let r = r.split("htm\">").nth(n).e()?.split_once('<').e()?;
+            r.0.into()
         }
         ["比特币"] | ["BTC"] => {
             let url = "https://chain.so/api/v2/get_info/BTC";
-            let price = touch!(fetch_json(url, "data.price").await);
+            let price = fetch_json(url, "data.price").await?;
             format!("比特币当前价格 {} 美元", price.trim_matches('0'))
         }
         ["垃圾分类", i] => {
@@ -128,15 +107,14 @@ async fn gen_reply(msg: Vec<&str>) -> String {
         }
         ["聊天", i, ..] => {
             let url = format!("https://api.ownthink.com/bot?spoken={i}");
-            touch!(fetch_json(&url, "data.info.text").await)
+            fetch_json(&url, "data.info.text").await?
         }
         ["订阅通知", v] => {
-            db_groups_insert(touch!(v.parse()));
-            format!("已为当前群 {v} 订阅通知")
+            db_groups_insert(v.parse()?);
+            format!("已为群 {v} 订阅通知")
         }
         ["设置回复", k, v] => {
-            let (k, v) = (k.into(), v.into()); // pregenerate pair to avoid mutex posion error
-            REPLIES.lock().await.insert(k, v);
+            REPLIES.lock().await.insert(k.into(), v.into());
             "记住啦".into()
         }
         [k, ..] => match REPLIES.lock().await.get(k) {
@@ -144,7 +122,7 @@ async fn gen_reply(msg: Vec<&str>) -> String {
             None => "指令有误".into(),
         },
         [] => "你没有附加任何指令呢".into(),
-    }
+    })
 }
 
 /// `notify()` -> `BROADCAST` -> `task_broadcast` in `ws_handler()`
@@ -168,23 +146,26 @@ async fn ws_handler(ws: WebSocket) {
         async move {
             let mut broadcast = BROADCAST.subscribe();
             loop {
-                let v = touch!(broadcast.recv().await);
-                touch!(sender.lock().await.send(Message::Text(v)).await);
+                let v = broadcast.recv().await?;
+                sender.lock().await.send(Message::Text(v)).await?;
             }
+            #[allow(unreachable_code)]
+            anyhow::Ok(())
         }
     });
 
     let mut task_reply = tokio::spawn(async move {
         while let Some(Ok(Message::Text(event))) = receiver.next().await {
-            let event = touch!(serde_json::from_str(&event));
+            let event = serde_json::from_str(&event)?;
             let (group_id, msg) = match parse_event(&event) {
                 Some(v) => v,
                 None => continue,
             };
-            let v = gen_reply(msg).await;
-            let v = op_send_group_msg(group_id, if v.is_empty() { "内部错误" } else { &v });
-            touch!(sender.lock().await.send(Message::Text(v)).await);
+            let v = gen_reply(msg).await?;
+            let v = op_send_group_msg(group_id, &v);
+            sender.lock().await.send(Message::Text(v)).await?;
         }
+        anyhow::Ok(())
     });
 
     // if any one of the tasks exit, abort another
@@ -198,13 +179,19 @@ pub fn service() -> Router {
     db_init();
     Router::new().route(
         "/qqbot",
-        MethodRouter::new().get(|u: WebSocketUpgrade| async { u.on_upgrade(ws_handler) }),
+        // TODO: detect is inner network
+        MethodRouter::new().get(
+            |u: WebSocketUpgrade, info: ConnectInfo<String>| async move {
+                println!("{}", info.0);
+                u.on_upgrade(ws_handler)
+            },
+        ),
     )
 }
 
 async fn notify(msg: &str) {
     for group_id in db_groups_get() {
-        touch!(BROADCAST.send(op_send_group_msg(group_id, msg)));
+        BROADCAST.send(op_send_group_msg(group_id, msg)).ok();
     }
 }
 
@@ -215,7 +202,7 @@ struct UpNotify {
 }
 
 impl UpNotify {
-    async fn query(pkg_id: &str) -> AnyResult<String> {
+    async fn query(pkg_id: &str) -> Result<String> {
         let client = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none());
         let client = client.build().unwrap();
         let url = format!("https://community.chocolatey.org/api/v2/package/{pkg_id}");
@@ -227,14 +214,12 @@ impl UpNotify {
 
     async fn trigger(&self) {
         let v = touch!(Self::query(self.pkg_id).await);
-        let changed = {
-            let last = self.last.lock().await;
-            !last.is_empty() && *last != v
-        };
+        let mut last = self.last.lock().await;
+        let changed = !last.is_empty() && *last != v;
         if changed {
             notify(&format!("{} {v} released!", self.name)).await;
-            *self.last.lock().await = v;
         }
+        *last = v;
     }
 
     fn new(name: &'static str, pkg_id: &'static str) -> Self {

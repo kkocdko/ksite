@@ -28,10 +28,10 @@ macro_rules! db {
         let mut ret = Vec::new();
         for entry in stmd.query_map(
             rusqlite::params![$($param)*],
-            |r| Ok(( $( r.get($idx)?, )* ))
+            |r| std::result::Result::Ok(( $( r.get($idx)?, )* ))
         )? {
             ret.push(entry?);
         }
-        Result::<_, rusqlite::Error>::Ok(ret)
+        std::result::Result::<_, rusqlite::Error>::Ok(ret)
     })()};
 }

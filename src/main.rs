@@ -2,6 +2,7 @@ mod auth;
 mod database;
 mod slot;
 mod ticker;
+mod utils;
 // mod tls;
 mod units;
 use axum::{Router, Server};
