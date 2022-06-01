@@ -3,7 +3,6 @@ use crate::ticker::Ticker;
 use crate::utils::OptionResult;
 use anyhow::Result;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::ConnectInfo;
 use axum::routing::MethodRouter;
 use axum::Router;
 use futures_util::{SinkExt, StreamExt};
@@ -180,12 +179,7 @@ pub fn service() -> Router {
     Router::new().route(
         "/qqbot",
         // TODO: detect is inner network
-        MethodRouter::new().get(
-            |u: WebSocketUpgrade, info: ConnectInfo<String>| async move {
-                println!("{}", info.0);
-                u.on_upgrade(ws_handler)
-            },
-        ),
+        MethodRouter::new().get(|u: WebSocketUpgrade| async move { u.on_upgrade(ws_handler) }),
     )
 }
 
@@ -212,14 +206,15 @@ impl UpNotify {
         Ok(ret.split_once('.').e()?.1.to_string())
     }
 
-    async fn trigger(&self) {
-        let v = touch!(Self::query(self.pkg_id).await);
+    async fn trigger(&self) -> Result<()> {
+        let v = Self::query(self.pkg_id).await?;
         let mut last = self.last.lock().await;
         let changed = !last.is_empty() && *last != v;
         if changed {
             notify(&format!("{} {v} released!", self.name)).await;
         }
         *last = v;
+        Ok(())
     }
 
     fn new(name: &'static str, pkg_id: &'static str) -> Self {
@@ -241,6 +236,13 @@ pub async fn tick() {
     static UP_CHROME: Lazy<UpNotify> = Lazy::new(|| UpNotify::new("Chrome", "googlechrome"));
     static UP_VSCODE: Lazy<UpNotify> = Lazy::new(|| UpNotify::new("VSCode", "vscode"));
     static UP_RUST: Lazy<UpNotify> = Lazy::new(|| UpNotify::new("Rust", "rust"));
-
-    let _ = tokio::join!(UP_CHROME.trigger(), UP_VSCODE.trigger(), UP_RUST.trigger());
+    let (up_chrome, up_vscode, up_rust) = tokio::join!(
+        // needless to spawn
+        UP_CHROME.trigger(),
+        UP_VSCODE.trigger(),
+        UP_RUST.trigger()
+    );
+    touch!(up_chrome);
+    touch!(up_vscode);
+    touch!(up_rust);
 }
