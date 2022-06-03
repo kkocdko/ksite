@@ -1,3 +1,4 @@
+use crate::care;
 use crate::db;
 use crate::ticker::Ticker;
 use crate::utils::OptionResult;
@@ -12,18 +13,6 @@ use std::sync::Arc;
 use std::time::SystemTime;
 use tokio::sync::broadcast::{self, Sender};
 use tokio::sync::Mutex;
-
-macro_rules! touch {
-    ($result:expr) => {{
-        match $result {
-            Ok(v) => v,
-            Err(e) => {
-                eprintln!("[touched error] {}:{} {:?}", file!(), line!(), e);
-                Default::default()
-            }
-        }
-    }};
-}
 
 fn db_init() {
     db!("CREATE TABLE qqbot_groups (group_id INTEGER)").ok();
@@ -160,7 +149,7 @@ async fn ws_handler(ws: WebSocket) {
                 Some(v) => v,
                 None => continue,
             };
-            let v = gen_reply(msg).await?;
+            let v = care!(gen_reply(msg).await)?;
             let v = op_send_group_msg(group_id, &v);
             sender.lock().await.send(Message::Text(v)).await?;
         }
@@ -206,15 +195,14 @@ impl UpNotify {
         Ok(ret.split_once('.').e()?.1.to_string())
     }
 
-    async fn trigger(&self) -> Result<()> {
-        let v = Self::query(self.pkg_id).await?;
+    async fn trigger(&self) {
+        let v = care!(Self::query(self.pkg_id).await, return);
         let mut last = self.last.lock().await;
         let changed = !last.is_empty() && *last != v;
         if changed {
             notify(&format!("{} {v} released!", self.name)).await;
         }
         *last = v;
-        Ok(())
     }
 
     fn new(name: &'static str, pkg_id: &'static str) -> Self {
@@ -236,13 +224,10 @@ pub async fn tick() {
     static UP_CHROME: Lazy<UpNotify> = Lazy::new(|| UpNotify::new("Chrome", "googlechrome"));
     static UP_VSCODE: Lazy<UpNotify> = Lazy::new(|| UpNotify::new("VSCode", "vscode"));
     static UP_RUST: Lazy<UpNotify> = Lazy::new(|| UpNotify::new("Rust", "rust"));
-    let (up_chrome, up_vscode, up_rust) = tokio::join!(
+    let _ = tokio::join!(
         // needless to spawn
         UP_CHROME.trigger(),
         UP_VSCODE.trigger(),
         UP_RUST.trigger()
     );
-    touch!(up_chrome);
-    touch!(up_vscode);
-    touch!(up_rust);
 }
