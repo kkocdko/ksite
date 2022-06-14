@@ -60,13 +60,16 @@ fn generate<'a>(mut i: &'a str, o: &mut Vec<&'a str>, mut limit: usize) {
     o.push("\n<br>\n");
 }
 
-type Res = ([(&'static str, &'static str); 1], Html<Vec<u8>>);
+type Res = ([(&'static str, &'static str); 2], Html<Vec<u8>>);
 
 const PAGE: [&str; 2] = slot(include_str!("page.html"));
 
 static CACHE: Lazy<Mutex<Res>> = Lazy::new(|| {
     let body = format!("{}<h2>Magazine is generating ...</h2>{}", PAGE[0], PAGE[1]);
-    Mutex::new(([("refresh", "2")], Html(body.into_bytes())))
+    Mutex::new((
+        [("cache-control", "no-cache"), ("refresh", "2")],
+        Html(body.into_bytes()),
+    ))
 });
 
 async fn refresh() {
@@ -85,7 +88,13 @@ async fn refresh() {
     o.push(PAGE[1]);
 
     let o = miniz_oxide::deflate::compress_to_vec(o.join("").as_bytes(), 10);
-    *CACHE.lock().unwrap() = ([("content-encoding", "deflate")], Html(o));
+    *CACHE.lock().unwrap() = (
+        [
+            ("cache-control", "max-age=1800"),
+            ("content-encoding", "deflate"),
+        ],
+        Html(o),
+    );
 }
 
 pub fn service() -> Router {

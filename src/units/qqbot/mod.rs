@@ -34,7 +34,7 @@ async fn fetch_json(url: &str, path: &str) -> Result<String> {
     for k in path.split('.') {
         v = v.get(k).e()?;
     }
-    Ok(v.to_string())
+    Ok(v.as_str().e()?.to_string())
 }
 
 fn elapse(time: f64) -> f64 {
