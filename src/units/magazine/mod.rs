@@ -90,7 +90,7 @@ async fn refresh() {
     let o = miniz_oxide::deflate::compress_to_vec(o.join("").as_bytes(), 10);
     *CACHE.lock().unwrap() = (
         [
-            ("cache-control", "max-age=1800"),
+            ("cache-control", "max-age=3600"),
             ("content-encoding", "deflate"),
         ],
         Html(o),

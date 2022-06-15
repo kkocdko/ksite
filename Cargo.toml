@@ -13,10 +13,6 @@ strip = true
 lto = "fat"
 # panic = "abort" # DO NOT USE THIS! cause tokio worker abort
 
-[profile.release.package."*"]
-debug = false
-strip = true
-
 [dependencies]
 anyhow = { version = "1", features = ["backtrace"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

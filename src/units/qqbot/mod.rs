@@ -44,7 +44,7 @@ fn elapse(time: f64) -> f64 {
     // javascript: new Date("2001.01.01 06:00").getTime()
     let epoch = SystemTime::UNIX_EPOCH;
     let now = SystemTime::now().duration_since(epoch).unwrap().as_millis() as f64;
-    (now - time) / 864e5
+    (now - time) / 864e5 // unit: days
 }
 
 fn op_send_group_msg(group_id: i64, msg: &str) -> String {
@@ -64,12 +64,12 @@ static REPLIES: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(|| {
     ]))
 });
 
-/// generate reply from message parts, returns `""` for inner error (by `touch` macro)
+/// generate reply from message parts
 async fn gen_reply(msg: Vec<&str>) -> Result<String> {
     Ok(match msg[..] {
         ["kk单身多久了"] => format!("kk已连续单身 {:.3} 天了", elapse(10485432e5)),
-        ["暑假倒计时"] => format!("距 2022 暑假仅 {:.3} 天", -elapse(16574688e5)),
-        ["高考倒计时"] => format!("距 2022 高考仅 {:.3} 天", -elapse(16545636e5)),
+        ["暑假倒计时"] => format!("距 2022 暑假仅 {:.3} 天", -elapse(16561728e5)),
+        ["高考倒计时"] => format!("距 2023 高考仅 {:.3} 天", -elapse(16860996e5)),
         ["驶向深蓝"] => {
             let url = "https://api.lovelive.tools/api/SweetNothings?genderType=M";
             fetch_text(url).await?
@@ -85,7 +85,7 @@ async fn gen_reply(msg: Vec<&str>) -> Result<String> {
             r.0.into()
         }
         ["BTC"] | ["比特币"] => {
-            let url = "https://chain.so/api/v2/get_info/BTC/USD";
+            let url = "https://chain.so/api/v2/get_info/BTC";
             let price = fetch_json(url, "data.price").await?;
             format!("1 BTC = {} USD", price.trim_matches('0'))
         }
@@ -182,7 +182,7 @@ pub fn service() -> Router {
         "/qqbot",
         MethodRouter::new().get(
             |u: WebSocketUpgrade, c: ConnectInfo<SocketAddr>| async move {
-                if c.0.ip() != IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)) {
+                if c.0.ip() != IpAddr::V4(Ipv4Addr::LOCALHOST) {
                     return "only allowed for localhost".into_response();
                 }
                 u.on_upgrade(ws_handler)

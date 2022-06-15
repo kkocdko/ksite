@@ -15,12 +15,13 @@ use std::time::Duration;
 #[tokio::main]
 async fn main() {
     println!("[ksite]");
-    println!("enter :q to shutdown");
+    println!("enter :q to quit");
     println!("authorization token = {}", *auth::TOKEN);
 
     thread::spawn(|| loop {
         let buf = &mut String::new();
         if io::stdin().read_line(buf).is_ok() && buf.trim() == ":q" {
+            println!("quit ksite");
             process::exit(0);
         }
     });
