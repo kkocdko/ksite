@@ -38,7 +38,7 @@ async fn main() {
             .merge(units::qqbot::service())
             .merge(units::record::service())
             .merge(units::welcome::service())
-            .into_make_service();
+            .into_make_service_with_connect_info::<SocketAddr>();
 
         let server = Server::bind(&addr).serve(app);
         // let server = Server::builder(tls::incoming(&addr)).serve(app);

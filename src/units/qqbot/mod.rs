@@ -4,11 +4,14 @@ use crate::ticker::Ticker;
 use crate::utils::OptionResult;
 use anyhow::Result;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use axum::extract::ConnectInfo;
+use axum::response::IntoResponse;
 use axum::routing::MethodRouter;
 use axum::Router;
 use futures_util::{SinkExt, StreamExt};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::SystemTime;
 use tokio::sync::broadcast::{self, Sender};
@@ -34,7 +37,7 @@ async fn fetch_json(url: &str, path: &str) -> Result<String> {
     for k in path.split('.') {
         v = v.get(k).e()?;
     }
-    Ok(v.as_str().e()?.to_string())
+    Ok(v.to_string().trim_matches('"').to_string())
 }
 
 fn elapse(time: f64) -> f64 {
@@ -81,10 +84,20 @@ async fn gen_reply(msg: Vec<&str>) -> Result<String> {
             let r = r.split("htm\">").nth(n).e()?.split_once('<').e()?;
             r.0.into()
         }
-        ["比特币"] | ["BTC"] => {
-            let url = "https://chain.so/api/v2/get_info/BTC";
+        ["BTC"] | ["比特币"] => {
+            let url = "https://chain.so/api/v2/get_info/BTC/USD";
             let price = fetch_json(url, "data.price").await?;
-            format!("比特币当前价格 {} 美元", price.trim_matches('0'))
+            format!("1 BTC = {} USD", price.trim_matches('0'))
+        }
+        ["ETH"] | ["以太坊"] | ["以太币"] => {
+            let url = "https://api.blockchair.com/ethereum/stats";
+            let price = fetch_json(url, "data.market_price_usd").await?;
+            format!("1 ETH = {} USD", price.trim_matches('0'))
+        }
+        ["DOGE"] | ["狗狗币"] => {
+            let url = "https://api.blockchair.com/dogecoin/stats";
+            let price = fetch_json(url, "data.market_price_usd").await?;
+            format!("1 DOGE = {} USD", price.trim_matches('0'))
         }
         ["垃圾分类", i] => {
             let url = format!("https://api.muxiaoguo.cn/api/lajifl?m={i}");
@@ -167,8 +180,14 @@ pub fn service() -> Router {
     db_init();
     Router::new().route(
         "/qqbot",
-        // TODO: detect is inner network
-        MethodRouter::new().get(|u: WebSocketUpgrade| async move { u.on_upgrade(ws_handler) }),
+        MethodRouter::new().get(
+            |u: WebSocketUpgrade, c: ConnectInfo<SocketAddr>| async move {
+                if c.0.ip() != IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)) {
+                    return "only allowed for localhost".into_response();
+                }
+                u.on_upgrade(ws_handler)
+            },
+        ),
     )
 }
 
