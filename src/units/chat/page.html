@@ -62,20 +62,17 @@
     publicExponent: new Uint8Array([1, 0, 1]),
     hash: "SHA-256",
   };
-  async function encryptMessage(i, key) {
-    const data = new TextEncoder().encode(i);
-    return crypto.subtle.encrypt(algo, key, data);
-  }
-  async function decryptMessage(i, key) {
-    const data = await crypto.subtle.decrypt(algo, key, i);
-    return new TextDecoder().decode(data);
-  }
+  const [textEncoder, textDecoder] = [new TextEncoder(), new TextDecoder()];
+  const encrypt = async (i, publicKey) =>
+    crypto.subtle.encrypt(algo, publicKey, textEncoder.encode(i));
+  const decrypt = async (i, privateKey) =>
+    textDecoder.decode(await crypto.subtle.decrypt(algo, privateKey, i));
+
   (async () => {
     const usages = ["encrypt", "decrypt"];
     const keyPair = await crypto.subtle.generateKey(algo, true, usages);
-    const { publicKey, privateKey } = keyPair;
-    const d = await encryptMessage("abc", publicKey);
-    const r = await decryptMessage(d, privateKey);
+    const d = await encrypt("abc", keyPair.publicKey);
+    const r = await decrypt(d, keyPair.privateKey);
     console.log({ r });
   })();
 </script>

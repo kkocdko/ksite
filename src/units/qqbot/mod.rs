@@ -31,13 +31,11 @@ fn db_groups_insert(group_id: i64) {
 async fn fetch_text(url: &str) -> Result<String> {
     Ok(reqwest::get(url).await?.text().await?)
 }
-async fn fetch_json(url: &str, path: &str) -> Result<String> {
+async fn fetch_json(url: &str, pointer: &str) -> Result<String> {
     let text = fetch_text(url).await?;
-    let mut v = &serde_json::from_str::<serde_json::Value>(&text)?;
-    for k in path.split('.') {
-        v = v.get(k).e()?;
-    }
-    Ok(v.to_string().trim_matches('"').to_string())
+    let v = serde_json::from_str::<serde_json::Value>(&text)?;
+    let v = v.pointer(pointer).e()?.to_string();
+    Ok(v.trim_matches('"').to_string())
 }
 
 fn elapse(time: f64) -> f64 {
@@ -76,7 +74,7 @@ async fn gen_reply(msg: Vec<&str>) -> Result<String> {
         }
         ["吟诗"] => {
             let url = "https://v1.jinrishici.com/all.json";
-            fetch_json(url, "content").await?
+            fetch_json(url, "/content").await?
         }
         ["新闻"] => {
             let n = (elapse(0.0) * 864e5) as usize % 20 + 3;
@@ -86,29 +84,29 @@ async fn gen_reply(msg: Vec<&str>) -> Result<String> {
         }
         ["BTC"] | ["比特币"] => {
             let url = "https://chain.so/api/v2/get_info/BTC";
-            let price = fetch_json(url, "data.price").await?;
-            format!("1 BTC = {} USD", price.trim_matches('0'))
+            let price = fetch_json(url, "/data/price").await?;
+            format!("1 BTC = {} USD", price.trim_end_matches('0'))
         }
         ["ETH"] | ["以太坊"] | ["以太币"] => {
             let url = "https://api.blockchair.com/ethereum/stats";
-            let price = fetch_json(url, "data.market_price_usd").await?;
-            format!("1 ETH = {} USD", price.trim_matches('0'))
+            let price = fetch_json(url, "/data/market_price_usd").await?;
+            format!("1 ETH = {} USD", price.trim_end_matches('0'))
         }
         ["DOGE"] | ["狗狗币"] => {
             let url = "https://api.blockchair.com/dogecoin/stats";
-            let price = fetch_json(url, "data.market_price_usd").await?;
-            format!("1 DOGE = {} USD", price.trim_matches('0'))
+            let price = fetch_json(url, "/data/market_price_usd").await?;
+            format!("1 DOGE = {} USD", price.trim_end_matches('0'))
         }
         ["垃圾分类", i] => {
             let url = format!("https://api.muxiaoguo.cn/api/lajifl?m={i}");
-            match fetch_json(&url, "data.type").await {
+            match fetch_json(&url, "/data/type").await {
                 Ok(v) => format!("{i} {v}"),
                 Err(_) => format!("鬼知道 {i} 是什么垃圾呢"),
             }
         }
         ["聊天", i, ..] => {
             let url = format!("https://api.ownthink.com/bot?spoken={i}");
-            fetch_json(&url, "data.info.text").await?
+            fetch_json(&url, "/data/info/text").await?
         }
         ["订阅通知", v] => {
             db_groups_insert(v.parse()?);
