@@ -63,8 +63,28 @@
   };
   const onSubmit = (event) => {
     event.preventDefault();
-    const raw = `{"formWid":"a5e94ae0b0e04193bae67c86cfd6e223","dataMap":{"INPUT_L11NMC9H":"${$id.value}","LOCATION_L1OELUCJ":"江苏省镇江市京口区","RADIO_L11NMCA8":"梦溪","RADIO_L11NMCAA":"正常","RADIO_L1RTT90Y":"正常","RADIO_L11NMCAC":"绿码","RADIO_L11NMCAF":"绿码","RADIO_L11NMCAJ":"否","INPUT_L11NMCAO":"36","INPUT_L11NMCAM":"36","RADIO_L11NMCAK":"是","RADIO_L15XZ9SA":"否","RADIO_L1MVAKG2":"是","RADIO_L1WY3PV5":"承诺"}}`;
-    $body.value = encrypt(raw);
+    const data = {
+      formWid: "a5e94ae0b0e04193bae67c86cfd6e223",
+      dataMap: {
+        INPUT_L11NMC9H: $id.value,
+        INPUT_L11NMCAM: "36",
+        INPUT_L11NMCAO: "36",
+        LOCATION_L1OELUCJ: "江苏省镇江市丹徒区",
+        RADIO_L1MVAKG2: "是",
+        RADIO_L1RTT90Y: "正常",
+        RADIO_L1WY3PV5: "承诺",
+        RADIO_L3JT1W1T: "加强针",
+        RADIO_L3O2U7WJ: "否",
+        RADIO_L11NMCA8: "长山",
+        RADIO_L11NMCAA: "正常",
+        RADIO_L11NMCAC: "绿码",
+        RADIO_L11NMCAF: "绿码",
+        RADIO_L11NMCAJ: "否",
+        RADIO_L11NMCAK: "是",
+        RADIO_L15XZ9SA: "否",
+      },
+    };
+    $body.value = encrypt(JSON.stringify(data));
     event.target.submit();
   };
   // token = `sessionStorage.jwToken` on http://dc.just.edu.cn
