@@ -85,7 +85,9 @@ pub fn service() -> Router {
     Router::new()
         .route(
             "/qqbot",
-            MethodRouter::new().get(|| async { Html(include_str!("page.html")) }),
+            MethodRouter::new()
+                .get(|| async { Html(include_str!("page.html")) })
+                .post(base::post_handler),
         )
         .route("/qqbot/qr", MethodRouter::new().get(base::get_qr))
         .layer(crate::auth::auth_layer())

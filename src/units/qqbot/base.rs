@@ -3,10 +3,13 @@ use crate::care;
 use crate::db;
 use crate::utils::OptionResult;
 use anyhow::Result;
+use axum::extract::{BodyStream, RawQuery};
+use futures_util::StreamExt;
 use once_cell::sync::Lazy;
 use ricq::client::Client;
 use ricq::device::Device;
 use ricq::ext::common::after_login;
+use ricq::ext::reconnect::{Connector, DefaultConnector};
 use ricq::handler::QEvent;
 use ricq::msg::elem::RQElem;
 use ricq::msg::MessageChain;
@@ -14,16 +17,18 @@ use ricq::version::{get_version, Protocol};
 use ricq::{LoginResponse, QRCodeImageFetch, QRCodeState};
 use std::sync::Arc;
 use std::time::SystemTime;
-use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use tokio::time::Duration;
+
+const K_TOKEN: &str = "token_json";
+const K_DEVICE: &str = "device_json";
 
 fn db_init() {
     db!("CREATE TABLE qqbot_cfg (k TEXT UNIQUE, v BLOB)").ok();
     db!("CREATE TABLE qqbot_groups (group_id INTEGER UNIQUE)").ok();
 }
 
-fn db_cfg_set(k: &str, v: &[u8]) {
+fn db_cfg_set(k: &str, v: Vec<u8>) {
     db!("INSERT OR REPLACE INTO qqbot_cfg VALUES (?1, ?2)", [k, v]).unwrap();
 }
 
@@ -43,6 +48,16 @@ fn db_groups_get() -> Vec<i64> {
 
 pub fn db_groups_insert(group_id: i64) {
     db!("INSERT INTO qqbot_groups VALUES (?)", [group_id]).unwrap();
+}
+
+pub async fn post_handler(q: RawQuery, mut body: BodyStream) {
+    let q = q.0.unwrap();
+    let k = q.as_str().split_once('=').unwrap().1;
+    let mut v = Vec::new();
+    while let Some(Ok(bytes)) = body.next().await {
+        v.append(&mut bytes.to_vec());
+    }
+    db_cfg_set(k, v);
 }
 
 pub async fn fetch_text(url: &str) -> Result<String> {
@@ -66,15 +81,15 @@ pub fn elapse(time: f64) -> f64 {
 static QR: Lazy<Mutex<Vec<u8>>> = Lazy::new(|| Mutex::new(Vec::new()));
 static CLIENT: Lazy<Arc<ricq::Client>> = Lazy::new(|| {
     db_init();
-    let device = {
-        let db_key = "device_json";
-        match db_cfg_get_text(db_key) {
-            Some(v) => serde_json::from_str(&v).unwrap(),
-            None => {
-                let device = Device::random();
-                db_cfg_set(db_key, serde_json::to_string(&device).unwrap().as_bytes());
-                device
-            }
+    let device = match db_cfg_get_text(K_DEVICE) {
+        Some(v) => serde_json::from_str(&v).unwrap(),
+        None => {
+            let device = Device::random();
+            db_cfg_set(
+                K_DEVICE,
+                serde_json::to_string(&device).unwrap().into_bytes(),
+            );
+            device
         }
     };
     let (tx, mut rx) = tokio::sync::mpsc::channel(1);
@@ -85,7 +100,9 @@ static CLIENT: Lazy<Arc<ricq::Client>> = Lazy::new(|| {
         }
     });
     tokio::spawn(async move {
-        let stream = TcpStream::connect(CLIENT.get_address()).await.unwrap();
+        let stream = DefaultConnector::connect(&DefaultConnector, &CLIENT)
+            .await
+            .unwrap();
         CLIENT.start(stream).await
     });
     client
@@ -103,44 +120,57 @@ pub async fn launch() -> Result<()> {
     tokio::task::yield_now().await;
     push_log("server connected");
 
-    let mut qr_resp = CLIENT.fetch_qrcode().await?;
-    let mut img_sig = Vec::new();
-    loop {
-        async fn load_qr(fetching: QRCodeImageFetch, img_sig: &mut Vec<u8>) {
-            push_log("qrcode fetched");
-            *QR.lock().await = fetching.image_data.to_vec();
-            *img_sig = fetching.sig.to_vec();
-        }
-        match qr_resp {
-            QRCodeState::ImageFetch(inner) => load_qr(inner, &mut img_sig).await,
-            QRCodeState::Timeout => {
-                push_log("qrcode timeout");
-                if let QRCodeState::ImageFetch(inner) = CLIENT.fetch_qrcode().await? {
-                    load_qr(inner, &mut img_sig).await;
-                }
+    // # Tips about Login
+    // 1. Run on local host, login by qrcode.
+    // 2. Run on remote, copy device_json and token_json to database
+    // 3. Restart remote server.
+    if let Some(v) = db_cfg_get_text(K_TOKEN) {
+        let token = serde_json::from_str(&v)?;
+        CLIENT.token_login(token).await?;
+    } else {
+        let mut qr_resp = CLIENT.fetch_qrcode().await?;
+        let mut img_sig = Vec::new();
+        loop {
+            async fn load_qr(fetching: QRCodeImageFetch, img_sig: &mut Vec<u8>) {
+                push_log("qrcode fetched");
+                *QR.lock().await = fetching.image_data.to_vec();
+                *img_sig = fetching.sig.to_vec();
             }
-            QRCodeState::Confirmed(inner) => {
-                push_log("qrcode confirmed");
-                QR.lock().await.clear();
-                let login_resp = CLIENT
-                    .qrcode_login(&inner.tmp_pwd, &inner.tmp_no_pic_sig, &inner.tgt_qr)
-                    .await?;
-                if let LoginResponse::DeviceLockLogin { .. } = login_resp {
-                    CLIENT.device_lock_login().await?;
+            match qr_resp {
+                QRCodeState::ImageFetch(inner) => load_qr(inner, &mut img_sig).await,
+                QRCodeState::Timeout => {
+                    push_log("qrcode timeout");
+                    if let QRCodeState::ImageFetch(inner) = CLIENT.fetch_qrcode().await? {
+                        load_qr(inner, &mut img_sig).await;
+                    }
                 }
-                push_log("login succeed");
-                break;
+                QRCodeState::Confirmed(inner) => {
+                    push_log("qrcode confirmed");
+                    QR.lock().await.clear();
+                    let login_resp = CLIENT
+                        .qrcode_login(&inner.tmp_pwd, &inner.tmp_no_pic_sig, &inner.tgt_qr)
+                        .await?;
+                    if let LoginResponse::DeviceLockLogin { .. } = login_resp {
+                        CLIENT.device_lock_login().await?;
+                    }
+                    push_log("login succeed");
+                    let token = serde_json::to_string(&CLIENT.gen_token().await)?;
+                    db_cfg_set(K_TOKEN, token.into_bytes());
+                    break;
+                }
+                QRCodeState::WaitingForScan => push_log("qrcode waiting for scan"),
+                QRCodeState::WaitingForConfirm => push_log("qrcode waiting for confirm"),
+                QRCodeState::Canceled => push_log("qrcode canceled"),
             }
-            QRCodeState::WaitingForScan => push_log("qrcode waiting for scan"),
-            QRCodeState::WaitingForConfirm => push_log("qrcode waiting for confirm"),
-            QRCodeState::Canceled => push_log("qrcode canceled"),
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            qr_resp = CLIENT.query_qrcode_result(&img_sig).await?;
         }
-        tokio::time::sleep(Duration::from_secs(5)).await;
-        qr_resp = CLIENT.query_qrcode_result(&img_sig).await?;
     }
     after_login(&CLIENT).await;
+
     loop {
         CLIENT.heartbeat().await.unwrap();
+        tokio::time::sleep(Duration::from_secs(60)).await;
     }
 }
 

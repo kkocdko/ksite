@@ -43,11 +43,19 @@
   }
 </style>
 
-<form method="post">
+<form method="post" onsubmit="onSubmit(event)">
   <header>
-    <input type="button" value="Refresh" onclick="location.reload()" />
+    <input type="submit" value="Set" />
   </header>
+  <input id="$k" placeholder="KEY" />
+  <input id="$v" placeholder="VALUE" />
   <div><img src="/qqbot/qr" /></div>
 </form>
 
-<script></script>
+<script>
+  const onSubmit = async (event) => {
+    event.preventDefault();
+    await fetch(`/qqbot?k=${$k.value}`, { method: "post", body: $v.value });
+    alert("post succeed");
+  };
+</script>
