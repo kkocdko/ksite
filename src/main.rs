@@ -24,6 +24,7 @@ async fn main() {
             println!("quit ksite");
             process::exit(0);
         }
+        thread::sleep(Duration::from_secs(1));
     });
 
     let server = async {
@@ -37,6 +38,7 @@ async fn main() {
             .merge(units::magazine::service())
             .merge(units::paste::service())
             .merge(units::qqbot::service())
+            .merge(units::qqbot_next::service())
             .merge(units::record::service())
             .merge(units::welcome::service())
             .into_make_service_with_connect_info::<SocketAddr>();
@@ -58,6 +60,7 @@ async fn main() {
                 tokio::spawn(units::health::tick()),
                 tokio::spawn(units::magazine::tick()),
                 tokio::spawn(units::qqbot::tick()),
+                tokio::spawn(units::qqbot_next::tick()),
             );
         }
     };

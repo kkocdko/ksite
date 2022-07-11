@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+
+<head>
+  <meta name="viewport" content="width=device-width" />
+  <link rel="icon" href="data:" />
+  <title>QQ Bot - ksite</title>
+</head>
+
+<style>
+  * {
+    margin: 0;
+    font: 14px sans-serif;
+  }
+  form {
+    display: grid;
+    grid: repeat(3, auto) 1fr / none;
+    height: 100vh;
+  }
+  header > *,
+  header ~ * {
+    padding: 8px 10px;
+    background: none;
+    border: 0 solid #777;
+    outline: none;
+  }
+  header > * {
+    float: left;
+    border-right-width: 1px;
+  }
+  header > :active {
+    background: #8887;
+  }
+  header ~ * {
+    font-family: monospace;
+    white-space: pre;
+    border-top-width: 1px;
+  }
+  @media (prefers-color-scheme: dark) {
+    * {
+      color: #fff;
+      background: #000;
+    }
+  }
+</style>
+
+<form method="post" onsubmit="onSubmit(event)">
+  <header>
+    <input type="button" value="Refresh" onclick="location.reload()" />
+  </header>
+  <div><img src="/qqbot_next/qr" /></div>
+</form>
+
+<script></script>
