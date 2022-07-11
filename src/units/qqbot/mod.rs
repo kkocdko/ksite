@@ -119,11 +119,8 @@ impl UpNotify {
     }
 
     fn new(name: &'static str, pkg_id: &'static str) -> Self {
-        Self {
-            name,
-            pkg_id,
-            last: Mutex::new(String::new()),
-        }
+        let last = Mutex::new(String::new());
+        Self { name, pkg_id, last }
     }
 }
 

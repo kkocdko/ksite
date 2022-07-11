@@ -6,7 +6,6 @@ use anyhow::Result;
 use axum::extract::{BodyStream, RawQuery};
 use futures_util::StreamExt;
 use once_cell::sync::Lazy;
-use ricq::client::Client;
 use ricq::device::Device;
 use ricq::ext::common::after_login;
 use ricq::ext::reconnect::{Connector, DefaultConnector};
@@ -14,7 +13,7 @@ use ricq::handler::QEvent;
 use ricq::msg::elem::RQElem;
 use ricq::msg::MessageChain;
 use ricq::version::{get_version, Protocol};
-use ricq::{LoginResponse, QRCodeImageFetch, QRCodeState};
+use ricq::{Client, LoginResponse, QRCodeImageFetch, QRCodeState};
 use std::sync::Arc;
 use std::time::SystemTime;
 use tokio::sync::Mutex;
@@ -100,9 +99,7 @@ static CLIENT: Lazy<Arc<ricq::Client>> = Lazy::new(|| {
         }
     });
     tokio::spawn(async move {
-        let stream = DefaultConnector::connect(&DefaultConnector, &CLIENT)
-            .await
-            .unwrap();
+        let stream = DefaultConnector.connect(&CLIENT).await.unwrap();
         CLIENT.start(stream).await
     });
     client
@@ -122,11 +119,12 @@ pub async fn launch() -> Result<()> {
 
     // # Tips about Login
     // 1. Run on local host, login by qrcode.
-    // 2. Run on remote, copy device_json and token_json to database
+    // 2. Run on remote, copy device_json and token_json to database.
     // 3. Restart remote server.
     if let Some(v) = db_cfg_get_text(K_TOKEN) {
         let token = serde_json::from_str(&v)?;
         CLIENT.token_login(token).await?;
+        push_log("login with token succeed");
     } else {
         let mut qr_resp = CLIENT.fetch_qrcode().await?;
         let mut img_sig = Vec::new();
@@ -153,7 +151,7 @@ pub async fn launch() -> Result<()> {
                     if let LoginResponse::DeviceLockLogin { .. } = login_resp {
                         CLIENT.device_lock_login().await?;
                     }
-                    push_log("login succeed");
+                    push_log("login with qrcode succeed");
                     let token = serde_json::to_string(&CLIENT.gen_token().await)?;
                     db_cfg_set(K_TOKEN, token.into_bytes());
                     break;
@@ -208,4 +206,6 @@ pub async fn notify(msg: String) {
     }
 }
 
-fn push_log(_t: &str) {}
+fn push_log(_t: &str) {
+    // TODO: display log on page
+}

@@ -15,7 +15,7 @@ jobs:
           override: true
 
       - name: Cargo Check
-        run: cargo +nightly Check
+        run: cargo +nightly check
 
       # - name: Build
       #   run: cargo +nightly build --release

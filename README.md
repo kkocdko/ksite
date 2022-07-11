@@ -19,7 +19,11 @@ All in one solution for my server.
 ## Build with MUSL
 
 ```
-# dnf install zig
+# dnf install zig # for fedora linux
 export CC="zig cc -target x86_64-linux-musl"
 cargo +nightly build --release --target=x86_64-unknown-linux-musl
 ```
+
+## License
+
+Dual license: If `qqbot` feature is enabled, AGPL-3.0; Or it's Unlicense.
