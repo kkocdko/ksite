@@ -49,7 +49,8 @@ struct Member {
 async fn get_handler() -> impl IntoResponse {
     let mut log = String::new();
     for (time, id, ret) in db_log_get() {
-        log += &format!("{time} | {id} | {ret}\n");
+        use std::fmt::Write as FmtWrite;
+        writeln!(&mut log, "{time} | {id} | {ret}").unwrap();
     }
     log = askama_escape::escape(&log, askama_escape::Html).to_string();
     const PAGE: [&str; 3] = slot(include_str!("page.html"));

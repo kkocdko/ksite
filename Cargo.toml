@@ -29,6 +29,5 @@ rand = "0.8"
 miniz_oxide = "0.5"
 konst = { version = "0.2", features = ["rust_1_55"] }
 ricq = "0.1.16"
-bytes = "1"
 # hyper = "0.14"
 # tokio-rustls = "0.23"

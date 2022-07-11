@@ -1,3 +1,4 @@
+mod base;
 use crate::care;
 use crate::ticker::Ticker;
 use crate::utils::OptionResult;
@@ -9,7 +10,6 @@ use base::{db_groups_insert, elapse, fetch_json, fetch_text, notify};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use tokio::sync::Mutex;
-mod base;
 
 /// generate reply from message parts
 async fn gen_reply(msg: Vec<&str>) -> Result<String> {
@@ -81,16 +81,13 @@ async fn gen_reply(msg: Vec<&str>) -> Result<String> {
 }
 
 pub fn service() -> Router {
-    tokio::spawn(async {
-        base::login().await.unwrap();
-        println!("[qn] login successed");
-    });
+    tokio::spawn(base::launch());
     Router::new()
         .route(
             "/qqbot_next",
             MethodRouter::new().get(|| async { Html(include_str!("page.html")) }),
         )
-        .route("/qqbot_next/qr", MethodRouter::new().get(|| base::get_qr()))
+        .route("/qqbot_next/qr", MethodRouter::new().get(base::get_qr))
 }
 
 struct UpNotify {

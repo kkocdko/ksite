@@ -95,32 +95,32 @@ pub async fn get_qr() -> Vec<u8> {
     QR.lock().await.clone()
 }
 
-pub async fn login() -> Result<()> {
+pub async fn launch() -> Result<()> {
     // waiting for connected
     while CLIENT.get_status() == 0 {
         tokio::time::sleep(Duration::from_secs_f32(0.1)).await;
     }
     tokio::task::yield_now().await;
-    println!("[qn] server connected");
+    push_log("server connected");
 
     let mut qr_resp = CLIENT.fetch_qrcode().await?;
     let mut img_sig = Vec::new();
     loop {
         async fn load_qr(fetching: QRCodeImageFetch, img_sig: &mut Vec<u8>) {
-            println!("[qn] qrcode fetched");
+            push_log("qrcode fetched");
             *QR.lock().await = fetching.image_data.to_vec();
             *img_sig = fetching.sig.to_vec();
         }
         match qr_resp {
             QRCodeState::ImageFetch(inner) => load_qr(inner, &mut img_sig).await,
             QRCodeState::Timeout => {
-                println!("[qn] qrcode timeout");
+                push_log("qrcode timeout");
                 if let QRCodeState::ImageFetch(inner) = CLIENT.fetch_qrcode().await? {
                     load_qr(inner, &mut img_sig).await;
                 }
             }
             QRCodeState::Confirmed(inner) => {
-                println!("[qn] qrcode confirmed");
+                push_log("qrcode confirmed");
                 QR.lock().await.clear();
                 let login_resp = CLIENT
                     .qrcode_login(&inner.tmp_pwd, &inner.tmp_no_pic_sig, &inner.tgt_qr)
@@ -128,25 +128,26 @@ pub async fn login() -> Result<()> {
                 if let LoginResponse::DeviceLockLogin { .. } = login_resp {
                     CLIENT.device_lock_login().await?;
                 }
+                push_log("login succeed");
                 break;
             }
-            QRCodeState::WaitingForScan => println!("[qn] qrcode waiting for scan"),
-            QRCodeState::WaitingForConfirm => println!("[qn] qrcode waiting for confirm"),
-            QRCodeState::Canceled => println!("[qn] qrcode canceled"),
+            QRCodeState::WaitingForScan => push_log("qrcode waiting for scan"),
+            QRCodeState::WaitingForConfirm => push_log("qrcode waiting for confirm"),
+            QRCodeState::Canceled => push_log("qrcode canceled"),
         }
         tokio::time::sleep(Duration::from_secs(5)).await;
         qr_resp = CLIENT.query_qrcode_result(&img_sig).await?;
     }
     after_login(&CLIENT).await;
-
-    // CLIENT.heartbeat().await.unwrap();
-    Ok(())
+    loop {
+        CLIENT.heartbeat().await.unwrap();
+    }
 }
 
 async fn on_event(event: QEvent) {
     match event {
         QEvent::GroupMessage(e) => {
-            match { e.inner.elements.0.get(0) }.and_then(|v| Some(RQElem::from((v).clone()))) {
+            match { e.inner.elements.0.get(0) }.map(|v| RQElem::from((v).clone())) {
                 Some(RQElem::At(v)) if v.target == e.client.uin().await => {}
                 _ => return, // it's not my business!
             }
@@ -158,6 +159,7 @@ async fn on_event(event: QEvent) {
                 .await
                 .unwrap();
         }
+        QEvent::Login(e) => push_log(&format!("login {e}")),
         _ => {}
     }
 }
@@ -175,3 +177,5 @@ pub async fn notify(msg: String) {
             .unwrap();
     }
 }
+
+fn push_log(_t: &str) {}

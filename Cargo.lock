@@ -1099,7 +1099,6 @@ dependencies = [
  "anyhow",
  "askama_escape",
  "axum",
- "bytes",
  "futures-util",
  "konst",
  "miniz_oxide",
