@@ -17,3 +17,7 @@ All in one solution for my server.
 - Use `anyhow` and error handling refactor.
 
 - HTTP2? **OMG it's much more complex than I think!**
+
+```
+cargo +nightly build --release --target=x86_64-unknown-linux-musl
+```
