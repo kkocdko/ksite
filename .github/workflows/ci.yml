@@ -11,13 +11,16 @@ jobs:
       - name: Install Rust Nightly
         uses: actions-rs/toolchain@v1
         with:
-            toolchain: nightly
-            override: true
+          toolchain: nightly
+          override: true
 
-      - name: Build
-        run: cargo +nightly build --release
+      - name: Cargo Check
+        run: cargo +nightly Check
 
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v2
-        with:
-          path: target/release/ksite
+      # - name: Build
+      #   run: cargo +nightly build --release
+
+      # - name: Upload Artifacts
+      #   uses: actions/upload-artifact@v2
+      #   with:
+      #     path: target/release/ksite

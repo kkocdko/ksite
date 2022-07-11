@@ -10,14 +10,16 @@ All in one solution for my server.
 
 - `units::chat`: room.
 
-- `units::qqbot`: pure-rust using [ricq](https://github.com/lz1998/ricq).
-
 - `units::status`: speed, latency, network status. ssl cert remain.
 
 - Use `anyhow` and error handling refactor.
 
 - HTTP2? **OMG it's much more complex than I think!**
 
+## Build with MUSL
+
 ```
+# dnf install zig
+export CC="zig cc -target x86_64-linux-musl"
 cargo +nightly build --release --target=x86_64-unknown-linux-musl
 ```

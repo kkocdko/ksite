@@ -84,10 +84,10 @@ pub fn service() -> Router {
     tokio::spawn(base::launch());
     Router::new()
         .route(
-            "/qqbot_next",
+            "/qqbot",
             MethodRouter::new().get(|| async { Html(include_str!("page.html")) }),
         )
-        .route("/qqbot_next/qr", MethodRouter::new().get(base::get_qr))
+        .route("/qqbot/qr", MethodRouter::new().get(base::get_qr))
         .layer(crate::auth::auth_layer())
 }
 
