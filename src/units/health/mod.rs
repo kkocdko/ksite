@@ -31,13 +31,20 @@ fn db_log_insert(id: u64, ret: &str) {
     let sql = "INSERT INTO health_log VALUES (strftime('%s','now'), ?1, ?2)";
     db!(sql, [id, ret]).unwrap();
 }
-fn db_log_get() -> Vec<(String, u64, String)> {
+fn db_log_get() -> Vec<(u64, u64, String)> {
     let sql = "
-        SELECT datetime(time,'unixepoch','localtime'), id, ret FROM health_log
-        WHERE strftime('%s','now') - time <= 3600 * 72
+        SELECT time, id, ret FROM health_log
+        WHERE strftime('%s','now') - time <= 3600 * 24 * 3
         ORDER BY time DESC
     ";
     db!(sql, [], (0, 1, 2)).unwrap()
+}
+fn db_log_clean() {
+    let sql = "
+        DELETE FROM health_log
+        WHERE strftime('%s','now') - time > 3600 * 24 * 7
+    ";
+    db!(sql).unwrap();
 }
 
 #[derive(Deserialize, Debug)]
@@ -97,4 +104,5 @@ pub async fn tick() {
     }
 
     care!(check_in().await).ok();
+    db_log_clean();
 }
