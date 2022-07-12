@@ -7,3 +7,4 @@ pub mod paste;
 pub mod qqbot;
 pub mod record;
 pub mod welcome;
+// pub mod status;

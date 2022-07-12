@@ -3,6 +3,7 @@ use axum::routing::MethodRouter;
 use axum::Router;
 
 async fn get_handler() -> Html<&'static str> {
+    // std::env::
     Html(include_str!("page.html"))
 }
 

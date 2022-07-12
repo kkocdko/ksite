@@ -1,13 +1,14 @@
-use crate::db;
 use crate::slot::slot;
 use crate::ticker::Ticker;
+use crate::{care, db};
+use anyhow::Result;
 use axum::extract::Form;
 use axum::response::{Html, IntoResponse, Redirect};
 use axum::routing::MethodRouter;
 use axum::Router;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
-use std::sync::Mutex;
+use tokio::sync::Mutex;
 
 fn db_init() {
     db!("CREATE TABLE health_list (id INTEGER, token TEXT, body TEXT)").ok();
@@ -74,13 +75,7 @@ pub fn service() -> Router {
     )
 }
 
-static TICKER: Lazy<Mutex<Ticker>> =
-    Lazy::new(|| Mutex::new(Ticker::new_p8(&[(3, 10, 0), (5, 10, 0)])));
-pub async fn tick() {
-    if !TICKER.lock().unwrap().tick() {
-        return;
-    }
-
+async fn check_in() -> Result<()> {
     let list = db_list_get();
     let client = reqwest::Client::new();
     for member in list {
@@ -88,7 +83,18 @@ pub async fn tick() {
             .post("http://dc.just.edu.cn/dfi/formData/saveFormSubmitDataEncryption")
             .header("authentication", member.token)
             .body(member.body);
-        let ret = request.send().await.unwrap().text().await.unwrap();
+        let ret = request.send().await?.text().await?;
         db_log_insert(member.id, &ret);
     }
+    Ok(())
+}
+
+static TICKER: Lazy<Mutex<Ticker>> =
+    Lazy::new(|| Mutex::new(Ticker::new_p8(&[(3, 10, 0), (5, 10, 0)])));
+pub async fn tick() {
+    if !TICKER.lock().await.tick() {
+        return;
+    }
+
+    care!(check_in().await).ok();
 }

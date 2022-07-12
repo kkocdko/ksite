@@ -8,6 +8,9 @@ debug = false
 strip = true
 opt-level = "z"
 
+[profile.dev]
+panic = "abort"
+
 [profile.release]
 strip = true
 lto = "fat"

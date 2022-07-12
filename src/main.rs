@@ -56,9 +56,9 @@ async fn main() {
         loop {
             interval.tick().await;
             let _ = tokio::join!(
-                tokio::spawn(units::health::tick()),
-                tokio::spawn(units::magazine::tick()),
-                tokio::spawn(units::qqbot::tick()),
+                units::health::tick(),
+                units::magazine::tick(),
+                units::qqbot::tick(),
             );
         }
     };

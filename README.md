@@ -12,8 +12,6 @@ All in one solution for my server.
 
 - `units::status`: speed, latency, network status. ssl cert remain.
 
-- Use `anyhow` and error handling refactor.
-
 - HTTP2? **OMG it's much more complex than I think!**
 
 ## Build with MUSL

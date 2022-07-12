@@ -1,38 +1,41 @@
+use crate::care;
 use crate::slot::slot;
 use crate::ticker::Ticker;
+use crate::utils::OptionResult;
+use anyhow::Result;
 use axum::response::Html;
 use axum::routing::MethodRouter;
 use axum::Router;
 use once_cell::sync::Lazy;
-use std::sync::Mutex;
+use tokio::sync::Mutex;
 
-fn generate<'a>(mut i: &'a str, o: &mut Vec<&'a str>, mut limit: usize) {
+fn generate<'a>(mut i: &'a str, o: &mut Vec<&'a str>, mut limit: usize) -> Result<()> {
     while let Some(mut p) = i.split_once("<item>") {
         limit -= 1;
 
         o.push("\n<details>\n");
 
         // title
-        i = p.1.split_once("<![CDATA[").unwrap().1;
-        p = i.split_once("]]>").unwrap();
+        i = p.1.split_once("<![CDATA[").e()?.1;
+        p = i.split_once("]]>").e()?;
         o.push("<summary>");
         o.push(p.0);
         o.push("</summary>\n");
 
         // content
-        i = p.1.split_once("<![CDATA[").unwrap().1;
-        p = i.split_once("]]>").unwrap();
+        i = p.1.split_once("<![CDATA[").e()?.1;
+        p = i.split_once("]]>").e()?;
         o.push("<section>");
         let break_marks = [
             "br>", "p>", "p ", "/p>", "div>", "div ", "/div>", "li>", "li ", "/li>",
         ];
         while let Some(v) = p.0.split_once('<') {
-            p.0 = v.1.split_once('>').unwrap().1;
+            p.0 = v.1.split_once('>').e()?.1;
             let c = v.0.trim();
             if !c.is_empty() {
                 o.push(c);
             }
-            if *o.last().unwrap() != "<br>" {
+            if *o.last().e()? != "<br>" {
                 for mark in break_marks {
                     if v.1.starts_with(mark) {
                         o.push("<br>");
@@ -44,8 +47,8 @@ fn generate<'a>(mut i: &'a str, o: &mut Vec<&'a str>, mut limit: usize) {
         o.push("</section>\n");
 
         // link
-        i = p.1.split_once("<link>").unwrap().1;
-        p = i.split_once("</link>").unwrap();
+        i = p.1.split_once("<link>").e()?.1;
+        p = i.split_once("</link>").e()?;
         o.push("<a href=\"");
         o.push(p.0);
         o.push("\">[ Original Link ]</a>\n");
@@ -58,6 +61,7 @@ fn generate<'a>(mut i: &'a str, o: &mut Vec<&'a str>, mut limit: usize) {
         }
     }
     o.push("\n<br>\n");
+    Ok(())
 }
 
 type Res = ([(&'static str, &'static str); 2], Html<Vec<u8>>);
@@ -72,44 +76,47 @@ static CACHE: Lazy<Mutex<Res>> = Lazy::new(|| {
     ))
 });
 
-async fn refresh() {
+async fn refresh() -> Result<()> {
     let mut o = vec![PAGE[0]];
-    let g = |u| async move { reqwest::get(u).await.unwrap().text().await.unwrap() };
-    let r = tokio::join!(
-        g("https://rss.itggg.cn/zhihu/daily"),
-        g("https://rss.itggg.cn/cnbeta"),
-        g("https://rss.itggg.cn/oschina/news/industry"),
-        g("https://rss.itggg.cn/1point3acres/post/hot")
-    );
-    generate(&r.0, &mut o, 20);
-    generate(&r.1, &mut o, 20);
-    generate(&r.2, &mut o, 20);
-    generate(&r.3, &mut o, 10);
+    macro_rules! load {
+        ( $( ($idx:tt, $url:expr) ),* ) => {
+            let g = |u| async move { anyhow::Ok(reqwest::get(u).await?.text().await?) };
+            let r = tokio::join!( $( g($url), )* );
+            let r = ($( r.$idx?, )*);
+            $( generate(&r.$idx, &mut o, 20)?; )*
+        };
+    }
+    load![
+        (0, "https://rss.itggg.cn/zhihu/daily"),
+        (1, "https://rss.itggg.cn/cnbeta"),
+        (2, "https://rss.itggg.cn/oschina/news/industry"),
+        (3, "https://rss.itggg.cn/1point3acres/post/hot3")
+    ];
     o.push(PAGE[1]);
-
     let o = miniz_oxide::deflate::compress_to_vec(o.join("").as_bytes(), 10);
-    *CACHE.lock().unwrap() = (
+    *CACHE.lock().await = (
         [
             ("cache-control", "max-age=3600"),
             ("content-encoding", "deflate"),
         ],
         Html(o),
     );
+    Ok(())
 }
 
 pub fn service() -> Router {
-    tokio::spawn(refresh());
+    tokio::spawn(async { care!(refresh().await).ok() });
     Router::new().route(
         "/magazine",
-        MethodRouter::new().get(|| async { CACHE.lock().unwrap().clone() }),
+        MethodRouter::new().get(|| async { CACHE.lock().await.clone() }),
     )
 }
 
 static TICKER: Lazy<Mutex<Ticker>> = Lazy::new(|| Mutex::new(Ticker::new_p8(&[(-1, 15, 0)])));
 pub async fn tick() {
-    if !TICKER.lock().unwrap().tick() {
+    if !TICKER.lock().await.tick() {
         return;
     }
 
-    refresh().await;
+    care!(refresh().await).ok();
 }

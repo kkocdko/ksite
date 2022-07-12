@@ -1,7 +1,9 @@
 use anyhow::Result;
+
 pub trait OptionResult<T> {
     fn e(self) -> Result<T>;
 }
+
 impl<T> OptionResult<T> for Option<T> {
     fn e(self) -> Result<T> {
         match self {

@@ -113,7 +113,7 @@ impl UpNotify {
         let v = care!(Self::query(self.pkg_id).await, return);
         let mut last = self.last.lock().await;
         if !last.is_empty() && *last != v {
-            notify(format!("{} {v} released!", self.name)).await;
+            care!(notify(format!("{} {v} released!", self.name)).await).ok();
         }
         *last = v;
     }

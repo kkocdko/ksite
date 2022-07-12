@@ -196,14 +196,12 @@ fn text_msg(content: String) -> MessageChain {
     MessageChain::new(ricq::msg::elem::Text::new(format!("[BOT] {content}")))
 }
 
-pub async fn notify(msg: String) {
+pub async fn notify(msg: String) -> Result<()> {
     let msg_chain = text_msg(msg);
     for group in db_groups_get() {
-        CLIENT
-            .send_group_message(group, msg_chain.clone())
-            .await
-            .unwrap();
+        CLIENT.send_group_message(group, msg_chain.clone()).await?;
     }
+    Ok(())
 }
 
 fn push_log(_t: &str) {
