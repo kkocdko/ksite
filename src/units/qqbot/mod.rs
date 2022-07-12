@@ -8,6 +8,7 @@ use axum::routing::MethodRouter;
 use axum::Router;
 use base::{db_groups_insert, elapse, fetch_json, fetch_text, notify};
 use once_cell::sync::Lazy;
+use rand::Rng;
 use std::collections::HashMap;
 use tokio::sync::Mutex;
 
@@ -33,10 +34,15 @@ async fn gen_reply(msg: Vec<&str>) -> Result<String> {
             fetch_json(url, "/content").await?
         }
         ["新闻"] => {
-            let n = (elapse(0.0) * 864e5) as usize % 20 + 3;
+            let i = rand::thread_rng().gen_range(3..20);
             let r = fetch_text("https://m.cnbeta.com/wap").await?;
-            let r = r.split("htm\">").nth(n).e()?.split_once('<').e()?;
+            let r = r.split("htm\">").nth(i).e()?.split_once('<').e()?;
             r.0.into()
+        }
+        ["RAND", from, to] | ["随机数", from, to] => {
+            let range = from.parse::<i64>()?..=to.parse()?;
+            let v = rand::thread_rng().gen_range(range);
+            format!("{v} in range [{from},{to}]")
         }
         ["BTC"] | ["比特币"] => {
             let url = "https://chain.so/api/v2/get_info/BTC";
