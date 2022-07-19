@@ -1,12 +1,10 @@
 use super::gen_reply;
-use crate::care;
-use crate::db;
+use crate::{care, db, slot::slot};
 use anyhow::Result;
 use axum::extract::Form;
-use axum::response::Redirect;
+use axum::response::{Html, Redirect};
 use once_cell::sync::Lazy;
 use ricq::device::Device;
-use ricq::ext::common::after_login;
 use ricq::ext::reconnect::{Connector, DefaultConnector};
 use ricq::handler::QEvent;
 use ricq::msg::elem::RQElem;
@@ -15,20 +13,22 @@ use ricq::version::{get_version, Protocol};
 use ricq::{Client, LoginResponse, QRCodeImageFetch, QRCodeState};
 use serde::Deserialize;
 use std::collections::VecDeque;
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
+use tokio::sync::mpsc::Receiver;
 use tokio::time::Duration;
 
 macro_rules! push_log {
     ($($arg:tt)*) => {{
         let s = format!($($arg)*);
-        let mut log = LOG.lock().await;
+        let mut log = LOG.lock().unwrap();
         let max_len = 256;
-        let redundant = log.len().saturating_sub(max_len);
-        for _ in 0..redundant {
+        if log.len() > max_len{
             log.pop_front();
         }
-        log.push_back(format!("[] {s}"));
+        let epoch = SystemTime::UNIX_EPOCH;
+        let now = SystemTime::now().duration_since(epoch).unwrap().as_millis();
+        log.push_back(format!("[{now}] {s}"));
     }}
 }
 
@@ -68,9 +68,27 @@ pub async fn post_handler(form: Form<Submit>) -> Redirect {
     Redirect::to("/qqbot")
 }
 
-static LOG: Lazy<Mutex<VecDeque<String>>> = Lazy::new(|| Default::default());
-static QR: Lazy<Mutex<Vec<u8>>> = Lazy::new(|| Default::default());
+pub async fn get_handler() -> Html<String> {
+    const PAGE: [&str; 2] = slot(include_str!("page.html"));
+    let mut body = PAGE[0].to_string();
+    #[allow(clippy::significant_drop_in_scrutinee)]
+    for line in LOG.lock().unwrap().iter() {
+        body += line;
+        body += "\n";
+    }
+    body.push_str(PAGE[1]);
+    Html(body)
+}
+
+pub fn get_qr() -> Vec<u8> {
+    CLIENT.get_status(); // init client
+    QR.lock().unwrap().clone()
+}
+
+static LOG: Lazy<Mutex<VecDeque<String>>> = Lazy::new(Default::default);
+static QR: Lazy<Mutex<Vec<u8>>> = Lazy::new(Default::default);
 static CLIENT: Lazy<Arc<ricq::Client>> = Lazy::new(|| {
+    push_log!("init client");
     db_init();
     let device = match db_cfg_get_text(K_DEVICE) {
         Some(v) => serde_json::from_str(&v).unwrap(),
@@ -80,25 +98,21 @@ static CLIENT: Lazy<Arc<ricq::Client>> = Lazy::new(|| {
             device
         }
     };
-    let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+    let (tx, rx) = tokio::sync::mpsc::channel(1);
     let client = Arc::new(Client::new(device, get_version(Protocol::AndroidWatch), tx));
-    tokio::spawn(async move {
-        loop {
-            on_event(rx.recv().await.unwrap()).await;
-        }
-    });
     tokio::spawn(async {
-        let stream = DefaultConnector.connect(&CLIENT).await.unwrap();
-        CLIENT.start(stream).await
+        tokio::join!(
+            async {
+                let stream = DefaultConnector.connect(&CLIENT).await.unwrap();
+                CLIENT.start(stream).await;
+            },
+            launch(rx)
+        )
     });
     client
 });
 
-pub async fn get_qr() -> Vec<u8> {
-    QR.lock().await.clone()
-}
-
-pub async fn launch() -> Result<()> {
+async fn launch(mut rx: Receiver<QEvent>) -> Result<()> {
     // waiting for connected
     while CLIENT.get_status() == 0 {
         tokio::time::sleep(Duration::from_secs_f32(0.2)).await;
@@ -120,7 +134,7 @@ pub async fn launch() -> Result<()> {
         loop {
             async fn load_qr(fetching: QRCodeImageFetch, img_sig: &mut Vec<u8>) {
                 push_log!("qrcode fetched");
-                *QR.lock().await = fetching.image_data.to_vec();
+                *QR.lock().unwrap() = fetching.image_data.to_vec();
                 *img_sig = fetching.sig.to_vec();
             }
             match qr_resp {
@@ -133,7 +147,7 @@ pub async fn launch() -> Result<()> {
                 }
                 QRCodeState::Confirmed(inner) => {
                     push_log!("qrcode confirmed");
-                    QR.lock().await.clear();
+                    QR.lock().unwrap().clear();
                     let login_resp = CLIENT
                         .qrcode_login(&inner.tmp_pwd, &inner.tmp_no_pic_sig, &inner.tgt_qr)
                         .await?;
@@ -153,37 +167,49 @@ pub async fn launch() -> Result<()> {
             qr_resp = CLIENT.query_qrcode_result(&img_sig).await?;
         }
     }
-    after_login(&CLIENT).await;
+    // instead of `ricq::ext::common::after_login`
+    CLIENT.register_client().await?;
+    CLIENT.refresh_status().await?;
 
-    loop {
-        care!(CLIENT.heartbeat().await).ok(); // may timeout
-        tokio::time::sleep(Duration::from_secs(60)).await;
-    }
+    tokio::join!(
+        async {
+            loop {
+                care!(CLIENT.heartbeat().await).ok(); // may timeout
+                tokio::time::sleep(Duration::from_secs(60)).await;
+            }
+        },
+        async {
+            loop {
+                care!(on_event(rx.recv().await.unwrap()).await).ok();
+            }
+        }
+    );
+    Ok(())
 }
 
 fn text_msg(content: String) -> MessageChain {
     MessageChain::new(ricq::msg::elem::Text::new(format!("[BOT] {content}")))
 }
 
-async fn on_event(event: QEvent) {
+async fn on_event(event: QEvent) -> Result<()> {
     match event {
         QEvent::GroupMessage(e) => {
             match { e.inner.elements.0.get(0) }.map(|v| RQElem::from((v).clone())) {
-                Some(RQElem::At(v)) if v.target == e.client.uin().await => {}
-                _ => return, // it's not my business!
+                Some(RQElem::At(v)) if v.target == CLIENT.uin().await => {}
+                _ => return Ok(()), // it's not my business!
             }
             let msg = e.inner.elements.to_string();
             let msg: Vec<&str> = msg.split_whitespace().skip(1).collect();
-            let reply = care!(gen_reply(msg).await, return);
+            let reply = gen_reply(msg).await?;
             CLIENT
                 .send_group_message(e.inner.group_code, text_msg(reply))
-                .await
-                .unwrap();
+                .await?;
         }
         QEvent::GroupMessageRecall(_) => {}
         QEvent::Login(e) => push_log!("login {e}"),
         _ => {}
     }
+    Ok(())
 }
 
 pub async fn notify(msg: String) -> Result<()> {

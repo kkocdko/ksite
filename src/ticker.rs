@@ -3,16 +3,21 @@ use std::time::SystemTime;
 
 const ANY: i64 = 99; // must >= 60, terser logic?
 
+/// return duration from unix epoch as seconds
 fn now_stamp() -> i64 {
     let epoch = SystemTime::UNIX_EPOCH;
     SystemTime::now().duration_since(epoch).unwrap().as_secs() as _
 }
+
+/// convert time stamp to (hours, minutes, seconds)
 fn hms(v: i64) -> (i64, i64, i64) {
     (v / 60 / 60 % 24, v / 60 % 60, v % 60)
 }
+
 fn floor_by(v: i64, r: i64) -> i64 {
     v - v % r
 }
+
 fn gen_next(mut now: i64, cfg: (i64, i64, i64)) -> i64 {
     now += 1;
     let (ch, cm, cs) = cfg;
@@ -50,10 +55,10 @@ fn gen_next(mut now: i64, cfg: (i64, i64, i64)) -> i64 {
 /// # Example
 ///
 /// ```
-/// // At any hour's 12 minute's every seconds, `ticker.tick()` will be true once.
-/// let mut ticker = Ticker::new(&[(-1, 12, -1)], 0);
+/// // At any minute's 12s or 24s, `ticker.tick()` will be true once.
+/// let mut ticker = Ticker::new(&[(-1, -1, 12), (-1, -1, 24)], 0);
 /// loop {
-///     println!("{:?}", ticker.tick());
+///     dbg!(ticker.tick());
 ///     std::thread::sleep(std::time::Duration::from_millis(200));
 /// }
 /// ```
@@ -73,6 +78,7 @@ impl Ticker {
             false
         }
     }
+
     pub fn new(patterns: &[(i64, i64, i64)], zone: i64) -> Self {
         let mut cfgs = Vec::new();
         for &(h, m, s) in patterns {
@@ -87,6 +93,8 @@ impl Ticker {
         ret.tick();
         ret
     }
+
+    /// create with UTC+8 timezone
     pub fn new_p8(patterns: &[(i64, i64, i64)]) -> Self {
         Self::new(patterns, 8)
     }

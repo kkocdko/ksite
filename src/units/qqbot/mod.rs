@@ -3,12 +3,10 @@ use crate::care;
 use crate::ticker::Ticker;
 use crate::utils::{elapse, fetch_json, fetch_text, OptionResult};
 use anyhow::Result;
-use axum::response::Html;
-use axum::routing::MethodRouter;
-use axum::Router;
+use axum::routing::{MethodRouter, Router};
 use base::{db_groups_insert, notify};
 use once_cell::sync::Lazy;
-use rand::Rng;
+use rand::{thread_rng, Rng};
 use std::collections::HashMap;
 use tokio::sync::Mutex;
 
@@ -23,7 +21,7 @@ async fn gen_reply(msg: Vec<&str>) -> Result<String> {
     });
     Ok(match msg[..] {
         ["kk单身多久了"] => format!("kk已连续单身 {:.3} 天了", elapse(10485432e5)),
-        ["暑假倒计时"] => format!("距 2022 暑假仅 {:.3} 天", -elapse(16561728e5)),
+        // ["开学倒计时"] => format!("距 开学 仅 {:.3} 天", -elapse(16561728e5)),
         ["高考倒计时"] => format!("距 2023 高考仅 {:.3} 天", -elapse(16860996e5)),
         ["驶向深蓝"] => {
             let url = "https://api.lovelive.tools/api/SweetNothings?genderType=M";
@@ -34,14 +32,14 @@ async fn gen_reply(msg: Vec<&str>) -> Result<String> {
             fetch_json(url, "/content").await?
         }
         ["新闻"] => {
-            let i = rand::thread_rng().gen_range(3..20);
+            let i = thread_rng().gen_range(3..20);
             let r = fetch_text("https://m.cnbeta.com/wap").await?;
             let r = r.split("htm\">").nth(i).e()?.split_once('<').e()?;
             r.0.into()
         }
         ["RAND", from, to] | ["随机数", from, to] => {
             let range = from.parse::<i64>()?..=to.parse()?;
-            let v = rand::thread_rng().gen_range(range);
+            let v = thread_rng().gen_range(range);
             format!("{v} in range [{from},{to}]")
         }
         ["BTC"] | ["比特币"] => {
@@ -91,7 +89,7 @@ fn judge(msg: &str, list: &[&str], sensitivity: f64) -> bool {
     let expect = ((1.0 - sensitivity) * (len as f64)) as usize;
     let mut matched = 0;
     for (i, entry) in list.iter().enumerate() {
-        if msg.find(entry).is_some() {
+        if msg.contains(entry) {
             matched += 1;
         }
         if matched > expect {
@@ -103,6 +101,7 @@ fn judge(msg: &str, list: &[&str], sensitivity: f64) -> bool {
     false
 }
 
+#[allow(unused)]
 fn judge_spam(msg: &str) -> bool {
     let sensitivity = 0.7;
     let list = ["重要", "通知", "群", "后果自负", "二维码", "同学"];
@@ -110,15 +109,18 @@ fn judge_spam(msg: &str) -> bool {
 }
 
 pub fn service() -> Router {
-    tokio::spawn(base::launch());
+    base::get_qr(); // init client
     Router::new()
         .route(
             "/qqbot",
             MethodRouter::new()
-                .get(|| async { Html(include_str!("page.html")) })
+                .get(base::get_handler)
                 .post(base::post_handler),
         )
-        .route("/qqbot/qr", MethodRouter::new().get(base::get_qr))
+        .route(
+            "/qqbot/qr",
+            MethodRouter::new().get(|| async { base::get_qr() }),
+        )
         .layer(crate::auth::auth_layer())
 }
 
