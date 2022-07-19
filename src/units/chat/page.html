@@ -42,7 +42,8 @@
 
 <script>
   const protocol = location.protocol.replace("http", "ws");
-  const ws = new WebSocket(`${protocol}//${location.host}/chat/ws`);
+  const room = location.hash.slice(1);
+  const ws = new WebSocket(`${protocol}//${location.host}/chat/ws/${room}`);
   ws.onmessage = (e) => {
     const el = document.createElement("p");
     el.textContent = e.data;
@@ -54,8 +55,12 @@
     $send.value = "";
   };
 
-  // thanks to https://github.com/mdn/dom-examples/blob/master/web-crypto/encrypt-decrypt/rsa-oaep.js
   throw "C2C Crypto is WIP";
+  // thanks to https://github.com/mdn/dom-examples/blob/master/web-crypto/encrypt-decrypt/rsa-oaep.js
+  /**
+   * store priv and pub key in localstorage
+   * exchange pub key
+   */
   const algo = {
     name: "RSA-OAEP",
     modulusLength: 2048,
