@@ -13,7 +13,7 @@
   }
   form {
     display: grid;
-    grid: repeat(3, auto) 1fr / none;
+    grid: repeat(4, auto) 1fr / none;
     height: 100vh;
   }
   header > *,
@@ -43,19 +43,14 @@
   }
 </style>
 
-<form method="post" onsubmit="onSubmit(event)">
+<form method="post">
   <header>
     <input type="submit" value="Set" />
   </header>
-  <input id="$k" placeholder="KEY" />
-  <input id="$v" placeholder="VALUE" />
-  <div><img src="/qqbot/qr" /></div>
+  <input id="$k" name="key" placeholder="KEY" />
+  <input id="$v" name="value" placeholder="VALUE" />
+  <div><img src="/qqbot/qr" onerror="outerHTML='(@_@)'" /></div>
+  <textarea readonly spellcheck="false">/*{slot}*/</textarea>
 </form>
 
-<script>
-  const onSubmit = async (event) => {
-    event.preventDefault();
-    await fetch(`/qqbot?k=${$k.value}`, { method: "post", body: $v.value });
-    alert("post succeed");
-  };
-</script>
+<script></script>

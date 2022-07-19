@@ -1,7 +1,7 @@
 use crate::care;
 use crate::slot::slot;
 use crate::ticker::Ticker;
-use crate::utils::OptionResult;
+use crate::utils::{fetch_text, OptionResult};
 use anyhow::Result;
 use axum::response::Html;
 use axum::routing::MethodRouter;
@@ -80,8 +80,7 @@ async fn refresh() -> Result<()> {
     let mut o = vec![PAGE[0]];
     macro_rules! load {
         ( $( ($idx:tt, $url:expr) ),* ) => {
-            let g = |u| async move { anyhow::Ok(reqwest::get(u).await?.text().await?) };
-            let r = tokio::join!( $( g($url), )* );
+            let r = tokio::join!( $( fetch_text($url), )* );
             let r = ($( r.$idx?, )*);
             $( generate(&r.$idx, &mut o, 20)?; )*
         };

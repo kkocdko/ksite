@@ -1,10 +1,9 @@
 use super::gen_reply;
 use crate::care;
 use crate::db;
-use crate::utils::OptionResult;
 use anyhow::Result;
-use axum::extract::{BodyStream, RawQuery};
-use futures_util::StreamExt;
+use axum::extract::Form;
+use axum::response::Redirect;
 use once_cell::sync::Lazy;
 use ricq::device::Device;
 use ricq::ext::common::after_login;
@@ -14,10 +13,24 @@ use ricq::msg::elem::RQElem;
 use ricq::msg::MessageChain;
 use ricq::version::{get_version, Protocol};
 use ricq::{Client, LoginResponse, QRCodeImageFetch, QRCodeState};
+use serde::Deserialize;
+use std::collections::VecDeque;
 use std::sync::Arc;
-use std::time::SystemTime;
 use tokio::sync::Mutex;
 use tokio::time::Duration;
+
+macro_rules! push_log {
+    ($($arg:tt)*) => {{
+        let s = format!($($arg)*);
+        let mut log = LOG.lock().await;
+        let max_len = 256;
+        let redundant = log.len().saturating_sub(max_len);
+        for _ in 0..redundant {
+            log.pop_front();
+        }
+        log.push_back(format!("[] {s}"));
+    }}
+}
 
 const K_TOKEN: &str = "token_json";
 const K_DEVICE: &str = "device_json";
@@ -26,7 +39,7 @@ fn db_init() {
     db!("CREATE TABLE qqbot_cfg (k TEXT UNIQUE, v BLOB)").ok();
     db!("CREATE TABLE qqbot_groups (group_id INTEGER UNIQUE)").ok();
 }
-fn db_cfg_set(k: &str, v: Vec<u8>) {
+fn db_cfg_set(k: &str, v: &[u8]) {
     db!("INSERT OR REPLACE INTO qqbot_cfg VALUES (?1, ?2)", [k, v]).unwrap();
 }
 fn db_cfg_get(k: &str) -> Option<Vec<u8>> {
@@ -44,45 +57,26 @@ pub fn db_groups_insert(group_id: i64) {
     db!("INSERT INTO qqbot_groups VALUES (?)", [group_id]).unwrap();
 }
 
-pub async fn post_handler(q: RawQuery, mut body: BodyStream) {
-    let q = q.0.unwrap();
-    let k = q.as_str().split_once('=').unwrap().1;
-    let mut v = Vec::new();
-    while let Some(Ok(bytes)) = body.next().await {
-        v.append(&mut bytes.to_vec());
-    }
-    db_cfg_set(k, v);
+#[derive(Deserialize)]
+pub struct Submit {
+    key: String,
+    value: String,
 }
 
-pub async fn fetch_text(url: &str) -> Result<String> {
-    Ok(reqwest::get(url).await?.text().await?)
+pub async fn post_handler(form: Form<Submit>) -> Redirect {
+    db_cfg_set(&form.key, form.value.as_bytes());
+    Redirect::to("/qqbot")
 }
 
-pub async fn fetch_json(url: &str, pointer: &str) -> Result<String> {
-    let text = fetch_text(url).await?;
-    let v = serde_json::from_str::<serde_json::Value>(&text)?;
-    let v = v.pointer(pointer).e()?.to_string();
-    Ok(v.trim_matches('"').to_string())
-}
-
-pub fn elapse(time: f64) -> f64 {
-    // javascript: new Date("2001.01.01 06:00").getTime()
-    let epoch = SystemTime::UNIX_EPOCH;
-    let now = SystemTime::now().duration_since(epoch).unwrap().as_millis() as f64;
-    (now - time) / 864e5 // unit: days
-}
-
-static QR: Lazy<Mutex<Vec<u8>>> = Lazy::new(|| Mutex::new(Vec::new()));
+static LOG: Lazy<Mutex<VecDeque<String>>> = Lazy::new(|| Default::default());
+static QR: Lazy<Mutex<Vec<u8>>> = Lazy::new(|| Default::default());
 static CLIENT: Lazy<Arc<ricq::Client>> = Lazy::new(|| {
     db_init();
     let device = match db_cfg_get_text(K_DEVICE) {
         Some(v) => serde_json::from_str(&v).unwrap(),
         None => {
             let device = Device::random();
-            db_cfg_set(
-                K_DEVICE,
-                serde_json::to_string(&device).unwrap().into_bytes(),
-            );
+            db_cfg_set(K_DEVICE, serde_json::to_string(&device).unwrap().as_bytes());
             device
         }
     };
@@ -93,7 +87,7 @@ static CLIENT: Lazy<Arc<ricq::Client>> = Lazy::new(|| {
             on_event(rx.recv().await.unwrap()).await;
         }
     });
-    tokio::spawn(async move {
+    tokio::spawn(async {
         let stream = DefaultConnector.connect(&CLIENT).await.unwrap();
         CLIENT.start(stream).await
     });
@@ -107,10 +101,10 @@ pub async fn get_qr() -> Vec<u8> {
 pub async fn launch() -> Result<()> {
     // waiting for connected
     while CLIENT.get_status() == 0 {
-        tokio::time::sleep(Duration::from_secs_f32(0.1)).await;
+        tokio::time::sleep(Duration::from_secs_f32(0.2)).await;
     }
     tokio::task::yield_now().await;
-    push_log("server connected");
+    push_log!("server connected");
 
     // # Tips about Login
     // 1. Run on local host, login by qrcode.
@@ -119,26 +113,26 @@ pub async fn launch() -> Result<()> {
     if let Some(v) = db_cfg_get_text(K_TOKEN) {
         let token = serde_json::from_str(&v)?;
         CLIENT.token_login(token).await?;
-        push_log("login with token succeed");
+        push_log!("login with token succeed");
     } else {
         let mut qr_resp = CLIENT.fetch_qrcode().await?;
         let mut img_sig = Vec::new();
         loop {
             async fn load_qr(fetching: QRCodeImageFetch, img_sig: &mut Vec<u8>) {
-                push_log("qrcode fetched");
+                push_log!("qrcode fetched");
                 *QR.lock().await = fetching.image_data.to_vec();
                 *img_sig = fetching.sig.to_vec();
             }
             match qr_resp {
                 QRCodeState::ImageFetch(inner) => load_qr(inner, &mut img_sig).await,
                 QRCodeState::Timeout => {
-                    push_log("qrcode timeout");
+                    push_log!("qrcode timeout");
                     if let QRCodeState::ImageFetch(inner) = CLIENT.fetch_qrcode().await? {
                         load_qr(inner, &mut img_sig).await;
                     }
                 }
                 QRCodeState::Confirmed(inner) => {
-                    push_log("qrcode confirmed");
+                    push_log!("qrcode confirmed");
                     QR.lock().await.clear();
                     let login_resp = CLIENT
                         .qrcode_login(&inner.tmp_pwd, &inner.tmp_no_pic_sig, &inner.tgt_qr)
@@ -146,14 +140,14 @@ pub async fn launch() -> Result<()> {
                     if let LoginResponse::DeviceLockLogin { .. } = login_resp {
                         CLIENT.device_lock_login().await?;
                     }
-                    push_log("login with qrcode succeed");
+                    push_log!("login with qrcode succeed");
                     let token = serde_json::to_string(&CLIENT.gen_token().await)?;
-                    db_cfg_set(K_TOKEN, token.into_bytes());
+                    db_cfg_set(K_TOKEN, token.as_bytes());
                     break;
                 }
-                QRCodeState::WaitingForScan => push_log("qrcode waiting for scan"),
-                QRCodeState::WaitingForConfirm => push_log("qrcode waiting for confirm"),
-                QRCodeState::Canceled => push_log("qrcode canceled"),
+                QRCodeState::WaitingForScan => push_log!("qrcode waiting for scan"),
+                QRCodeState::WaitingForConfirm => push_log!("qrcode waiting for confirm"),
+                QRCodeState::Canceled => push_log!("qrcode canceled"),
             }
             tokio::time::sleep(Duration::from_secs(5)).await;
             qr_resp = CLIENT.query_qrcode_result(&img_sig).await?;
@@ -162,9 +156,13 @@ pub async fn launch() -> Result<()> {
     after_login(&CLIENT).await;
 
     loop {
-        CLIENT.heartbeat().await.unwrap();
+        care!(CLIENT.heartbeat().await).ok(); // may timeout
         tokio::time::sleep(Duration::from_secs(60)).await;
     }
+}
+
+fn text_msg(content: String) -> MessageChain {
+    MessageChain::new(ricq::msg::elem::Text::new(format!("[BOT] {content}")))
 }
 
 async fn on_event(event: QEvent) {
@@ -182,13 +180,10 @@ async fn on_event(event: QEvent) {
                 .await
                 .unwrap();
         }
-        QEvent::Login(e) => push_log(&format!("login {e}")),
+        QEvent::GroupMessageRecall(_) => {}
+        QEvent::Login(e) => push_log!("login {e}"),
         _ => {}
     }
-}
-
-fn text_msg(content: String) -> MessageChain {
-    MessageChain::new(ricq::msg::elem::Text::new(format!("[BOT] {content}")))
 }
 
 pub async fn notify(msg: String) -> Result<()> {
@@ -197,8 +192,4 @@ pub async fn notify(msg: String) -> Result<()> {
         CLIENT.send_group_message(group, msg_chain.clone()).await?;
     }
     Ok(())
-}
-
-fn push_log(_t: &str) {
-    // TODO: display log on page
 }

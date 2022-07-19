@@ -1,12 +1,12 @@
 mod base;
 use crate::care;
 use crate::ticker::Ticker;
-use crate::utils::OptionResult;
+use crate::utils::{elapse, fetch_json, fetch_text, OptionResult};
 use anyhow::Result;
 use axum::response::Html;
 use axum::routing::MethodRouter;
 use axum::Router;
-use base::{db_groups_insert, elapse, fetch_json, fetch_text, notify};
+use base::{db_groups_insert, notify};
 use once_cell::sync::Lazy;
 use rand::Rng;
 use std::collections::HashMap;
@@ -86,6 +86,29 @@ async fn gen_reply(msg: Vec<&str>) -> Result<String> {
     })
 }
 
+fn judge(msg: &str, list: &[&str], sensitivity: f64) -> bool {
+    let len: usize = list.len();
+    let expect = ((1.0 - sensitivity) * (len as f64)) as usize;
+    let mut matched = 0;
+    for (i, entry) in list.iter().enumerate() {
+        if msg.find(entry).is_some() {
+            matched += 1;
+        }
+        if matched > expect {
+            return true;
+        } else if len - i - 1 + matched <= expect {
+            return false;
+        }
+    }
+    false
+}
+
+fn judge_spam(msg: &str) -> bool {
+    let sensitivity = 0.7;
+    let list = ["重要", "通知", "群", "后果自负", "二维码", "同学"];
+    judge(msg, &list, sensitivity)
+}
+
 pub fn service() -> Router {
     tokio::spawn(base::launch());
     Router::new()
@@ -119,14 +142,18 @@ impl UpNotify {
         let v = care!(Self::query(self.pkg_id).await, return);
         let mut last = self.last.lock().await;
         if !last.is_empty() && *last != v {
+            // store the latest value regardless of whether the notify succeeds or not
             care!(notify(format!("{} {v} released!", self.name)).await).ok();
         }
         *last = v;
     }
 
     fn new(name: &'static str, pkg_id: &'static str) -> Self {
-        let last = Mutex::new(String::new());
-        Self { name, pkg_id, last }
+        Self {
+            name,
+            pkg_id,
+            last: Mutex::new(String::new()),
+        }
     }
 }
 

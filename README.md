@@ -10,6 +10,8 @@ All in one solution for my server.
 
 - `units::chat`: room.
 
+- `untis::qqbot`: reduce threads.
+
 - `units::status`: speed, latency, network status. ssl cert remain.
 
 - HTTP2? **OMG it's much more complex than I think!**
