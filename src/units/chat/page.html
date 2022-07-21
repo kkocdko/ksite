@@ -40,44 +40,96 @@
   <input id="$send" placeholder="INPUT HERE" />
 </body>
 
-<script>
-  const protocol = location.protocol.replace("http", "ws");
-  const room = location.hash.slice(1);
-  const ws = new WebSocket(`${protocol}//${location.host}/chat/ws/${room}`);
-  ws.onmessage = (e) => {
-    const el = document.createElement("p");
-    el.textContent = e.data;
-    $send.parentNode.insertBefore(el, $send).scrollIntoView();
-  };
-  $send.onkeyup = (e) => {
-    if (e.key !== "Enter") return;
-    ws.send($send.value);
-    $send.value = "";
-  };
-
-  throw "C2C Crypto is WIP";
-  // thanks to https://github.com/mdn/dom-examples/blob/master/web-crypto/encrypt-decrypt/rsa-oaep.js
-  /**
-   * store priv and pub key in localstorage
-   * exchange pub key
-   */
+<script type="module">
+  // base64 <-> array buffer
+  const b2a = (b) => Uint8Array.from(atob(b), (c) => c.charCodeAt(0));
+  const a2b = (a) => btoa(String.fromCharCode(...new Uint8Array(a)));
+  const [textEnc, textDec] = [new TextEncoder(), new TextDecoder()];
   const algo = {
     name: "RSA-OAEP",
     modulusLength: 2048,
     publicExponent: new Uint8Array([1, 0, 1]),
     hash: "SHA-256",
   };
-  const [textEncoder, textDecoder] = [new TextEncoder(), new TextDecoder()];
-  const encrypt = async (i, publicKey) =>
-    crypto.subtle.encrypt(algo, publicKey, textEncoder.encode(i));
-  const decrypt = async (i, privateKey) =>
-    textDecoder.decode(await crypto.subtle.decrypt(algo, privateKey, i));
-
-  (async () => {
-    const usages = ["encrypt", "decrypt"];
-    const keyPair = await crypto.subtle.generateKey(algo, true, usages);
-    const d = await encrypt("abc", keyPair.publicKey);
-    const r = await decrypt(d, keyPair.privateKey);
-    console.log({ r });
-  })();
+  const cfg = localStorage.cfg
+    ? JSON.parse(localStorage.cfg)
+    : {
+        id: prompt("User ID", Math.round(Math.random() * 1e9).toString(36)),
+        // friends: [{ id: "shying", pubKey: "k", encrypt: () => {} }],
+        friends: [],
+        pubKey: null,
+        privKey: null,
+        decrypt: () => {},
+      };
+  if (cfg.pubKey === null) {
+    const keyPair = await crypto.subtle //
+      .generateKey(algo, true, ["encrypt", "decrypt"]);
+    const pubKey = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
+    const privKey = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
+    cfg.pubKey = JSON.stringify(pubKey);
+    cfg.privKey = JSON.stringify(privKey);
+  }
+  {
+    const privKey = await crypto.subtle //
+      .importKey("jwk", JSON.parse(cfg.privKey), algo, true, ["decrypt"]);
+    cfg.decrypt = async (i) =>
+      textDec.decode(await crypto.subtle.decrypt(algo, privKey, b2a(i)));
+  }
+  // addEventListener("unload", () => (localStorage.cfg = JSON.stringify(cfg)));
+  const protocol = location.protocol.replace("http", "ws");
+  const host = location.host;
+  const room = location.hash.slice(1);
+  const ws = new WebSocket(`${protocol}//${host}/chat/ws/${room}`);
+  await new Promise((r) => (ws.onopen = r));
+  const joinRoom = () => {
+    const data = {
+      op: "join",
+      id: cfg.id,
+      pubKey: cfg.pubKey,
+    };
+    ws.send(JSON.stringify(data));
+  };
+  const loadFriend = async (friend) => {
+    const pubKey = await crypto.subtle //
+      .importKey("jwk", JSON.parse(friend.pubKey), algo, true, ["encrypt"]);
+    friend.encrypt = async (i) =>
+      a2b(await crypto.subtle.encrypt(algo, pubKey, textEnc.encode(i)));
+  };
+  ws.onmessage = async (e) => {
+    const data = JSON.parse(e.data);
+    if (data.op === "msg" && data.target === cfg.id) {
+      const value = await cfg.decrypt(data.value);
+      const el = document.createElement("p");
+      el.textContent = `[${data.id}] ${value}`;
+      $send.parentNode.insertBefore(el, $send).scrollIntoView();
+    } else if (data.op === "join") {
+      let friend = cfg.friends.find((v) => v.id === data.id);
+      if (friend) {
+        return;
+      } else if (
+        data.id === cfg.id ||
+        confirm(`[${data.id}] want to join room`)
+      ) {
+        friend = { id: data.id, pubKey: data.pubKey };
+        cfg.friends.push(friend);
+        loadFriend(friend);
+        joinRoom();
+      }
+    }
+  };
+  for (const friend of cfg.friends) await loadFriend(friend);
+  joinRoom();
+  $send.onkeyup = async (e) => {
+    if (e.key !== "Enter") return;
+    for (const friend of cfg.friends) {
+      const data = {
+        op: "msg",
+        id: cfg.id,
+        target: friend.id,
+        value: await friend.encrypt($send.value),
+      };
+      ws.send(JSON.stringify(data));
+    }
+    $send.value = "";
+  };
 </script>

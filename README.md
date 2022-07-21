@@ -6,8 +6,6 @@ All in one solution for my server.
 
 - `units::record`: record evidence picture, audio and video in real-time.
 
-- `units::chat`: c2c crypto. ~~try implememt the RSA~~.
-
 - `units::status`: speed, latency, network status. ssl cert remain.
 
 - HTTP2? **OMG it's much more complex than I think!**
