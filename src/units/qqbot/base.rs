@@ -147,7 +147,6 @@ async fn launch(mut rx: Receiver<QEvent>) -> Result<()> {
                 }
                 QRCodeState::Confirmed(inner) => {
                     push_log!("qrcode confirmed");
-                    QR.lock().unwrap().clear();
                     let login_resp = CLIENT
                         .qrcode_login(&inner.tmp_pwd, &inner.tmp_no_pic_sig, &inner.tgt_qr)
                         .await?;
@@ -170,6 +169,8 @@ async fn launch(mut rx: Receiver<QEvent>) -> Result<()> {
     // instead of `ricq::ext::common::after_login`
     CLIENT.register_client().await?;
     CLIENT.refresh_status().await?;
+
+    QR.lock().unwrap().clear();
 
     tokio::join!(
         async {

@@ -16,13 +16,11 @@
     grid: 1fr auto / none;
     min-height: 100vh;
   }
-  p {
-    margin: 0 10px 8px;
-  }
   span {
-    background: #7778;
-    padding: 1px 5px;
-    margin-right: 6px;
+    display: inline-block;
+    padding-right: 10px;
+    margin: 8px 10px;
+    border-right: 1px dashed;
   }
   input {
     position: sticky;
@@ -87,6 +85,11 @@
   const protocol = location.protocol.replace("http", "ws");
   const host = location.host;
   const room = location.hash.slice(1);
+  if (room === "") {
+    location.hash = Math.round(Math.random() * 1e5);
+    location.reload();
+  }
+  $send.placeholder += `, ROOM ${room}`;
   const ws = new WebSocket(`${protocol}//${host}/chat/ws/${room}`);
   await new Promise((r) => (ws.onopen = r));
   const joinRoom = () => {

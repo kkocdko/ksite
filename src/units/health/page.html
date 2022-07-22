@@ -50,10 +50,16 @@
   <input name="id" id="$id" placeholder="ID" spellcheck="false" />
   <input name="token" placeholder="TOKEN" spellcheck="false" />
   <input name="body" id="$body" style="display: none" spellcheck="false" />
-  <textarea readonly spellcheck="false">/*{slot}*/</textarea>
+  <textarea id="$log" readonly spellcheck="false">/*{slot}*/</textarea>
 </form>
 
 <script>
+  $log.textContent = $log.textContent
+    .split("\n")
+    .map((v) =>
+      v.replace(/\d+/, new Date((v.split(" ")[0] - 0) * 1e3).toLocaleString())
+    )
+    .join("\n");
   const encrypt = (str) => {
     const words = CryptoJS.enc.Utf8.parse(str);
     const keyWords = [1947217763, 1550666530, -1301273701, -1041739952];

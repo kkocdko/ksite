@@ -15,7 +15,7 @@ use std::time::Duration;
 
 #[tokio::main]
 async fn main() {
-    println!("[ksite]");
+    println!("[ksite v{}]", env!("CARGO_PKG_VERSION"));
     println!("enter :q to quit");
     println!("authorization token = {}", *auth::TOKEN);
 

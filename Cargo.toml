@@ -1,6 +1,6 @@
 [package]
 name = "ksite"
-version = "0.4.0-alpha-9"
+version = "0.4.1"
 edition = "2021"
 
 [profile.dev.package."*"]
@@ -38,4 +38,4 @@ konst = { version = "0.2", features = ["rust_1_55"] }
 ricq = "0.1.16" # fixed version here
 hyper = "0.14"
 tokio-rustls = "0.23"
-tls-listener = { version = "0.5", features = ["rustls", "hyper-h2"] }
+# tls-listener = { version = "0.5", features = ["rustls", "hyper-h2"] }
