@@ -10,8 +10,6 @@ All in one solution for my server.
 
 - `units::status`: speed, latency, network status. ssl cert remain.
 
-- HTTP2? **OMG it's much more complex than I think!**
-
 ## Build with MUSL
 
 Use [messense/cargo-zigbuild](https://github.com/messense/cargo-zigbuild) please.

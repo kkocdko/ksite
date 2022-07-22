@@ -49,8 +49,8 @@
     <input type="submit" value="Set" />
   </header>
   <select id="$k">
-    <option value="ssl_key">ssl_key</option>
     <option value="ssl_cert">ssl_cert</option>
+    <option value="ssl_key">ssl_key</option>
   </select>
   <textarea id="$v" placeholder="VALUE" spellcheck="false"></textarea>
 </form>
@@ -58,9 +58,15 @@
 <script>
   const onSubmit = async (event) => {
     event.preventDefault();
-    if (!$v.value.startsWith("-----BEGIN")) return alert("only PEM");
-    const v = ($v.value + "\n").replace(/(^|\n)-.+-\n/g, "").trim();
-    const blob = await fetch(`data:;base64,${v}`).then((v) => v.blob());
-    fetch(`/admin?k=${$k.value}`, { method: "post", body: blob });
+    if (["ssl_cert", "ssl_key"].includes($k.value)) {
+      if (!$v.value.startsWith("-----BEGIN")) return alert("only PEM");
+      const v = ($v.value + "\n").replace(/(^|\n)-.+-\n/g, "").trim();
+      const blob = await fetch(`data:;base64,${v}`).then((v) => v.blob());
+      await fetch(`/admin?k=${$k.value}`, { method: "post", body: blob });
+    } else {
+      alert("not supported key type");
+      return;
+    }
+    alert("submit succeed");
   };
 </script>

@@ -1069,6 +1069,7 @@ dependencies = [
  "askama_escape",
  "axum",
  "futures-util",
+ "hyper",
  "konst",
  "miniz_oxide",
  "once_cell",
@@ -1078,7 +1079,9 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "tls-listener",
  "tokio",
+ "tokio-rustls",
  "tower-http",
 ]
 
@@ -1994,6 +1997,20 @@ name = "tinyvec_macros"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cda74da7e1a664f795bb1f8a87ec406fb89a02522cf6e50620d016add6dbbf5c"
+
+[[package]]
+name = "tls-listener"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c9d4ff21187d434ac7709bfc7441ca88f63681247e5ad99f0f08c8c91ddc103d"
+dependencies = [
+ "futures-util",
+ "hyper",
+ "pin-project-lite",
+ "thiserror",
+ "tokio",
+ "tokio-rustls",
+]
 
 [[package]]
 name = "tokio"

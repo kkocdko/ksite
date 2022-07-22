@@ -2,9 +2,10 @@ mod auth;
 mod database;
 mod slot;
 mod ticker;
-mod utils;
-// mod tls;
+mod tls;
+// mod tls_next;
 mod units;
+mod utils;
 use axum::{Router, Server};
 use std::io;
 use std::net::SocketAddr;
@@ -40,10 +41,11 @@ async fn main() {
             .merge(units::qqbot::service())
             .merge(units::record::service())
             .merge(units::welcome::service())
-            .into_make_service_with_connect_info::<SocketAddr>();
+            .into_make_service();
+        // .into_make_service_with_connect_info::<SocketAddr>();
 
-        let server = Server::bind(&addr).serve(app);
-        // let server = Server::builder(tls::incoming(&addr)).serve(app);
+        // let server = Server::bind(&addr).serve(app);
+        let server = Server::builder(tls::incoming(&addr)).serve(app);
 
         server.await.unwrap();
     };

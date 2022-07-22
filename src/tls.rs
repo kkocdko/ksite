@@ -1,7 +1,9 @@
-// thanks to github.com/ctz/hyper-rustls/blob/master/examples/server.rs
+// thanks to:
+// github.com/ctz/hyper-rustls/blob/master/examples/server.rs
+// github.com/seanmonstar/warp/pull/431
 use crate::db;
 use core::task::{Context, Poll};
-use futures_util::ready;
+use futures_util::{ready, FutureExt};
 use hyper::server::accept::Accept;
 use hyper::server::conn::{AddrIncoming, AddrStream};
 use std::future::Future;
@@ -9,7 +11,7 @@ use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, ReadBuf};
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, ReadBuf};
 use tokio_rustls::rustls::{Certificate, PrivateKey, ServerConfig};
 
 pub enum Connection {
@@ -18,8 +20,8 @@ pub enum Connection {
 }
 
 impl Connection {
-    fn new(stream: AddrStream, cfg: Arc<ServerConfig>) -> Self {
-        let accept = tokio_rustls::TlsAcceptor::from(cfg).accept(stream);
+    fn new(stream: AddrStream, cfg: &Arc<ServerConfig>) -> Self {
+        let accept = tokio_rustls::TlsAcceptor::from(cfg.clone()).accept(stream);
         Self::Handshaking(accept)
     }
 }
@@ -86,21 +88,29 @@ pub struct Acceptor {
 impl Accept for Acceptor {
     type Conn = Connection;
     type Error = io::Error;
+
     fn poll_accept(
         mut self: Pin<&mut Self>,
         cx: &mut Context,
     ) -> Poll<Option<Result<Self::Conn, Self::Error>>> {
-        match ready!(Pin::new(&mut self.incoming).poll_accept(cx)) {
-            Some(Ok(mut sock)) => {
-                // redirect http to https?
-                // let mut flag = [0];
-                // ready!(sock.poll_peek(cx, &mut tokio::io::ReadBuf::new(&mut flag)))
-                // dbg!(flag == [0x16]);
-                Poll::Ready(Some(Ok(Connection::new(sock, self.cfg.clone()))))
-            }
-            Some(Err(e)) => Poll::Ready(Some(Err(e))),
-            None => Poll::Ready(None),
+        let mut stream = match ready!(Pin::new(&mut self.incoming).poll_accept(cx)) {
+            Some(Ok(v)) => v,
+            _ => return Poll::Ready(None),
+        };
+        // TODO: improve performance
+        let mut flag = [0];
+        let mut readbuf = tokio::io::ReadBuf::new(&mut flag);
+        // let mut loop_count = 0;
+        while stream.poll_peek(cx, &mut readbuf).is_pending() {
+            // loop_count += 1;
+            std::thread::sleep(std::time::Duration::from_millis(1));
         }
+        // dbg!(loop_count);
+        if flag[0] != 0x16 {
+            let to_https_page = b"HTTP/1.1 200 OK\r\ncontent-type:text/html\r\n\r\n<script>location=location.href.replace(':','s:')</script>\r\n\r\n\0";
+            let _ = stream.write_all(to_https_page).boxed().poll_unpin(cx);
+        }
+        Poll::Ready(Some(Ok(Connection::new(stream, &self.cfg))))
     }
 }
 
@@ -114,7 +124,7 @@ pub fn incoming(addr: &SocketAddr) -> Acceptor {
     let key = PrivateKey(db_get("ssl_key"));
     let mut cfg = ServerConfig::builder()
         .with_safe_defaults()
-        .with_no_client_auth() // vertify? see warp's source code?
+        .with_no_client_auth() // TODO: vertify? see warp's source code?
         .with_single_cert(certs, key)
         .unwrap();
     cfg.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
