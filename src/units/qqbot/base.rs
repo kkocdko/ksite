@@ -174,7 +174,7 @@ async fn launch(mut rx: Receiver<QEvent>) -> Result<()> {
     tokio::join!(
         async {
             loop {
-                care!(CLIENT.heartbeat().await).ok(); // may timeout
+                CLIENT.do_heartbeat().await;
                 tokio::time::sleep(Duration::from_secs(60)).await;
             }
         },

@@ -19,6 +19,11 @@
   p {
     margin: 0 10px 8px;
   }
+  span {
+    background: #7778;
+    padding: 1px 5px;
+    margin-right: 6px;
+  }
   input {
     position: sticky;
     bottom: 0;
@@ -41,6 +46,8 @@
 </body>
 
 <script type="module">
+  // CRYPTO NEEDS HTTPS TO WORK!
+
   // base64 <-> array buffer
   const b2a = (b) => Uint8Array.from(atob(b), (c) => c.charCodeAt(0));
   const a2b = (a) => btoa(String.fromCharCode(...new Uint8Array(a)));
@@ -75,6 +82,7 @@
     cfg.decrypt = async (i) =>
       textDec.decode(await crypto.subtle.decrypt(algo, privKey, b2a(i)));
   }
+  // todo: add clear button
   // addEventListener("unload", () => (localStorage.cfg = JSON.stringify(cfg)));
   const protocol = location.protocol.replace("http", "ws");
   const host = location.host;
@@ -100,7 +108,8 @@
     if (data.op === "msg" && data.target === cfg.id) {
       const value = await cfg.decrypt(data.value);
       const el = document.createElement("p");
-      el.textContent = `[${data.id}] ${value}`;
+      el.appendChild(document.createElement("span")).textContent = data.id;
+      el.append(value);
       $send.parentNode.insertBefore(el, $send).scrollIntoView();
     } else if (data.op === "join") {
       let friend = cfg.friends.find((v) => v.id === data.id);

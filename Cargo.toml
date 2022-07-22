@@ -35,7 +35,7 @@ askama_escape = "0.10"
 rand = "0.8"
 miniz_oxide = "0.5"
 konst = { version = "0.2", features = ["rust_1_55"] }
-ricq = "0.1.16"
-
+ricq = "0.1.16" # fixed version here
 # hyper = "0.14"
 # tokio-rustls = "0.23"
+# tls-listener = { version = "0.5", features = ["rustls", "hyper-h2"] }
