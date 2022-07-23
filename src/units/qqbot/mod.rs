@@ -4,7 +4,7 @@ use crate::ticker::Ticker;
 use crate::utils::{elapse, fetch_json, fetch_text, OptionResult};
 use anyhow::Result;
 use axum::routing::{MethodRouter, Router};
-use base::{db_groups_insert, notify};
+use base::{db_groups_insert, get_handler, get_login_qr, notify, post_handler};
 use once_cell::sync::Lazy;
 use rand::{thread_rng, Rng};
 use std::collections::HashMap;
@@ -109,17 +109,15 @@ fn judge_spam(msg: &str) -> bool {
 }
 
 pub fn service() -> Router {
-    base::get_qr(); // init client
+    get_login_qr(); // init client
     Router::new()
         .route(
             "/qqbot",
-            MethodRouter::new()
-                .get(base::get_handler)
-                .post(base::post_handler),
+            MethodRouter::new().get(get_handler).post(post_handler),
         )
         .route(
             "/qqbot/qr",
-            MethodRouter::new().get(|| async { base::get_qr() }),
+            MethodRouter::new().get(|| async { get_login_qr() }),
         )
         .layer(crate::auth::auth_layer())
 }

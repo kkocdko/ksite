@@ -80,7 +80,7 @@ pub async fn get_handler() -> Html<String> {
     Html(body)
 }
 
-pub fn get_qr() -> Vec<u8> {
+pub fn get_login_qr() -> Vec<u8> {
     CLIENT.get_status(); // init client
     QR.lock().unwrap().clone()
 }

@@ -3,7 +3,7 @@
 // github.com/seanmonstar/warp/pull/431
 use crate::db;
 use core::task::{Context, Poll};
-use futures_util::{ready, FutureExt};
+use futures_util::ready;
 use hyper::server::accept::Accept;
 use hyper::server::conn::{AddrIncoming, AddrStream};
 use std::future::Future;
@@ -11,7 +11,7 @@ use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
-use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, ReadBuf};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio_rustls::rustls::{Certificate, PrivateKey, ServerConfig};
 
 pub enum Connection {
@@ -93,24 +93,33 @@ impl Accept for Acceptor {
         mut self: Pin<&mut Self>,
         cx: &mut Context,
     ) -> Poll<Option<Result<Self::Conn, Self::Error>>> {
-        let mut stream = match ready!(Pin::new(&mut self.incoming).poll_accept(cx)) {
-            Some(Ok(v)) => v,
-            _ => return Poll::Ready(None),
-        };
-        // TODO: improve performance
-        let mut flag = [0];
-        let mut readbuf = tokio::io::ReadBuf::new(&mut flag);
+        // redirect http to https
+        // use futures_util::FutureExt;
+        // use tokio::io::AsyncWriteExt;
+        // let mut stream = match ready!(Pin::new(&mut self.incoming).poll_accept(cx)) {
+        //     Some(Ok(v)) => v,
+        //     _ => return Poll::Ready(None),
+        // };
+        // let mut flag = [0];
+        // let mut readbuf = tokio::io::ReadBuf::new(&mut flag);
         // let mut loop_count = 0;
-        while stream.poll_peek(cx, &mut readbuf).is_pending() {
-            // loop_count += 1;
-            std::thread::sleep(std::time::Duration::from_millis(1));
-        }
+        // // attacker could make a connection without sending any data
+        // while stream.poll_peek(cx, &mut readbuf).is_pending() {
+        //     loop_count += 1;
+        //     std::thread::sleep(std::time::Duration::from_millis(1));
+        // }
         // dbg!(loop_count);
-        if flag[0] != 0x16 {
-            let to_https_page = b"HTTP/1.1 200 OK\r\ncontent-type:text/html\r\n\r\n<script>location=location.href.replace(':','s:')</script>\r\n\r\n\0";
-            let _ = stream.write_all(to_https_page).boxed().poll_unpin(cx);
-        }
-        Poll::Ready(Some(Ok(Connection::new(stream, &self.cfg))))
+        // if flag[0] != 0x16 {
+        //     let to_https_page = b"HTTP/1.1 200 OK\r\ncontent-type:text/html\r\n\r\n<script>location=location.href.replace(':','s:')</script>\r\n\r\n\0";
+        //     let _ = stream.write_all(to_https_page).boxed().poll_unpin(cx);
+        // }
+        // Poll::Ready(Some(Ok(Connection::new(stream, &self.cfg))))
+
+        // https only
+        Poll::Ready(match ready!(Pin::new(&mut self.incoming).poll_accept(cx)) {
+            Some(Ok(stream)) => Some(Ok(Connection::new(stream, &self.cfg))),
+            _ => None,
+        })
     }
 }
 
