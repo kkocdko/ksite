@@ -6,7 +6,7 @@ All in one solution for my server.
 
 - `units::record`: record evidence picture, audio and video in real-time.
 
-- `units::health`: fix log datetime.
+- `units::chat`: supports long message.
 
 - `units::status`: speed, latency, network status. ssl cert remain.
 
