@@ -65,7 +65,7 @@ async fn ws_handler(id: u32, ws: WebSocket) {
 pub fn service() -> Router {
     Router::new()
         .route(
-            "/chat", // http://127.0.0.1:9304/chat#123
+            "/chat", // https://127.0.0.1:9304/chat#123
             MethodRouter::new().get(|| async { Html(include_str!("page.html")) }),
         )
         .route(

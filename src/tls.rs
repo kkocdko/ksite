@@ -140,6 +140,6 @@ pub fn incoming(addr: &SocketAddr) -> Acceptor {
 
     Acceptor {
         cfg: Arc::new(cfg),
-        incoming: AddrIncoming::bind(&addr).unwrap(),
+        incoming: AddrIncoming::bind(addr).unwrap(),
     }
 }
