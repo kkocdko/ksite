@@ -1,13 +1,13 @@
 use crate::care;
-use crate::slot::slot;
 use crate::ticker::Ticker;
+use crate::utils::slot;
 use crate::utils::{fetch_text, OptionResult};
 use anyhow::Result;
 use axum::response::Html;
 use axum::routing::MethodRouter;
 use axum::Router;
 use once_cell::sync::Lazy;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 fn generate<'a>(mut i: &'a str, o: &mut Vec<&'a str>, mut limit: usize) -> Result<()> {
     while let Some(mut p) = i.split_once("<item>") {
@@ -68,9 +68,9 @@ type Res = ([(&'static str, &'static str); 2], Html<Vec<u8>>);
 
 const PAGE: [&str; 2] = slot(include_str!("page.html"));
 
-static CACHE: Lazy<Mutex<Res>> = Lazy::new(|| {
+static CACHE: Lazy<RwLock<Res>> = Lazy::new(|| {
     let body = format!("{}<h2>Magazine is generating ...</h2>{}", PAGE[0], PAGE[1]);
-    Mutex::new((
+    RwLock::new((
         [("cache-control", "no-cache"), ("refresh", "2")],
         Html(body.into_bytes()),
     ))
@@ -93,7 +93,7 @@ async fn refresh() -> Result<()> {
     ];
     o.push(PAGE[1]);
     let o = miniz_oxide::deflate::compress_to_vec(o.join("").as_bytes(), 10);
-    *CACHE.lock().await = (
+    *CACHE.write().await = (
         [
             ("cache-control", "max-age=3600"),
             ("content-encoding", "deflate"),
@@ -107,7 +107,7 @@ pub fn service() -> Router {
     tokio::spawn(async { care!(refresh().await).ok() });
     Router::new().route(
         "/magazine",
-        MethodRouter::new().get(|| async { CACHE.lock().await.clone() }),
+        MethodRouter::new().get(|| async { CACHE.read().await.clone() }),
     )
 }
 

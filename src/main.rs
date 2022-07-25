@@ -1,6 +1,5 @@
 mod auth;
 mod database;
-mod slot;
 mod ticker;
 mod tls;
 // mod tls_next;

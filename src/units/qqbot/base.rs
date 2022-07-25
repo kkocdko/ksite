@@ -1,5 +1,5 @@
 use super::gen_reply;
-use crate::{care, db, slot::slot};
+use crate::{care, db, utils::slot};
 use anyhow::Result;
 use axum::extract::Form;
 use axum::response::{Html, Redirect};

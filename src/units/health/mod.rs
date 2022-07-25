@@ -1,5 +1,5 @@
-use crate::slot::slot;
 use crate::ticker::Ticker;
+use crate::utils::slot;
 use crate::{care, db};
 use anyhow::Result;
 use axum::extract::Form;
@@ -34,7 +34,7 @@ fn db_log_insert(id: u64, ret: &str) {
 fn db_log_get() -> Vec<(u64, u64, String)> {
     let sql = "
         SELECT time, id, ret FROM health_log
-        WHERE strftime('%s','now') - time <= 3600 * 24 * 3
+        WHERE strftime('%s','now') - time <= 3600 * 24 * 5
         ORDER BY time DESC
     ";
     db!(sql, [], (0, 1, 2)).unwrap()

@@ -1,5 +1,5 @@
 use crate::db;
-use crate::slot::slot;
+use crate::utils::slot;
 use axum::extract::{Form, Path};
 use axum::response::{Html, Redirect};
 use axum::routing::MethodRouter;

@@ -1,4 +1,4 @@
-use crate::slot::slot;
+use crate::utils::slot;
 use axum::response::{Html, IntoResponse};
 use axum::routing::MethodRouter;
 use axum::Router;
