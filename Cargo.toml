@@ -13,7 +13,7 @@ panic = "abort"
 
 [profile.release]
 strip = true
-lto = "fat"
+lto = true
 # panic = "abort" # DO NOT USE THIS! cause tokio worker abort
 
 [features]
