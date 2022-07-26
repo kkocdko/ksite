@@ -9,7 +9,7 @@
 <style>
   * {
     margin: 0;
-    font: 14px / 1.5 sans-serif;
+    font: 14px / 1.4 sans-serif;
   }
   form {
     display: grid;
@@ -54,7 +54,7 @@
     <input
       type="button"
       value="Zen mode"
-      onclick="$v.parentNode.replaceWith($v),$v.style.border='0'"
+      onclick="$v.style.border=0,$v.requestFullscreen()"
     />
   </header>
   <textarea name="value" id="$v" spellcheck="false">/*{slot}*/</textarea>
