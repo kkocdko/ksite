@@ -41,14 +41,14 @@ static CLIENT: Lazy<Client<HttpsConnector<HttpConnector>>> = Lazy::new(|| {
         .with_no_client_auth();
 
     let mut http_connector = HttpConnector::new();
-    http_connector.enforce_http(false);
-    let https_connector = HttpsConnectorBuilder::new()
+    http_connector.enforce_http(false); // Allow HTTPS
+    let connector = HttpsConnectorBuilder::new()
         .with_tls_config(tls_config)
         .https_or_http() // Allow both HTTPS and HTTP
-        .enable_http1()
+        .enable_http1() // HTTP 1.1 is enough
         .wrap_connector(http_connector);
 
-    Client::builder().build(https_connector)
+    Client::builder().build(connector)
 });
 
 pub async fn fetch(request: Request<Body>) -> Result<Vec<u8>> {
@@ -56,19 +56,19 @@ pub async fn fetch(request: Request<Body>) -> Result<Vec<u8>> {
     Ok(to_bytes(response.into_body()).await?.into())
 }
 
-/// Fetch a url, returns as text
+/// Fetch a URL, returns as text
 pub async fn fetch_text(url: &str) -> Result<String> {
     let request = Request::get(url).body(Body::empty())?;
     Ok(String::from_utf8(fetch(request).await?)?)
 }
 
-/// Fetch a url which response json, get field by pointer
+/// Fetch a URL which response json, get field by pointer
 ///
 /// # Examples
 ///
 /// ```
-/// let result = await fetch_json("https://chrome.version.io", "/data/version"));
-/// assert_eq!(result, Ok("1.2.0".to_string()));
+/// let v = await fetch_json("https://chrome.version.io", "/data/version"));
+/// assert_eq!(v, Ok("1.2.0".to_string()));
 /// ```
 pub async fn fetch_json(url: &str, pointer: &str) -> Result<String> {
     let text = fetch_text(url).await?;

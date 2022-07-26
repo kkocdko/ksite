@@ -32,8 +32,8 @@ macro_rules! push_log {
     }}
 }
 
-const K_TOKEN: &str = "token_json";
 const K_DEVICE: &str = "device_json";
+const K_TOKEN: &str = "token_json";
 
 fn db_init() {
     db!("CREATE TABLE qqbot_cfg (k TEXT UNIQUE, v BLOB)").ok();
@@ -200,6 +200,7 @@ async fn on_event(event: QEvent) -> Result<()> {
                 _ => return Ok(()), // it's not my business!
             }
             let msg = e.inner.elements.to_string();
+            dbg!(&msg);
             let msg: Vec<&str> = msg.split_whitespace().skip(1).collect();
             let reply = gen_reply(msg).await?;
             CLIENT

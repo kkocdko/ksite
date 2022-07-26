@@ -1,6 +1,6 @@
 // thanks to:
-// github.com/ctz/hyper-rustls/blob/master/examples/server.rs
-// github.com/seanmonstar/warp/pull/431
+// https://github.com/ctz/hyper-rustls/blob/master/examples/server.rs
+// https://github.com/seanmonstar/warp/pull/431
 use crate::db;
 use core::task::{Context, Poll};
 use futures_util::ready;
@@ -136,6 +136,7 @@ pub fn incoming(addr: &SocketAddr) -> Acceptor {
         .with_no_client_auth() // TODO: vertify? see warp's source code?
         .with_single_cert(certs, key)
         .unwrap();
+    // HTTP2 needs hyper features = ["http2"]
     cfg.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
 
     Acceptor {

@@ -47,8 +47,11 @@
   <header>
     <input type="submit" value="Set" />
   </header>
-  <input id="$k" name="key" placeholder="KEY" />
-  <input id="$v" name="value" placeholder="VALUE" />
+  <select name="key">
+    <option value="device_json">device_json</option>
+    <option value="token_json">token_json</option>
+  </select>
+  <input name="value" placeholder="VALUE" />
   <div><img src="/qqbot/qr" onerror="outerHTML='(@_@)'" /></div>
   <textarea readonly spellcheck="false">/*{slot}*/</textarea>
 </form>
