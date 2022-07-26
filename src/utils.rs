@@ -1,5 +1,11 @@
 use anyhow::Result;
+use hyper::body::to_bytes;
+use hyper::client::HttpConnector;
+use hyper::{Body, Client, Request};
+use hyper_rustls::{ConfigBuilderExt, HttpsConnector, HttpsConnectorBuilder};
+use once_cell::sync::Lazy;
 use std::time::SystemTime;
+use tokio_rustls::rustls::ClientConfig;
 
 pub trait OptionResult<T> {
     fn e(self) -> Result<T>;
@@ -14,9 +20,28 @@ impl<T> OptionResult<T> for Option<T> {
     }
 }
 
+static CLIENT: Lazy<Client<HttpsConnector<HttpConnector>>> = Lazy::new(|| {
+    let tls_config = ClientConfig::builder()
+        .with_safe_defaults()
+        .with_native_roots()
+        .with_no_client_auth();
+    let connector = HttpsConnectorBuilder::new()
+        .with_tls_config(tls_config)
+        .https_or_http() // Allow both HTTPS and HTTP
+        .enable_http1()
+        .build();
+    Client::builder().build(connector)
+});
+
+pub async fn fetch(request: Request<Body>) -> Result<Vec<u8>> {
+    let response = CLIENT.request(request).await?;
+    Ok(to_bytes(response.into_body()).await?.into())
+}
+
 /// Fetch a url, returns as text
 pub async fn fetch_text(url: &str) -> Result<String> {
-    Ok(reqwest::get(url).await?.text().await?)
+    let request = Request::get(url).body(Body::empty())?;
+    Ok(String::from_utf8(fetch(request).await?)?)
 }
 
 /// Fetch a url which response json, get field by pointer
@@ -60,6 +85,7 @@ macro_rules! care {
     }};
 }
 
+/*
 // #[rustc_const_unstable(feature = "const_option", issue = "67441")]
 pub const fn expect_const<T: Copy>(i: Option<T>, tips: &str) -> T {
     match i {
@@ -71,6 +97,7 @@ pub const fn expect_const<T: Copy>(i: Option<T>, tips: &str) -> T {
 pub const fn unwrap_const<T: Copy>(i: Option<T>) -> T {
     expect_const(i, "Option is None")
 }
+*/
 
 #[macro_export]
 /// Split template page by slot marks `/*{slot}*/`
@@ -113,13 +140,15 @@ fn test_include_page() {
     const PAGE: [&str; 3] = include_page!(:RAW);
     assert_eq!(PAGE, ["<div>\n", "\n<p>Hi, ", "</p>\n</div>\n"]);
 }
-
+/*
 pub const fn slot<const N: usize>(raw: &str) -> [&str; N] {
-    let mark = b"/*{slot}*/";
+    let mark = b"/*{slot}*/
+";
     // String::from_utf8_unchecked(bytes)
     // const_str::replace!()
     // const fn slot_once(raw: &str) -> (&str, &str) {
-    //     let mark = "/*{slot}*/";
+//     let mark = " /*{slot}*/
+";
     //     let index = find(raw, mark, 0);
     //     let index = expect_const(index, "slot mark not found");
     //     let part_0 = split_at(raw, index).0;
@@ -137,3 +166,4 @@ pub const fn slot<const N: usize>(raw: &str) -> [&str; N] {
     // (ret[N - 2], ret[N - 1]) = slot_once(p);
     ret
 }
+*/

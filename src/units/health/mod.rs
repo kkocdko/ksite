@@ -1,10 +1,11 @@
 use crate::ticker::Ticker;
+use crate::utils::fetch;
 use crate::{care, db, include_page};
 use anyhow::Result;
 use axum::extract::Form;
 use axum::response::{Html, IntoResponse, Redirect};
-use axum::routing::MethodRouter;
-use axum::Router;
+use axum::routing::{MethodRouter, Router};
+use hyper::{Body, Request};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use tokio::sync::Mutex;
@@ -83,13 +84,12 @@ pub fn service() -> Router {
 
 async fn check_in() -> Result<()> {
     let list = db_list_get();
-    let client = reqwest::Client::new();
     for member in list {
-        let request = client
-            .post("http://dc.just.edu.cn/dfi/formData/saveFormSubmitDataEncryption")
-            .header("authentication", member.token)
-            .body(member.body);
-        let ret = request.send().await?.text().await?;
+        let request =
+            Request::post("http://dc.just.edu.cn/dfi/formData/saveFormSubmitDataEncryption")
+                .header("authentication", member.token)
+                .body(Body::from(member.body))?;
+        let ret = String::from_utf8(fetch(request).await?)?;
         db_log_insert(member.id, &ret);
     }
     Ok(())

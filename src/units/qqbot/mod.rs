@@ -123,23 +123,20 @@ pub fn service() -> Router {
 }
 
 struct UpNotify {
-    name: &'static str,
-    pkg_id: &'static str,
+    name: String,
+    query_url: String,
     last: Mutex<String>,
 }
 
 impl UpNotify {
-    async fn query(pkg_id: &str) -> Result<String> {
-        let client = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none());
-        let client = client.build().unwrap();
-        let url = format!("https://community.chocolatey.org/api/v2/package/{pkg_id}");
-        let ret = client.get(&url).send().await?.text().await?;
+    async fn query(&self) -> Result<String> {
+        let ret = fetch_text(&self.query_url).await?;
         let ret = ret.rsplit_once(".nupkg").e()?.0.rsplit_once('/').e()?.1;
         Ok(ret.split_once('.').e()?.1.to_string())
     }
 
     async fn trigger(&self) {
-        let v = care!(Self::query(self.pkg_id).await, return);
+        let v = care!(self.query().await, return);
         let mut last = self.last.lock().await;
         if !last.is_empty() && *last != v {
             // store the latest value regardless of whether the notify succeeds or not
@@ -148,10 +145,11 @@ impl UpNotify {
         *last = v;
     }
 
-    fn new(name: &'static str, pkg_id: &'static str) -> Self {
+    fn new(name: &str, pkg_id: &str) -> Self {
+        let query_url = format!("https://community.chocolatey.org/api/v2/package/{pkg_id}");
         Self {
-            name,
-            pkg_id,
+            name: name.to_string(),
+            query_url,
             last: Mutex::new(String::new()),
         }
     }
