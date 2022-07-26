@@ -1,3 +1,4 @@
+use crate::include_page;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::Path;
 use axum::response::Html;
@@ -7,7 +8,6 @@ use futures_util::{SinkExt, StreamExt};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Mutex;
-use crate::include_page;
 use tokio::sync::broadcast::{self, Sender};
 
 static ROOMS: Lazy<Mutex<HashMap<u32, Room>>> = Lazy::new(Default::default);
