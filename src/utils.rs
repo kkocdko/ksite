@@ -1,6 +1,4 @@
 use anyhow::Result;
-use konst::for_range;
-use konst::string::{find, split_at};
 use std::time::SystemTime;
 
 pub trait OptionResult<T> {
@@ -70,50 +68,72 @@ pub const fn expect_const<T: Copy>(i: Option<T>, tips: &str) -> T {
     }
 }
 
-pub const fn _unwrap_const<T: Copy>(i: Option<T>) -> T {
+pub const fn unwrap_const<T: Copy>(i: Option<T>) -> T {
     expect_const(i, "Option is None")
 }
 
-/// Split template string by slot marks `/*{slot}*/`
+#[macro_export]
+/// Split template page by slot marks `/*{slot}*/`
 ///
 /// # Example
 ///
 /// ```
-/// const RAW: &str = "<h1>/*{slot}*/</h1><p>/*{slot}*/</p>";
-/// const PAGE: [&str; 3] = slot(RAW); // 2 slots split string into 3 parts
+/// // ./page.html:
+/// "<h1>/*{slot}*/</h1><p>/*{slot}*/</p>";
+/// // 2 slots split page into 3 parts
+/// const PAGE: [&str; 3] = include_page!("page.html");
 /// ```
-///
-/// # Panics
-///
-/// This function panics if `raw` doesn't have enough slot marks.
-pub const fn slot<const N: usize>(raw: &str) -> [&str; N] {
-    const fn slot_once(raw: &str) -> (&str, &str) {
-        let mark = "/*{slot}*/";
-        let index = find(raw, mark, 0);
-        let index = expect_const(index, "slot mark not found");
-        let part_0 = split_at(raw, index).0;
-        let part_1 = split_at(raw, index + mark.len()).1;
-        (part_0, part_1)
-    }
-    let mut p = raw;
-    let mut ret = [""; N];
-    // #![feature(const_for)]
-    for_range! {i in 0..N - 2 =>
-        (ret[i], p) = slot_once(p);
-    }
-    (ret[N - 2], ret[N - 1]) = slot_once(p);
-    ret
+macro_rules! include_page {
+    ($file:expr) => {{
+        include_page!(:include_str!($file))
+    }};
+    (:$raw:expr) => {{
+        const __8: &str = $raw;
+        // const __7: &str = const_str::replace!(__8, "\n        ", "\n");
+        // const __6: &str = const_str::replace!(__7, "\n       ", "\n");
+        // const __5: &str = const_str::replace!(__6, "\n      ", "\n");
+        // const __4: &str = const_str::replace!(__5, "\n     ", "\n");
+        // const __3: &str = const_str::replace!(__4, "\n    ", "\n");
+        // const __2: &str = const_str::replace!(__3, "\n   ", "\n");
+        // const __1: &str = const_str::replace!(__2, "\n  ", "\n");
+        // const __0: &str = const_str::replace!(__1, "\n ", "\n");
+        const_str::split!(__8, "/*{slot}*/")
+    }};
 }
 
-// pub const fn strip(raw: &str) -> &str {
-//     let s = _unwrap_const(konst::string::find(raw, "\n", 0));
-//     // konst::string::find(raw, "\n", 0).unwrap();
-//     ""
-// }
-
 #[test]
-fn test_slot() {
-    const RAW: &str = "<h1>/*{slot}*/</h1><p>/*{slot}*/</p>";
-    const PAGE: [&str; 3] = slot(RAW);
-    assert_eq!(PAGE, ["<h1>", "</h1><p>", "</p>"]);
+fn test_include_page() {
+    const RAW: &str = "\
+        <div>
+            /*{slot}*/
+            <p>Hi, /*{slot}*/</p>
+        </div>
+    ";
+    // const_str;
+    const PAGE: [&str; 3] = include_page!(:RAW);
+    assert_eq!(PAGE, ["<div>\n", "\n<p>Hi, ", "</p>\n</div>\n"]);
+}
+
+pub const fn slot<const N: usize>(raw: &str) -> [&str; N] {
+    let mark = b"/*{slot}*/";
+    // String::from_utf8_unchecked(bytes)
+    // const_str::replace!()
+    // const fn slot_once(raw: &str) -> (&str, &str) {
+    //     let mark = "/*{slot}*/";
+    //     let index = find(raw, mark, 0);
+    //     let index = expect_const(index, "slot mark not found");
+    //     let part_0 = split_at(raw, index).0;
+    //     let part_1 = split_at(raw, index + mark.len()).1;
+    //     (part_0, part_1)
+    // }
+    let mut p = raw;
+
+    unsafe { std::str::from_utf8_unchecked(&[1, 2]) };
+    let mut ret = [""; N];
+    // #![feature(const_for)]
+    // for_range! {i in 0..N - 2 =>
+    //     (ret[i], p) = slot_once(p);
+    // }
+    // (ret[N - 2], ret[N - 1]) = slot_once(p);
+    ret
 }

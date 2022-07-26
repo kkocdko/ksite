@@ -1,6 +1,5 @@
 use crate::ticker::Ticker;
-use crate::utils::slot;
-use crate::{care, db};
+use crate::{care, db, include_page};
 use anyhow::Result;
 use axum::extract::Form;
 use axum::response::{Html, IntoResponse, Redirect};
@@ -61,7 +60,7 @@ async fn get_handler() -> impl IntoResponse {
         writeln!(&mut log, "{time} | {id} | {ret}").unwrap();
     }
     log = askama_escape::escape(&log, askama_escape::Html).to_string();
-    const PAGE: [&str; 3] = slot(include_str!("page.html"));
+    const PAGE: [&str; 3] = include_page!("page.html");
     const CRYPTOJS: &str = include_str!("crypto-js.min.js"); // cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.js
     Html([PAGE[0], &log, PAGE[1], CRYPTOJS, PAGE[2]].join(""))
 }

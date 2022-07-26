@@ -7,6 +7,7 @@ use futures_util::{SinkExt, StreamExt};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Mutex;
+use crate::include_page;
 use tokio::sync::broadcast::{self, Sender};
 
 static ROOMS: Lazy<Mutex<HashMap<u32, Room>>> = Lazy::new(Default::default);
@@ -66,7 +67,7 @@ pub fn service() -> Router {
     Router::new()
         .route(
             "/chat", // https://127.0.0.1:9304/chat#123
-            MethodRouter::new().get(|| async { Html(include_str!("page.html")) }),
+            MethodRouter::new().get(|| async { Html(include_page!("page.html")[0]) }),
         )
         .route(
             "/chat/ws/:room",

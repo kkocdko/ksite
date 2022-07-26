@@ -1,5 +1,5 @@
 use super::gen_reply;
-use crate::{care, db, utils::slot};
+use crate::{care, db, include_page};
 use anyhow::Result;
 use axum::extract::Form;
 use axum::response::{Html, Redirect};
@@ -69,7 +69,7 @@ pub async fn post_handler(form: Form<Submit>) -> Redirect {
 }
 
 pub async fn get_handler() -> Html<String> {
-    const PAGE: [&str; 2] = slot(include_str!("page.html"));
+    const PAGE: [&str; 2] = include_page!("page.html");
     let mut body = PAGE[0].to_string();
     #[allow(clippy::significant_drop_in_scrutinee)]
     for line in LOG.lock().unwrap().iter() {
