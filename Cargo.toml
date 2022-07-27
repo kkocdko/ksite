@@ -4,11 +4,11 @@ version = "0.4.4"
 edition = "2021"
 
 [profile.dev.package."*"]
-debug = false
 strip = true
 opt-level = "z"
 
 [profile.dev]
+debug = false # this dose not affect backtrace
 panic = "abort"
 
 [profile.release]

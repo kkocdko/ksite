@@ -123,6 +123,7 @@ impl Accept for Acceptor {
     }
 }
 
+/// Create an incoming stream for `hyper::Server`
 pub fn incoming(addr: &SocketAddr) -> Acceptor {
     fn db_get(k: &str) -> Vec<u8> {
         let result = db!("SELECT v FROM admin WHERE k = ?", [k], (0));

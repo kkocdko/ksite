@@ -200,9 +200,8 @@ async fn on_event(event: QEvent) -> Result<()> {
                 _ => return Ok(()), // it's not my business!
             }
             let msg = e.inner.elements.to_string();
-            dbg!(&msg);
             let msg: Vec<&str> = msg.split_whitespace().skip(1).collect();
-            let reply = gen_reply(msg).await?;
+            let reply = care!(gen_reply(msg).await)?;
             CLIENT
                 .send_group_message(e.inner.group_code, text_msg(reply))
                 .await?;
