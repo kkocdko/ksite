@@ -12,12 +12,50 @@ pub trait OptionResult<T> {
 }
 
 impl<T> OptionResult<T> for Option<T> {
+    /// Convert `Option<T>` to `Result<T>`.
     fn e(self) -> Result<T> {
         match self {
             Some(v) => Ok(v),
             None => Err(anyhow::anyhow!("Option is None")),
         }
     }
+}
+
+/// Same as JavaScript's `encodeURI`.
+pub fn encode_uri(i: &str) -> String {
+    const fn valid_table() -> [bool; VALIDS_LEN] {
+        let mut table = [false; VALIDS_LEN];
+        let valid_chars =
+            b"!#$&'()*+,-./0123456789:;=?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]_abcdefghijklmnopqrstuvwxyz~";
+        let mut i = 0;
+        while i < valid_chars.len() {
+            table[valid_chars[i] as usize] = true;
+            i += 1;
+        }
+        table
+    }
+
+    const VALIDS_LEN: usize = u8::MAX as usize + 1;
+    const VALIDS: [bool; VALIDS_LEN] = valid_table();
+
+    fn hex(d: u8) -> u8 {
+        match d {
+            0..=9 => b'0' + d,
+            10..=255 => b'A' - 10 + d,
+        }
+    }
+
+    let mut o = Vec::with_capacity(i.len());
+    for b in i.as_bytes() {
+        if VALIDS[*b as usize] {
+            o.push(*b);
+        } else {
+            o.push(b'%');
+            o.push(hex(b >> 4));
+            o.push(hex(b & 15));
+        }
+    }
+    unsafe { String::from_utf8_unchecked(o) }
 }
 
 static CLIENT: Lazy<Client<HttpsConnector<HttpConnector>>> = Lazy::new(|| {
@@ -41,37 +79,45 @@ static CLIENT: Lazy<Client<HttpsConnector<HttpConnector>>> = Lazy::new(|| {
         .with_no_client_auth();
 
     let mut http_connector = HttpConnector::new();
-    http_connector.enforce_http(false); // Allow HTTPS
+    http_connector.enforce_http(false); // allow HTTPS
     let connector = HttpsConnectorBuilder::new()
         .with_tls_config(tls_config)
-        .https_or_http() // Allow both HTTPS and HTTP
-        .enable_http1() // HTTP 1.1 is enough
+        .https_or_http() // allow both HTTPS and HTTP
+        .enable_http1() // for a client, HTTP 1.1 is enough
         .wrap_connector(http_connector);
 
     Client::builder().build(connector)
 });
 
+/// Send the `Request` and returns response. Allow both HTTPS and HTTP
+///
+/// Unlike `reqwest` crate, this function dose not follow redirect
 pub async fn fetch(request: Request<Body>) -> Result<Vec<u8>> {
     let response = CLIENT.request(request).await?;
-    Ok(to_bytes(response.into_body()).await?.into())
+    let bytes = to_bytes(response.into_body()).await?;
+    Ok(bytes.into())
 }
 
-/// Fetch a URL, returns as text
-pub async fn fetch_text(url: &str) -> Result<String> {
-    let request = Request::get(url).body(Body::empty())?;
+/// Fetch a URI, returns as text
+pub async fn fetch_text(uri: &str) -> Result<String> {
+    let uri = encode_uri(uri);
+    let request = Request::get(uri).body(Body::empty())?;
     Ok(String::from_utf8(fetch(request).await?)?)
 }
 
-/// Fetch a URL which response json, get field by pointer
+/// Fetch a URI which response json, get field by pointer
 ///
 /// # Examples
 ///
 /// ```
-/// let v = await fetch_json("https://chrome.version.io", "/data/version"));
-/// assert_eq!(v, Ok("1.2.0".to_string()));
+/// // value will be convert to string, the field type is not cared
+/// let v = await fetch_json("https://api.io", "/data/size"));
+/// // is this? { "data": { "size": "1024" } }
+/// // or this? { "data": { "size": 1024 } }
+/// assert_eq!(v, Ok("1024".to_string())); // the same result!
 /// ```
-pub async fn fetch_json(url: &str, pointer: &str) -> Result<String> {
-    let text = fetch_text(url).await?;
+pub async fn fetch_json(uri: &str, pointer: &str) -> Result<String> {
+    let text = fetch_text(uri).await?;
     let v = serde_json::from_str::<serde_json::Value>(&text)?;
     let v = v.pointer(pointer).e()?.to_string();
     Ok(v.trim_matches('"').to_string())
@@ -117,7 +163,6 @@ pub const fn unwrap_const<T: Copy>(i: Option<T>) -> T {
 }
 */
 
-#[macro_export]
 /// Split template page by slot marks `/*{slot}*/`
 ///
 /// # Example
@@ -128,6 +173,7 @@ pub const fn unwrap_const<T: Copy>(i: Option<T>) -> T {
 /// // 2 slots split page into 3 parts
 /// const PAGE: [&str; 3] = include_page!("page.html");
 /// ```
+#[macro_export]
 macro_rules! include_page {
     ($file:expr) => {{
         include_page!(:include_str!($file))
@@ -154,10 +200,10 @@ fn test_include_page() {
             <p>Hi, /*{slot}*/</p>
         </div>
     ";
-    // const_str;
     const PAGE: [&str; 3] = include_page!(:RAW);
     assert_eq!(PAGE, ["<div>\n", "\n<p>Hi, ", "</p>\n</div>\n"]);
 }
+
 /*
 pub const fn slot<const N: usize>(raw: &str) -> [&str; N] {
     let mark = b"/*{slot}*/

@@ -10,8 +10,6 @@ All in one solution for my server.
 
 - `utils::slot`: implement the const fn version of KMP, remove `const-str`.
 
-- `units::fetch_text`: url escape.
-
 ## Build with MUSL
 
 Use [messense/cargo-zigbuild](https://github.com/messense/cargo-zigbuild) please.
