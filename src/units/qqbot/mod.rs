@@ -20,9 +20,9 @@ async fn gen_reply(msg: Vec<&str>) -> Result<String> {
         ]))
     });
     Ok(match msg[..] {
-        ["kk单身多久了"] => format!("kk已连续单身 {:.3} 天了", elapse(10485432e5)),
-        // ["开学倒计时"] => format!("距 开学 仅 {:.3} 天", -elapse(16561728e5)),
-        ["高考倒计时"] => format!("距 2023 高考仅 {:.3} 天", -elapse(16860996e5)),
+        ["kk单身多久了"] => format!("kk已连续单身 {:.3} 天了", elapse(10485432e2)),
+        // ["开学倒计时"] => format!("距 开学 仅 {:.3} 天", -elapse(16561728e2)),
+        ["高考倒计时"] => format!("距 2023 高考仅 {:.3} 天", -elapse(16860996e2)),
         ["驶向深蓝"] => {
             let url = "https://api.lovelive.tools/api/SweetNothings?genderType=M";
             fetch_text(url).await?

@@ -123,16 +123,15 @@ pub async fn fetch_json(uri: &str, pointer: &str) -> Result<String> {
     Ok(v.trim_matches('"').to_string())
 }
 
-/// (epoch millis) -> (days)
-pub fn elapse(time: f64) -> f64 {
-    // javascript: new Date("2001.01.01 06:00").getTime()
-    let epoch = SystemTime::UNIX_EPOCH;
-    let now = SystemTime::now().duration_since(epoch).unwrap().as_millis() as f64;
-    (now - time) / 864e5 // unit: days
+/// (stamp secs) -> (days)
+pub fn elapse(stamp: f64) -> f64 {
+    // javascript: new Date("2001.01.01 06:00").getTime()/1e3
+    let now = SystemTime::UNIX_EPOCH.elapsed().unwrap().as_secs_f64();
+    (now - stamp) / 864e2 // unit: days
 }
 
 #[macro_export]
-/// Care about the Result
+/// Care about the `Result`
 macro_rules! care {
     ($result:expr) => {{
         let result = $result;
@@ -190,6 +189,11 @@ macro_rules! include_page {
         // const __0: &str = const_str::replace!(__1, "\n ", "\n");
         const_str::split!(__8, "/*{slot}*/")
     }};
+}
+
+const fn proc_page(raw: &str) -> &str {
+    let n = 8;
+    ""
 }
 
 #[test]
