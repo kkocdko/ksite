@@ -24,7 +24,6 @@ qqbot = []
 anyhow = { version = "1", features = ["backtrace"] }
 askama_escape = "0.10"
 axum = { version = "0.5", features = ["ws"] }
-const-str = "0.4.3"
 futures-util = "0.3"
 hyper = { version = "0.14", features = ["http2"] }
 hyper-rustls = { version = "0.23", default-features = false, features = ["http1"] }

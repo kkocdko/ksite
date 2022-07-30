@@ -1,4 +1,3 @@
-use crate::include_page;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::Path;
 use axum::response::Html;
@@ -67,7 +66,7 @@ pub fn service() -> Router {
     Router::new()
         .route(
             "/chat", // https://127.0.0.1:9304/chat#123
-            MethodRouter::new().get(|| async { Html(include_page!("page.html")[0]) }),
+            MethodRouter::new().get(|| async { Html(include_str!("page.html")) }),
         )
         .route(
             "/chat/ws/:room",

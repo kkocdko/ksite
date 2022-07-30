@@ -148,90 +148,135 @@ macro_rules! care {
     }};
 }
 
-/*
-// #[rustc_const_unstable(feature = "const_option", issue = "67441")]
-pub const fn expect_const<T: Copy>(i: Option<T>, tips: &str) -> T {
-    match i {
-        Some(v) => v,
-        None => panic!("{}", tips),
-    }
+// #[test]
+// fn test_include_page() {
+//     const RAW: &str = "\
+//         <div>
+//             /*{slot}*/
+//             <p>Hi, /*{slot}*/</p>
+//         </div>
+//     ";
+//     const PAGE: [&str; 3] = include_page!(:RAW);
+//     assert_eq!(PAGE, ["<div>\n", "\n<p>Hi, ", "</p>\n</div>\n"]);
+// }
+
+#[test]
+fn test_slot() {
+    const RAW: &str = "<h1>/*{slot}*/</h1><p>/*{slot}*/</p>";
+    // 2 slots split page into 3 parts
+    const PAGE: [&str; 3] = slot(RAW);
+    assert_eq!(PAGE, ["<h1>", "</h1><p>", "</p>"]);
 }
 
-pub const fn unwrap_const<T: Copy>(i: Option<T>) -> T {
-    expect_const(i, "Option is None")
-}
-*/
-
-/// Split template page by slot marks `/*{slot}*/`
+/// Split template page by slot marks `/*{slot}*/`.
 ///
 /// # Example
 ///
 /// ```
-/// // ./page.html:
-/// "<h1>/*{slot}*/</h1><p>/*{slot}*/</p>";
+/// const RAW: &str = "<h1>/*{slot}*/</h1><p>/*{slot}*/</p>";
 /// // 2 slots split page into 3 parts
-/// const PAGE: [&str; 3] = include_page!("page.html");
+/// const PAGE: [&str; 3] = slot(RAW);
+/// assert_eq!(PAGE, ["<h1>", "</h1><p>", "</p>"]);
 /// ```
-#[macro_export]
-macro_rules! include_page {
-    ($file:expr) => {{
-        include_page!(:include_str!($file))
-    }};
-    (:$raw:expr) => {{
-        const __8: &str = $raw;
-        // const __7: &str = const_str::replace!(__8, "\n        ", "\n");
-        // const __6: &str = const_str::replace!(__7, "\n       ", "\n");
-        // const __5: &str = const_str::replace!(__6, "\n      ", "\n");
-        // const __4: &str = const_str::replace!(__5, "\n     ", "\n");
-        // const __3: &str = const_str::replace!(__4, "\n    ", "\n");
-        // const __2: &str = const_str::replace!(__3, "\n   ", "\n");
-        // const __1: &str = const_str::replace!(__2, "\n  ", "\n");
-        // const __0: &str = const_str::replace!(__1, "\n ", "\n");
-        const_str::split!(__8, "/*{slot}*/")
-    }};
-}
-
-const fn proc_page(raw: &str) -> &str {
-    let n = 8;
-    ""
-}
-
-#[test]
-fn test_include_page() {
-    const RAW: &str = "\
-        <div>
-            /*{slot}*/
-            <p>Hi, /*{slot}*/</p>
-        </div>
-    ";
-    const PAGE: [&str; 3] = include_page!(:RAW);
-    assert_eq!(PAGE, ["<div>\n", "\n<p>Hi, ", "</p>\n</div>\n"]);
-}
-
-/*
 pub const fn slot<const N: usize>(raw: &str) -> [&str; N] {
-    let mark = b"/*{slot}*/
-";
-    // String::from_utf8_unchecked(bytes)
-    // const_str::replace!()
-    // const fn slot_once(raw: &str) -> (&str, &str) {
-//     let mark = " /*{slot}*/
-";
-    //     let index = find(raw, mark, 0);
-    //     let index = expect_const(index, "slot mark not found");
-    //     let part_0 = split_at(raw, index).0;
-    //     let part_1 = split_at(raw, index + mark.len()).1;
-    //     (part_0, part_1)
-    // }
-    let mut p = raw;
+    const MARK: [u8; 10] = *b"/*{slot}*/";
+    let raw = raw.as_bytes();
+    let idxs: [usize; N] = kmp(raw, MARK);
+    // let idxs = unwrap_o(idxs.as_slice().split_last()).1; // real len is n-1;
 
-    unsafe { std::str::from_utf8_unchecked(&[1, 2]) };
+    let mut ret_b: [&[u8]; N] = [b""; N];
+    let mut i = 0;
+    while i < N {
+        let (begin, end) = if i == 0 {
+            (0, idxs[i])
+        } else if i != N - 1 {
+            (idxs[i - 1] + MARK.len(), idxs[i])
+        } else {
+            (idxs[i - 1] + MARK.len(), raw.len())
+        };
+        ret_b[i] = slice_cut(raw, begin, end);
+        i += 1;
+    }
+
     let mut ret = [""; N];
-    // #![feature(const_for)]
-    // for_range! {i in 0..N - 2 =>
-    //     (ret[i], p) = slot_once(p);
-    // }
-    // (ret[N - 2], ret[N - 1]) = slot_once(p);
+    let mut i = 0;
+    while i < N {
+        ret[i] = unsafe {
+            // this's safe certainly, we don't touch any part of str, and the
+            // split edge is `MARK` which only includes ASCII chars
+            core::str::from_utf8_unchecked(ret_b[i])
+        };
+        i += 1;
+    }
     ret
 }
-*/
+
+const fn slice_cut(mut r: &[u8], begin: usize, end: usize) -> &[u8] {
+    // will be stabilized on 1.64
+    // https://github.com/rust-lang/rust/pull/97522
+    // #![feature(const_slice_from_raw_parts)]
+    // unsafe { std::slice::from_raw_parts(r.as_ptr().add(begin), end - begin) }
+
+    const fn unwrap_o<T: Copy>(o: Option<T>) -> T {
+        match o {
+            Some(v) => v,
+            None => panic!("called `unwrap_o()` on a `None` value"),
+        }
+    }
+
+    let mut i = r.len();
+    while i > end {
+        r = unwrap_o(r.split_last()).1;
+        i -= 1;
+    }
+
+    let mut i = 0;
+    while i < begin {
+        r = unwrap_o(r.split_first()).1;
+        i += 1;
+    }
+
+    r
+}
+
+const fn kmp<const A: usize, const B: usize>(s: &[u8], p: [u8; A]) -> [usize; B] {
+    let mut next = [0; A];
+    let mut i = 1;
+    let mut j = 0;
+    while i < A {
+        while j != 0 && p[i] != p[j] {
+            j = next[j - 1];
+        }
+        if p[i] == p[j] {
+            j += 1;
+        }
+        next[i] = j;
+        i += 1;
+    }
+
+    let mut ret = [0; B];
+    let mut i = 0;
+    let mut j = 0;
+    let mut k = 0;
+    while i < s.len() {
+        while j != 0 && s[i] != p[j] {
+            j = next[j - 1];
+        }
+        if s[i] == p[j] {
+            j += 1;
+        }
+        if j == A {
+            ret[k] = i - A + 1;
+            k += 1;
+            j = next[j - 1];
+        }
+        i += 1;
+    }
+
+    // TODO: add err info here
+    // if k != B {
+    //     panic!();
+    // }
+
+    ret
+}

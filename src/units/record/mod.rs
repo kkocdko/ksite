@@ -1,4 +1,3 @@
-use crate::include_page;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::Path;
 use axum::response::Html;
@@ -16,7 +15,7 @@ pub fn service() -> Router {
     Router::new()
         .route(
             "/record",
-            MethodRouter::new().get(|| async { Html(include_page!("page.html")[0]) }),
+            MethodRouter::new().get(|| async { Html(include_str!("page.html")) }),
         )
         .route(
             "/record/ws/:id",

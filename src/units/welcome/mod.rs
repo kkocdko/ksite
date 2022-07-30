@@ -1,13 +1,12 @@
-use crate::include_page;
+use crate::utils::slot;
 use axum::response::{Html, IntoResponse};
 use axum::routing::MethodRouter;
 use axum::Router;
 
 async fn get_handler() -> impl IntoResponse {
-    const PAGE: [&str; 2] = include_page!("page.html");
+    const PAGE: [&str; 2] = slot(include_str!("page.html"));
     const INFO: &str = concat!(env!("CARGO_PKG_NAME"), " v", env!("CARGO_PKG_VERSION"));
-    const BODY: &str = const_str::concat!(PAGE[0], INFO, PAGE[1]);
-    Html(BODY)
+    Html([PAGE[0], INFO, PAGE[1]].join(""))
 }
 
 pub fn service() -> Router {
