@@ -1,6 +1,6 @@
 name: CI
 
-on: [push]
+on: [push, pull_request]
 
 jobs:
   CI:
@@ -8,19 +8,11 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Install Rust Nightly
+      - name: Install Rust Toolchain
         uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
           override: true
 
       - name: Cargo Check
-        run: cargo +nightly check
-
-      # - name: Build
-      #   run: cargo +nightly build --release
-
-      # - name: Upload Artifacts
-      #   uses: actions/upload-artifact@v2
-      #   with:
-      #     path: target/release/ksite
+        run: cargo +nightly check --profile=ci

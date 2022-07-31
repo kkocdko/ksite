@@ -184,7 +184,7 @@ pub const fn slot<const N: usize>(raw: &str) -> [&str; N] {
     let idxs: [usize; N] = kmp(raw, MARK);
     // let idxs = unwrap_o(idxs.as_slice().split_last()).1; // real len is n-1;
 
-    let mut ret_b: [&[u8]; N] = [b""; N];
+    let mut ret_b = [b"".as_slice(); N];
     let mut i = 0;
     while i < N {
         let (begin, end) = if i == 0 {
@@ -254,7 +254,7 @@ const fn kmp<const A: usize, const B: usize>(s: &[u8], p: [u8; A]) -> [usize; B]
         i += 1;
     }
 
-    let mut ret = [0; B];
+    let mut ret = [usize::MAX; B];
     let mut i = 0;
     let mut j = 0;
     let mut k = 0;
