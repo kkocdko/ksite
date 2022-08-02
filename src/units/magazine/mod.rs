@@ -3,9 +3,10 @@ use crate::ticker::Ticker;
 use crate::utils::{fetch_text, slot, OptionResult};
 use anyhow::Result;
 use axum::response::Html;
-use axum::routing::MethodRouter;
-use axum::Router;
+use axum::routing::{MethodRouter, Router};
+use hyper::header::{HeaderName, CACHE_CONTROL, CONTENT_ENCODING, EXPIRES, REFRESH};
 use once_cell::sync::Lazy;
+use std::time::{Duration, SystemTime};
 use tokio::sync::{Mutex, RwLock};
 
 fn generate<'a>(mut i: &'a str, o: &mut Vec<&'a str>, mut limit: usize) -> Result<()> {
@@ -63,14 +64,14 @@ fn generate<'a>(mut i: &'a str, o: &mut Vec<&'a str>, mut limit: usize) -> Resul
     Ok(())
 }
 
-type Res = ([(&'static str, &'static str); 2], Html<Vec<u8>>);
+type Res = ([(HeaderName, String); 2], Html<Vec<u8>>);
 
 const PAGE: [&str; 2] = slot(include_str!("page.html"));
 
 static CACHE: Lazy<RwLock<Res>> = Lazy::new(|| {
     let body = format!("{}<h2>Magazine is generating ...</h2>{}", PAGE[0], PAGE[1]);
     RwLock::new((
-        [("cache-control", "no-cache"), ("refresh", "2")],
+        [(CACHE_CONTROL, "no-store".into()), (REFRESH, "2".into())],
         Html(body.into_bytes()),
     ))
 });
@@ -92,10 +93,11 @@ async fn refresh() -> Result<()> {
     ];
     o.push(PAGE[1]);
     let o = miniz_oxide::deflate::compress_to_vec(o.join("").as_bytes(), 10);
+    let expires = SystemTime::now() + Duration::from_secs(3600);
     *CACHE.write().await = (
         [
-            ("cache-control", "max-age=3600"),
-            ("content-encoding", "deflate"),
+            (EXPIRES, httpdate::fmt_http_date(expires)),
+            (CONTENT_ENCODING, "deflate".into()),
         ],
         Html(o),
     );

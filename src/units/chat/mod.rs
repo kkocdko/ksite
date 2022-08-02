@@ -66,7 +66,12 @@ pub fn service() -> Router {
     Router::new()
         .route(
             "/chat", // https://127.0.0.1:9304/chat#123
-            MethodRouter::new().get(|| async { Html(include_str!("page.html")) }),
+            MethodRouter::new().get(|| async {
+                (
+                    [("cache-control", "max-age=300")],
+                    Html(include_str!("page.html")),
+                )
+            }),
         )
         .route(
             "/chat/ws/:room",
