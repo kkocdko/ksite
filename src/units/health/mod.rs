@@ -7,7 +7,6 @@ use axum::response::{Html, IntoResponse, Redirect};
 use axum::routing::{MethodRouter, Router};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
-use tokio::sync::Mutex;
 
 fn db_init() {
     db!("CREATE TABLE health_list (id INTEGER, token TEXT, body TEXT)").ok();
@@ -94,10 +93,9 @@ async fn check_in() -> Result<()> {
     Ok(())
 }
 
-static TICKER: Lazy<Mutex<Ticker>> =
-    Lazy::new(|| Mutex::new(Ticker::new_p8(&[(3, 10, 0), (5, 10, 0)])));
+static TICKER: Lazy<Ticker> = Lazy::new(|| Ticker::new_p8(&[(3, 10, 0), (5, 10, 0)]));
 pub async fn tick() {
-    if !TICKER.lock().await.tick() {
+    if !TICKER.tick() {
         return;
     }
 

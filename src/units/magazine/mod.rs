@@ -7,7 +7,7 @@ use axum::response::Html;
 use axum::routing::{MethodRouter, Router};
 use once_cell::sync::Lazy;
 use std::time::{Duration, SystemTime};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::RwLock;
 
 fn generate<'a>(mut i: &'a str, o: &mut Vec<&'a str>, mut limit: usize) -> Result<()> {
     while let Some(mut p) = i.split_once("<item>") {
@@ -112,9 +112,9 @@ pub fn service() -> Router {
     )
 }
 
-static TICKER: Lazy<Mutex<Ticker>> = Lazy::new(|| Mutex::new(Ticker::new_p8(&[(-1, 15, 0)])));
+static TICKER: Lazy<Ticker> = Lazy::new(|| Ticker::new_p8(&[(-1, 15, 0)]));
 pub async fn tick() {
-    if !TICKER.lock().await.tick() {
+    if !TICKER.tick() {
         return;
     }
 

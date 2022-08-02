@@ -155,10 +155,9 @@ impl UpNotify {
     }
 }
 
-static TICKER: Lazy<Mutex<Ticker>> =
-    Lazy::new(|| Mutex::new(Ticker::new_p8(&[(-1, 20, 0), (-1, 50, 0)])));
+static TICKER: Lazy<Ticker> = Lazy::new(|| Ticker::new_p8(&[(-1, 20, 0), (-1, 50, 0)]));
 pub async fn tick() {
-    if !TICKER.lock().await.tick() {
+    if !TICKER.tick() {
         return;
     }
 

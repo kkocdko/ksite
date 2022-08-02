@@ -1,13 +1,8 @@
 use std::iter::Iterator;
-use std::time::SystemTime;
+use std::sync::atomic::{AtomicI64, Ordering};
+use std::time::UNIX_EPOCH;
 
 const ANY: i64 = 99; // must >= 60, terser logic?
-
-/// return duration from unix epoch as seconds
-fn now_stamp() -> i64 {
-    let epoch = SystemTime::UNIX_EPOCH;
-    SystemTime::now().duration_since(epoch).unwrap().as_secs() as _
-}
 
 /// convert time stamp to (hours, minutes, seconds)
 fn hms(v: i64) -> (i64, i64, i64) {
@@ -55,30 +50,32 @@ fn gen_next(mut now: i64, cfg: (i64, i64, i64)) -> i64 {
 /// # Example
 ///
 /// ```
-/// // At any minute's 12s or 24s, `ticker.tick()` will be true once.
-/// let mut ticker = Ticker::new(&[(-1, -1, 12), (-1, -1, 24)], 0);
+/// let mut ticker = Ticker::new(&[(-1, 12, -1), (3, -1, 24)], 0);
 /// loop {
+///     // will be true if reached `XX:12:XX` or `03:XX:24`
 ///     dbg!(ticker.tick());
 ///     std::thread::sleep(std::time::Duration::from_millis(200));
 /// }
 /// ```
 pub struct Ticker {
-    next: i64,
+    next: AtomicI64,
     cfgs: Vec<(i64, i64, i64)>,
 }
 
 impl Ticker {
-    pub fn tick(&mut self) -> bool {
-        let now = now_stamp();
-        if now >= self.next {
+    /// Returns `true` if the next instant has been reached.
+    pub fn tick(&self) -> bool {
+        let now = UNIX_EPOCH.elapsed().unwrap().as_secs() as _;
+        if now >= self.next.load(Ordering::SeqCst) {
             let nexts = self.cfgs.iter().map(|&cfg| gen_next(now, cfg));
-            self.next = nexts.min().unwrap();
+            self.next.store(nexts.min().unwrap(), Ordering::SeqCst);
             true
         } else {
             false
         }
     }
 
+    /// Create `Ticker`.
     pub fn new(patterns: &[(i64, i64, i64)], zone: i64) -> Self {
         let mut cfgs = Vec::new();
         for &(h, m, s) in patterns {
@@ -89,15 +86,16 @@ impl Ticker {
             let s = if s == -1 { ANY } else { s };
             cfgs.push((h, m, s));
         }
-        let mut ret = Ticker { next: 0, cfgs };
+        let ret = Ticker {
+            next: AtomicI64::new(0),
+            cfgs,
+        };
         ret.tick();
         ret
     }
 
-    /// create with UTC+8 timezone
+    /// Create with UTC+8 timezone.
     pub fn new_p8(patterns: &[(i64, i64, i64)]) -> Self {
         Self::new(patterns, 8)
     }
 }
-
-// TODO: add tests here?
