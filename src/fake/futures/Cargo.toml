@@ -1,0 +1,12 @@
+# Oh, it's crazy!
+
+[package]
+name = "futures"
+version = "0.3.901"
+edition = "2021"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+futures-util = "0.3"
