@@ -1,8 +1,8 @@
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::Path;
+use axum::http::header::CACHE_CONTROL;
 use axum::response::Html;
-use axum::routing::MethodRouter;
-use axum::Router;
+use axum::routing::{MethodRouter, Router};
 use futures_util::{SinkExt, StreamExt};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
@@ -68,7 +68,7 @@ pub fn service() -> Router {
             "/chat", // https://127.0.0.1:9304/chat#123
             MethodRouter::new().get(|| async {
                 (
-                    [("cache-control", "max-age=300")],
+                    [(CACHE_CONTROL, "max-age=300")],
                     Html(include_str!("page.html")),
                 )
             }),

@@ -1,14 +1,12 @@
 use crate::db;
 use axum::extract::{BodyStream, RawQuery};
 use axum::response::Html;
-use axum::routing::MethodRouter;
-use axum::Router;
+use axum::routing::{MethodRouter, Router};
 use futures_util::StreamExt;
 
 fn db_init() {
     db!("CREATE TABLE admin (k TEXT UNIQUE, v BLOB)").ok();
 }
-
 fn db_set(k: &str, v: Vec<u8>) {
     db!("INSERT OR REPLACE INTO admin VALUES (?1, ?2)", [k, v]).unwrap();
 }

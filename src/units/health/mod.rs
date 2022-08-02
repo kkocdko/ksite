@@ -5,7 +5,6 @@ use anyhow::Result;
 use axum::extract::Form;
 use axum::response::{Html, IntoResponse, Redirect};
 use axum::routing::{MethodRouter, Router};
-use hyper::{Body, Request};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use tokio::sync::Mutex;
@@ -85,10 +84,10 @@ pub fn service() -> Router {
 async fn check_in() -> Result<()> {
     let list = db_list_get();
     for member in list {
-        let request =
-            Request::post("http://dc.just.edu.cn/dfi/formData/saveFormSubmitDataEncryption")
-                .header("authentication", member.token)
-                .body(Body::from(member.body))?;
+        let uri = "http://dc.just.edu.cn/dfi/formData/saveFormSubmitDataEncryption";
+        let request = hyper::Request::post(uri)
+            .header("authentication", member.token)
+            .body(member.body.into())?;
         let ret = String::from_utf8(fetch(request).await?)?;
         db_log_insert(member.id, &ret);
     }
