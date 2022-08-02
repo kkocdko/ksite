@@ -8,11 +8,11 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Install Rust Toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly
-          override: true
+      - name: Rustup Show
+        run: rustup show
+
+      - name: Cache
+        uses: Swatinem/rust-cache@v2
 
       - name: Cargo Check
-        run: cargo +nightly check --profile=ci
+        run: RUSTC_BOOTSTRAP=1 cargo check --profile=ci

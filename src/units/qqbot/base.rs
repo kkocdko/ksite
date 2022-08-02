@@ -5,7 +5,7 @@ use anyhow::Result;
 use axum::extract::Form;
 use axum::response::{Html, Redirect};
 use once_cell::sync::Lazy;
-use ricq::client::{Connector, DefaultConnector};
+use ricq::client::{Connector as _, DefaultConnector};
 use ricq::handler::QEvent;
 use ricq::msg::elem::RQElem;
 use ricq::msg::MessageChain;
