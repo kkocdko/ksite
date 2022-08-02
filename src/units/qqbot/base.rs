@@ -5,13 +5,11 @@ use anyhow::Result;
 use axum::extract::Form;
 use axum::response::{Html, Redirect};
 use once_cell::sync::Lazy;
-use ricq::device::Device;
-use ricq::ext::reconnect::{Connector, DefaultConnector};
+use ricq::client::{Connector, DefaultConnector};
 use ricq::handler::QEvent;
 use ricq::msg::elem::RQElem;
 use ricq::msg::MessageChain;
-use ricq::version::{get_version, Protocol};
-use ricq::{Client, LoginResponse, QRCodeImageFetch, QRCodeState};
+use ricq::{Client, Device, LoginResponse, Protocol, QRCodeState};
 use serde::Deserialize;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -100,7 +98,7 @@ static CLIENT: Lazy<Arc<ricq::Client>> = Lazy::new(|| {
         }
     };
     let (tx, rx) = tokio::sync::mpsc::channel(1);
-    let client = Arc::new(Client::new(device, get_version(Protocol::AndroidWatch), tx));
+    let client = Arc::new(Client::new(device, Protocol::AndroidWatch, tx));
     tokio::spawn(async {
         tokio::join!(
             async {
@@ -133,18 +131,16 @@ async fn launch(mut rx: Receiver<QEvent>) -> Result<()> {
         let mut qr_resp = CLIENT.fetch_qrcode().await?;
         let mut img_sig = Vec::new();
         loop {
-            async fn load_qr(fetching: QRCodeImageFetch, img_sig: &mut Vec<u8>) {
-                push_log!("qrcode fetched");
-                *QR.lock().unwrap() = fetching.image_data.to_vec();
-                *img_sig = fetching.sig.to_vec();
-            }
             match qr_resp {
-                QRCodeState::ImageFetch(inner) => load_qr(inner, &mut img_sig).await,
+                QRCodeState::ImageFetch(inner) => {
+                    push_log!("qrcode fetched");
+                    *QR.lock().unwrap() = inner.image_data.to_vec();
+                    img_sig = inner.sig.to_vec();
+                }
                 QRCodeState::Timeout => {
                     push_log!("qrcode timeout");
-                    if let QRCodeState::ImageFetch(inner) = CLIENT.fetch_qrcode().await? {
-                        load_qr(inner, &mut img_sig).await;
-                    }
+                    qr_resp = CLIENT.fetch_qrcode().await?;
+                    continue;
                 }
                 QRCodeState::Confirmed(inner) => {
                     push_log!("qrcode confirmed");
@@ -163,8 +159,9 @@ async fn launch(mut rx: Receiver<QEvent>) -> Result<()> {
                 QRCodeState::WaitingForConfirm => push_log!("qrcode waiting for confirm"),
                 QRCodeState::Canceled => push_log!("qrcode canceled"),
             }
-            tokio::time::sleep(Duration::from_secs(5)).await;
+            tokio::time::sleep(Duration::from_secs(1)).await;
             qr_resp = CLIENT.query_qrcode_result(&img_sig).await?;
+            tokio::time::sleep(Duration::from_secs(2)).await;
         }
     }
     // instead of `ricq::ext::common::after_login`
