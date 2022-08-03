@@ -59,6 +59,12 @@ impl Message {
                     s.next().unwrap(); // current token
                     break;
                 }
+                (TokenKind::Word, b"oneof") => {
+                    todo!("oneof is not yet implemented");
+                    // s.next().unwrap(); // current token
+                    // message.name = s.next().unwrap().1; // current token
+                    // s.next().unwrap(); // '{'
+                }
                 _ => {
                     message.fields.push(Field::new(s));
                 }
@@ -114,6 +120,8 @@ impl Field {
         field
     }
 }
+
+struct Oneof {}
 
 #[derive(PartialEq, Debug)]
 enum TokenKind {
