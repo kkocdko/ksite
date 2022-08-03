@@ -135,6 +135,28 @@ fn next_token(s: &mut Peekable<std::vec::IntoIter<u8>>) -> (TokenKind, Vec<u8>) 
     let mut kind = TokenKind::End;
     while let Some(&v) = s.peek() {
         match doing {
+            false if v == b'/' => {
+                // comments
+                assert!(s.next().unwrap() == b'/');
+                match s.next().unwrap() {
+                    b'/' => {
+                        while let Some(v) = s.next() {
+                            if v == b'\n' {
+                                break;
+                            }
+                        }
+                    }
+                    b'*' => {
+                        while let Some(v) = s.next() {
+                            if v == b'*' {
+                                assert!(s.next().unwrap() == b'/');
+                                break;
+                            }
+                        }
+                    }
+                    _ => unreachable!(),
+                }
+            }
             false if v.is_ascii_whitespace() => {
                 s.next();
             }
@@ -306,7 +328,7 @@ fn translate(package: Package) -> Vec<u8> {
 }
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub fn compile_protos(
     protos: &[impl AsRef<Path>],
@@ -314,6 +336,7 @@ pub fn compile_protos(
 ) -> std::io::Result<()> {
     let mut packages = HashMap::<Vec<u8>, Package>::new();
     for path in protos {
+        dbg!(path.as_ref());
         let mut src = std::fs::read(path)?.into_iter().peekable();
         let mut tokens = Vec::new();
         loop {
