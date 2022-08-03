@@ -7,7 +7,7 @@ type TokenStream = Peekable<std::vec::IntoIter<(TokenKind, Vec<u8>)>>;
 struct Package {
     name: Vec<u8>,
     syntax: Vec<u8>,
-    messages: Vec<Message>,
+    entries: Vec<Entry>,
 }
 
 impl Package {
@@ -29,8 +29,11 @@ impl Package {
                     package.name = s.next().unwrap().1;
                     s.next().unwrap(); // semi
                 }
+                (TokenKind::Word, b"enum") => {
+                    package.entries.push(Entry::Enum(Enum::new(s)));
+                }
                 (TokenKind::Word, b"message") => {
-                    package.messages.push(Message::new(s));
+                    package.entries.push(Entry::Message(Message::new(s)));
                 }
                 _ => unreachable!(),
             };
@@ -42,31 +45,37 @@ impl Package {
 #[derive(Default, Debug)]
 struct Message {
     name: Vec<u8>,
-    fields: Vec<Field>,
+    entries: Vec<Entry>,
 }
 
 impl Message {
     fn new(s: &mut TokenStream) -> Self {
         let mut message = Self::default();
+
+        assert!(s.next().unwrap().1 == b"message"); // current token
+        message.name = s.next().unwrap().1; // current token
+        s.next().unwrap(); // '{'
+
         while let Some(token) = s.peek() {
             match (&token.0, &token.1[..]) {
-                (TokenKind::Word, b"message") => {
-                    s.next().unwrap(); // current token
-                    message.name = s.next().unwrap().1; // current token
-                    s.next().unwrap(); // '{'
-                }
                 (TokenKind::Symbol, b"}") => {
                     s.next().unwrap(); // current token
+                    ignore_semi(s);
                     break;
                 }
+                (TokenKind::Word, b"message") => {
+                    message.entries.push(Entry::Message(Message::new(s)));
+                }
                 (TokenKind::Word, b"oneof") => {
-                    todo!("oneof is not yet implemented");
-                    // s.next().unwrap(); // current token
-                    // message.name = s.next().unwrap().1; // current token
-                    // s.next().unwrap(); // '{'
+                    message.entries.push(Entry::Oneof(Oneof::new(s)));
+                }
+                (TokenKind::Word, b"enum") => {
+                    message.entries.push(Entry::Enum(Enum::new(s)));
                 }
                 _ => {
-                    message.fields.push(Field::new(s));
+                    message
+                        .entries
+                        .push(Entry::MessageField(MessageField::new(s)));
                 }
             };
         }
@@ -74,8 +83,16 @@ impl Message {
     }
 }
 
+#[derive(Debug)]
+enum Entry {
+    Message(Message),
+    MessageField(MessageField),
+    Oneof(Oneof),
+    Enum(Enum),
+}
+
 #[derive(Default, Debug)]
-struct Field {
+struct MessageField {
     name: Vec<u8>,
     data_type: Vec<u8>,
     tag: Vec<u8>,
@@ -83,7 +100,7 @@ struct Field {
     repeated: bool,
 }
 
-impl Field {
+impl MessageField {
     fn new(s: &mut TokenStream) -> Self {
         let mut field = Self::default();
         while let Some(token) = s.peek() {
@@ -104,9 +121,6 @@ impl Field {
                 }
                 (TokenKind::Word, _) if field.name.is_empty() => {
                     field.name = s.next().unwrap().1;
-                    if field.name.starts_with(b"opt") {
-                        field.optional = true;
-                    }
                 }
                 (TokenKind::Symbol, b"=") => {
                     s.next().unwrap(); // current token
@@ -114,14 +128,108 @@ impl Field {
                     s.next().unwrap(); // semi
                     break;
                 }
-                _ => unreachable!(),
+                v => {
+                    dbg!(v);
+                    dbg!(field.name);
+                    unreachable!();
+                }
             };
         }
         field
     }
 }
 
-struct Oneof {}
+#[derive(Default, Debug)]
+struct Enum {
+    name: Vec<u8>,
+    fields: Vec<EnumField>,
+}
+
+#[derive(Default, Debug)]
+struct EnumField {
+    name: Vec<u8>,
+    tag: Vec<u8>,
+}
+
+impl Enum {
+    fn new(s: &mut TokenStream) -> Self {
+        let mut ret = Self::default();
+        assert!(s.next().unwrap().1 == b"enum");
+        ret.name = s.next().unwrap().1;
+        s.next().unwrap(); // '{'
+        while let Some(token) = s.peek() {
+            match (&token.0, &token.1[..]) {
+                (TokenKind::Symbol, b"}") => {
+                    s.next().unwrap();
+                    ignore_semi(s);
+                    break;
+                }
+                (TokenKind::Word, _) => {
+                    let name = s.next().unwrap().1;
+                    s.next().unwrap(); // '='
+                    let tag = s.next().unwrap().1;
+                    s.next().unwrap(); // ';'
+                    ret.fields.push(EnumField { name, tag });
+                }
+                _ => unreachable!(),
+            };
+        }
+        ret
+    }
+}
+
+#[derive(Default, Debug)]
+struct Oneof {
+    name: Vec<u8>,
+    fields: Vec<OneofField>,
+}
+
+#[derive(Default, Debug)]
+struct OneofField {
+    name: Vec<u8>,
+    data_type: Vec<u8>,
+    tag: Vec<u8>,
+}
+
+impl Oneof {
+    fn new(s: &mut TokenStream) -> Self {
+        let mut ret = Self::default();
+        assert!(s.next().unwrap().1 == b"oneof");
+        s.next().unwrap();
+        ret.name = s.next().unwrap().1;
+        s.next().unwrap(); // '{'
+        while let Some(token) = s.peek() {
+            match (&token.0, &token.1[..]) {
+                (TokenKind::Symbol, b"}") => {
+                    s.next().unwrap();
+                    ignore_semi(s);
+                    break;
+                }
+                _ => {
+                    let data_type = s.next().unwrap().1;
+                    let name = s.next().unwrap().1;
+                    s.next().unwrap(); // '='
+                    let tag = s.next().unwrap().1;
+                    s.next().unwrap(); // ';'
+                    ret.fields.push(OneofField {
+                        name,
+                        data_type,
+                        tag,
+                    });
+                }
+            };
+        }
+        ret
+    }
+}
+
+fn ignore_semi(s: &mut TokenStream) {
+    if let Some((TokenKind::Symbol, b)) = s.peek() {
+        if b == b";" {
+            s.next().unwrap();
+        }
+    }
+}
 
 #[derive(PartialEq, Debug)]
 enum TokenKind {
@@ -258,85 +366,106 @@ fn is_build_in_type(i: &Vec<u8>) -> bool {
 
 fn translate(package: Package) -> Vec<u8> {
     let mut out = Vec::<u8>::new();
-    for message in package.messages {
+    for entry in package.entries {
+        /*
         out.extend(b"#[derive(Clone, PartialEq, ::prost::Message)]\n");
         out.extend(b"pub struct ");
         out.extend(to_big_camel(&message.name));
         out.extend(b" {\n");
-        for field in message.fields {
-            // attr macro
-            out.extend(b"    #[prost(");
-            if is_build_in_type(&field.data_type) {
-                if field.data_type == b"bytes" {
-                    out.extend(b"bytes=\"vec\", ");
-                } else {
-                    out.extend(&field.data_type);
-                    out.extend(b", ");
-                }
-            } else {
-                out.extend(b"message, ");
-            }
-            if field.optional {
-                out.extend(b"optional, ");
-            }
-            if field.repeated {
-                out.extend(b"repeated, ");
-                if is_build_in_type(&field.data_type) {
-                    out.extend(b"packed=\"false\", ");
-                }
-            }
-            out.extend(b"tag=\"");
-            out.extend(field.tag);
-            out.extend(b"\", ");
-            if *out.last().unwrap() == b' ' {
-                out.pop();
-                out.pop();
-            }
-            out.extend(b")]\n");
+        for enrty in message.entries {
+            match enrty {
+                Entry::MessageField(field) => {
+                    // attr macro
+                    out.extend(b"    #[prost(");
+                    if is_build_in_type(&field.data_type) {
+                        if field.data_type == b"bytes" {
+                            out.extend(b"bytes=\"vec\", ");
+                        } else {
+                            out.extend(&field.data_type);
+                            out.extend(b", ");
+                        }
+                    } else {
+                        out.extend(b"message, ");
+                    }
+                    if field.optional {
+                        out.extend(b"optional, ");
+                    }
+                    if field.repeated {
+                        out.extend(b"repeated, ");
+                        if is_build_in_type(&field.data_type) {
+                            out.extend(b"packed=\"false\", ");
+                        }
+                    }
+                    out.extend(b"tag=\"");
+                    out.extend(field.tag);
+                    out.extend(b"\", ");
+                    if *out.last().unwrap() == b' ' {
+                        out.pop();
+                        out.pop();
+                    }
+                    out.extend(b")]\n");
 
-            // value
-            out.extend(b"    pub ");
-            out.extend(to_snake(&field.name));
-            out.extend(b": ");
-            let mut depth = 0;
-            if field.optional {
-                out.extend(b"::core::option::Option<");
-                depth += 1;
+                    // value
+                    out.extend(b"    pub ");
+                    out.extend(to_snake(&field.name));
+                    out.extend(b": ");
+                    let mut depth = 0;
+                    if field.optional {
+                        out.extend(b"::core::option::Option<");
+                        depth += 1;
+                    }
+                    if field.repeated {
+                        out.extend(b"::prost::alloc::vec::Vec<");
+                        depth += 1;
+                    }
+                    match &field.data_type[..] {
+                        b"double" => out.extend(b"f64"),
+                        b"float" => out.extend(b"f32"),
+                        b"int32" => out.extend(b"i32"),
+                        b"int64" => out.extend(b"i64"),
+                        b"uint32" => out.extend(b"u32"),
+                        b"uint64" => out.extend(b"u64"),
+                        b"sint32" => out.extend(b"i32"),
+                        b"sint64" => out.extend(b"i64"),
+                        b"fixed32" => out.extend(b"u32"),
+                        b"fixed64" => out.extend(b"u64"),
+                        b"sfixed32" => todo!(),
+                        b"sfixed64" => todo!(),
+                        b"bool" => out.extend(b"bool"),
+                        b"string" => out.extend(b"::prost::alloc::string::String"),
+                        b"bytes" => out.extend(b"::prost::alloc::vec::Vec<u8>"),
+                        v => out.extend(to_big_camel(v)),
+                    }
+                    for _ in 0..depth {
+                        out.extend(b">");
+                    }
+                    out.extend(b",\n");
+                }
+                Entry::Oneof(oneof) => {}
+                Entry::Message(message) => {}
             }
-            if field.repeated {
-                out.extend(b"::prost::alloc::vec::Vec<");
-                depth += 1;
-            }
-            match &field.data_type[..] {
-                b"double" => out.extend(b"f64"),
-                b"float" => out.extend(b"f32"),
-                b"int32" => out.extend(b"i32"),
-                b"int64" => out.extend(b"i64"),
-                b"uint32" => out.extend(b"u32"),
-                b"uint64" => out.extend(b"u64"),
-                b"sint32" => out.extend(b"i32"),
-                b"sint64" => out.extend(b"i64"),
-                b"fixed32" => out.extend(b"u32"),
-                b"fixed64" => out.extend(b"u64"),
-                b"sfixed32" => todo!(),
-                b"sfixed64" => todo!(),
-                b"bool" => out.extend(b"bool"),
-                b"string" => out.extend(b"::prost::alloc::string::String"),
-                b"bytes" => out.extend(b"::prost::alloc::vec::Vec<u8>"),
-                v => out.extend(to_big_camel(v)),
-            }
-            for _ in 0..depth {
-                out.extend(b">");
-            }
-            out.extend(b",\n");
         }
         out.extend(b"}\n");
+        */
     }
     out
 }
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+
+fn read_to_token_stream(path: impl AsRef<Path>) -> TokenStream {
+    let mut src = std::fs::read(path).unwrap().into_iter().peekable();
+    let mut tokens = Vec::new();
+    loop {
+        let token = next_token(&mut src);
+        if token.0 == TokenKind::End {
+            break;
+        }
+        tokens.push(token);
+    }
+    tokens.into_iter().peekable()
+}
 
 pub fn compile_protos(
     protos: &[impl AsRef<Path>],
@@ -345,32 +474,23 @@ pub fn compile_protos(
     let mut packages = HashMap::<Vec<u8>, Package>::new();
     for path in protos {
         dbg!(path.as_ref());
-        let mut src = std::fs::read(path)?.into_iter().peekable();
-        let mut tokens = Vec::new();
-        loop {
-            let token = next_token(&mut src);
-            if token.0 == TokenKind::End {
-                break;
-            }
-            tokens.push(token);
-        }
-        let mut tokens: TokenStream = tokens.into_iter().peekable();
+        let mut tokens = read_to_token_stream(path);
         let mut package = Package::new(&mut tokens);
         if let Some(existed) = packages.get_mut(&package.name) {
-            existed.messages.append(&mut package.messages);
+            existed.entries.append(&mut package.entries);
         } else {
             packages.insert(package.name.clone(), package);
         }
     }
     for (name, package) in packages {
-        std::fs::write(
-            format!(
-                "{}/{}",
-                std::env::var("OUT_DIR").unwrap(),
-                String::from_utf8(name).unwrap()
-            ),
-            translate(package),
-        )?;
+        // std::fs::write(
+        //     format!(
+        //         "{}/{}",
+        //         std::env::var("OUT_DIR").unwrap(),
+        //         String::from_utf8(name).unwrap()
+        //     ),
+        //     translate(package),
+        // )?;
     }
     Ok(())
 }
