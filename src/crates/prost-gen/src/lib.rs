@@ -195,7 +195,6 @@ impl Oneof {
     fn new(s: &mut TokenStream) -> Self {
         let mut ret = Self::default();
         assert!(s.next().unwrap().1 == b"oneof");
-        s.next().unwrap();
         ret.name = s.next().unwrap().1;
         s.next().unwrap(); // '{'
         while let Some(token) = s.peek() {
