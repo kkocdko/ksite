@@ -1,8 +1,15 @@
 // https://developers.google.com/protocol-buffers/docs/proto
+// https://developers.google.com/protocol-buffers/docs/proto3
+/*
+fn to_snake()
+S2CHead => S2cHead
+s2CHead => s2_c_head
+*/
 use std::iter::Peekable;
 
 type TokenStream = Peekable<std::vec::IntoIter<(TokenKind, Vec<u8>)>>;
 
+/// The AST Root
 #[derive(Default, Debug)]
 struct Package {
     name: Vec<u8>,
@@ -42,7 +49,7 @@ impl Package {
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 struct Message {
     name: Vec<u8>,
     entries: Vec<Entry>,
@@ -83,7 +90,7 @@ impl Message {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum Entry {
     Message(Message),
     MessageField(MessageField),
@@ -91,7 +98,7 @@ enum Entry {
     Enum(Enum),
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 struct MessageField {
     name: Vec<u8>,
     data_type: Vec<u8>,
@@ -115,7 +122,7 @@ impl MessageField {
                 }
                 (TokenKind::Word, _) if field.data_type.is_empty() => {
                     field.data_type = s.next().unwrap().1;
-                    if !is_build_in_type(&field.data_type) && !field.repeated {
+                    if to_rust_type(&field.data_type) == b"struct" && !field.repeated {
                         field.optional = true;
                     }
                 }
@@ -139,13 +146,13 @@ impl MessageField {
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 struct Enum {
     name: Vec<u8>,
     fields: Vec<EnumField>,
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 struct EnumField {
     name: Vec<u8>,
     tag: Vec<u8>,
@@ -178,13 +185,13 @@ impl Enum {
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 struct Oneof {
     name: Vec<u8>,
     fields: Vec<OneofField>,
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 struct OneofField {
     name: Vec<u8>,
     data_type: Vec<u8>,
@@ -303,29 +310,77 @@ fn next_token(s: &mut Peekable<std::vec::IntoIter<u8>>) -> (TokenKind, Vec<u8>) 
 }
 
 fn to_big_camel(i: &[u8]) -> Vec<u8> {
-    let mut o = Vec::<u8>::new();
-    let mut next_is_big = true;
-    for &c in i {
-        if c.is_ascii_uppercase() {
-            if let Some(v) = o.last_mut() {
-                *v = v.to_ascii_lowercase();
+    // S2CHead => S2cHead
+    let mut parts = Vec::<Vec<u8>>::new();
+    let mut idx: usize = 0;
+    while let Some(&first) = i.get(idx) {
+        let mut part = vec![first];
+        idx += 1;
+        let first_is_u = first.is_ascii_uppercase();
+        let mut recent_is_u = first_is_u;
+        let mut is_first = true;
+        loop {
+            let next = match i.get(idx) {
+                Some(v) => *v,
+                None => break,
+            };
+            if next == b'_' {
+                idx += 1;
+                break;
+            } else if is_first && !next.is_ascii_uppercase() {
+                part.push(next);
+                idx += 1;
+                recent_is_u = false;
+            } else if !recent_is_u && !next.is_ascii_uppercase() {
+                part.push(next);
+                idx += 1;
+                recent_is_u = false;
+            } else if !recent_is_u && next.is_ascii_uppercase() {
+                break;
+            } else if recent_is_u && next.is_ascii_uppercase() {
+                part.push(next);
+                idx += 1;
+            } else if recent_is_u && !next.is_ascii_uppercase() {
+                idx -= 1;
+                part.pop();
+                break;
+            } else {
+                todo!();
+                break;
             }
-            o.push(c);
-            next_is_big = false;
-        } else if c == b'_' {
-            next_is_big = true;
-        } else if next_is_big {
-            if let Some(v) = o.last_mut() {
-                *v = v.to_ascii_lowercase();
-            }
-            o.push(c.to_ascii_uppercase());
-            next_is_big = false;
-        } else {
-            o.push(c);
+            is_first = false;
+        }
+        parts.push(part);
+    }
+    for part in &mut parts {
+        part[0] = part[0].to_ascii_uppercase();
+        for c in part.iter_mut().skip(1) {
+            *c = c.to_ascii_lowercase();
         }
     }
-    o[0] = o[0].to_ascii_uppercase();
-    o
+    // dbg!(&parts);
+    let o = parts.into_iter().flatten().collect();
+    if is_rust_key_word(&o) {
+        let mut p = b"r#".to_vec();
+        p.extend(o);
+        return p;
+    } else {
+        o
+    }
+}
+
+#[test]
+fn test_to_big_camel() {
+    fn test_once(i: &str, o: &str) {
+        let r = to_big_camel(i.as_bytes());
+        let r = std::str::from_utf8(&r).unwrap();
+        assert_eq!(o, r);
+    }
+    test_once("ABCDE", "Abcde");
+    test_once("ABCde", "AbCde");
+    test_once("ABcde", "ABcde");
+    test_once("AbCDEf", "AbCdEf");
+    test_once("ab_cde", "AbCde");
 }
 
 fn to_snake(i: &[u8]) -> Vec<u8> {
@@ -339,115 +394,214 @@ fn to_snake(i: &[u8]) -> Vec<u8> {
         }
     }
     o[0] = o[0].to_ascii_lowercase();
+    if is_rust_key_word(&o) {
+        let mut p = b"r#".to_vec();
+        p.extend(o);
+        return p;
+    }
     o
 }
 
-fn is_build_in_type(i: &Vec<u8>) -> bool {
+fn to_rust_type(i: &Vec<u8>) -> &'static [u8] {
     match &i[..] {
-        b"double" => true,
-        b"float" => true,
-        b"int32" => true,
-        b"int64" => true,
-        b"uint32" => true,
-        b"uint64" => true,
-        b"sint32" => true,
-        b"sint64" => true,
-        b"fixed32" => true,
-        b"fixed64" => true,
-        b"sfixed32" => true,
-        b"sfixed64" => true,
-        b"bool" => true,
-        b"string" => true,
-        b"bytes" => true,
-        _ => false,
+        b"double" => b"f64",
+        b"float" => b"f32",
+        b"int32" => b"i32",
+        b"int64" => b"i64",
+        b"uint32" => b"u32",
+        b"uint64" => b"u64",
+        b"sint32" => b"i32",
+        b"sint64" => b"i64",
+        b"fixed32" => b"u32",
+        b"fixed64" => b"u64",
+        b"sfixed32" => todo!(),
+        b"sfixed64" => todo!(),
+        b"bool" => b"bool",
+        b"string" => b"::prost::alloc::string::String",
+        b"bytes" => b"::prost::alloc::vec::Vec<u8>",
+        _ => b"struct",
+    }
+}
+
+#[rustfmt::skip]
+fn is_rust_key_word(i: &Vec<u8>) -> bool {
+    1 == match &i[..] {
+        // https://doc.rust-lang.org/std/index.html#keywords
+        b"SelfTy"=>1,b"as"=>1,b"async"=>1,b"await"=>1,b"break"=>1,b"const"=>1,
+        b"continue"=>1,b"crate"=>1,b"dyn"=>1,b"else"=>1,b"enum"=>1,b"extern"=>1,
+        b"false"=>1,b"fn"=>1,b"for"=>1,b"if"=>1,b"impl"=>1,b"in"=>1,b"let"=>1,
+        b"loop"=>1,b"match"=>1,b"mod"=>1,b"move"=>1,b"mut"=>1,b"pub"=>1,b"ref"=>1,
+        b"return"=>1,b"self"=>1,b"static"=>1,b"struct"=>1,b"super"=>1,b"trait"=>1,
+        b"1"=>1,b"type"=>1,b"union"=>1,b"unsafe"=>1,b"use"=>1,b"where"=>1,b"while"=>1,
+        _ => 0,
     }
 }
 
 fn translate(package: Package) -> Vec<u8> {
-    let mut out = Vec::<u8>::new();
-    for entry in package.entries {
-        /*
-        out.extend(b"#[derive(Clone, PartialEq, ::prost::Message)]\n");
-        out.extend(b"pub struct ");
-        out.extend(to_big_camel(&message.name));
-        out.extend(b" {\n");
-        for enrty in message.entries {
-            match enrty {
+    let mut o = Vec::<u8>::new();
+    fn handle_message(message: Message, o: &mut Vec<u8>) {
+        let mut has_nest = false;
+        o.extend(b"#[derive(Clone, PartialEq, ::prost::Message)]\n");
+        o.extend(b"pub struct ");
+        o.extend(to_big_camel(&message.name));
+        o.extend(b" {\n");
+        for msg_entry in &message.entries {
+            match msg_entry {
                 Entry::MessageField(field) => {
-                    // attr macro
-                    out.extend(b"    #[prost(");
-                    if is_build_in_type(&field.data_type) {
-                        if field.data_type == b"bytes" {
-                            out.extend(b"bytes=\"vec\", ");
-                        } else {
-                            out.extend(&field.data_type);
-                            out.extend(b", ");
-                        }
+                    // attr macros
+                    o.extend(b"    #[prost(");
+                    if to_rust_type(&field.data_type) == b"struct" {
+                        o.extend(b"message, ");
                     } else {
-                        out.extend(b"message, ");
+                        if field.data_type == b"bytes" {
+                            o.extend(b"bytes=\"vec\", ");
+                        } else {
+                            o.extend(&field.data_type);
+                            o.extend(b", ");
+                        }
                     }
                     if field.optional {
-                        out.extend(b"optional, ");
+                        o.extend(b"optional, ");
                     }
                     if field.repeated {
-                        out.extend(b"repeated, ");
-                        if is_build_in_type(&field.data_type) {
-                            out.extend(b"packed=\"false\", ");
+                        o.extend(b"repeated, ");
+                        if to_rust_type(&field.data_type) != b"struct"
+                            && field.data_type != b"bytes"
+                        {
+                            o.extend(b"packed=\"false\", ");
                         }
                     }
-                    out.extend(b"tag=\"");
-                    out.extend(field.tag);
-                    out.extend(b"\", ");
-                    if *out.last().unwrap() == b' ' {
-                        out.pop();
-                        out.pop();
+                    o.extend(b"tag=\"");
+                    o.extend(&field.tag);
+                    o.extend(b"\", ");
+                    if *o.last().unwrap() == b' ' {
+                        o.pop();
+                        o.pop();
                     }
-                    out.extend(b")]\n");
+                    o.extend(b")]\n");
 
                     // value
-                    out.extend(b"    pub ");
-                    out.extend(to_snake(&field.name));
-                    out.extend(b": ");
+                    o.extend(b"    pub ");
+                    o.extend(to_snake(&field.name));
+                    o.extend(b": ");
                     let mut depth = 0;
                     if field.optional {
-                        out.extend(b"::core::option::Option<");
+                        o.extend(b"::core::option::Option<");
                         depth += 1;
                     }
                     if field.repeated {
-                        out.extend(b"::prost::alloc::vec::Vec<");
+                        o.extend(b"::prost::alloc::vec::Vec<");
                         depth += 1;
                     }
-                    match &field.data_type[..] {
-                        b"double" => out.extend(b"f64"),
-                        b"float" => out.extend(b"f32"),
-                        b"int32" => out.extend(b"i32"),
-                        b"int64" => out.extend(b"i64"),
-                        b"uint32" => out.extend(b"u32"),
-                        b"uint64" => out.extend(b"u64"),
-                        b"sint32" => out.extend(b"i32"),
-                        b"sint64" => out.extend(b"i64"),
-                        b"fixed32" => out.extend(b"u32"),
-                        b"fixed64" => out.extend(b"u64"),
-                        b"sfixed32" => todo!(),
-                        b"sfixed64" => todo!(),
-                        b"bool" => out.extend(b"bool"),
-                        b"string" => out.extend(b"::prost::alloc::string::String"),
-                        b"bytes" => out.extend(b"::prost::alloc::vec::Vec<u8>"),
-                        v => out.extend(to_big_camel(v)),
+                    match to_rust_type(&field.data_type) {
+                        b"struct" => o.extend(to_big_camel(&field.data_type)),
+                        t => o.extend(t),
                     }
                     for _ in 0..depth {
-                        out.extend(b">");
+                        o.extend(b">");
                     }
-                    out.extend(b",\n");
+                    o.extend(b",\n");
                 }
-                Entry::Oneof(oneof) => {}
-                Entry::Message(message) => {}
+                Entry::Oneof(oneof) => {
+                    has_nest = true;
+                    o.extend(b"    #[prost(oneof=\"");
+                    o.extend(to_snake(&message.name));
+                    o.extend(b"::");
+                    o.extend(to_big_camel(&oneof.name));
+                    o.extend(b"\", tags=\"");
+                    for field in &oneof.fields {
+                        o.extend(&field.tag);
+                        o.extend(b", ");
+                    }
+                    if *o.last().unwrap() == b' ' {
+                        o.pop();
+                        o.pop();
+                    }
+                    o.extend(b"\")]\n");
+                    o.extend(b"    pub ");
+                    o.extend(to_snake(&oneof.name));
+                    o.extend(b": ::core::option::Option<");
+                    o.extend(to_snake(&message.name));
+                    o.extend(b"::");
+                    o.extend(to_big_camel(&oneof.name));
+                    o.extend(b">,\n");
+                }
+                Entry::Message(i_message) => {
+                    handle_message(i_message.clone(), o);
+                }
+                _ => unreachable!(),
             }
         }
-        out.extend(b"}\n");
-        */
+        o.extend(b"}\n");
+        if has_nest {
+            o.extend(b"/// Nested message and enum types in `");
+            o.extend(to_big_camel(&message.name));
+            o.extend(b"`.\npub mod ");
+            o.extend(to_snake(&message.name));
+            o.extend(b" {\n");
+            for msg_entry in message.entries {
+                match msg_entry {
+                    Entry::Message(message) => {
+                        handle_message(message, o);
+                    }
+                    Entry::Oneof(oneof) => {
+                        o.extend(b"    #[derive(Clone, PartialEq, ::prost::Oneof)]\n");
+                        o.extend(b"    pub enum ");
+                        o.extend(to_big_camel(&oneof.name));
+                        o.extend(b" {\n");
+                        for field in oneof.fields {
+                            o.extend(b"        #[prost(");
+                            if to_rust_type(&field.data_type) == b"struct" {
+                                o.extend(b"message");
+                            } else {
+                                o.extend(&field.data_type);
+                            }
+                            o.extend(b", tag=\"");
+                            o.extend(field.tag);
+                            o.extend(b"\")]\n        ");
+                            o.extend(to_big_camel(&field.name));
+                            o.extend(b"(");
+                            match to_rust_type(&field.data_type) {
+                                b"struct" => {
+                                    o.extend(b"super::");
+                                    o.extend(to_big_camel(&field.name));
+                                }
+                                v => o.extend(v),
+                            }
+                            o.extend(b"),\n");
+                        }
+                        o.extend(b"    }\n");
+                    }
+                    _ => {}
+                }
+            }
+            o.extend(b"}\n");
+        }
     }
-    out
+    for pkg_entry in package.entries {
+        match pkg_entry {
+            Entry::Enum(enume) => {
+                o.extend(b"#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]\n");
+                o.extend(b"#[repr(i32)]\n");
+                o.extend(b"pub enum ");
+                o.extend(to_big_camel(&enume.name));
+                o.extend(b" {\n");
+                for field in enume.fields {
+                    o.extend(b"    ");
+                    o.extend(to_big_camel(&field.name));
+                    o.extend(b" = ");
+                    o.extend(to_big_camel(&field.tag));
+                    o.extend(b",\n");
+                }
+                o.extend(b"}\n");
+            }
+            Entry::Message(message) => {
+                handle_message(message, &mut o);
+            }
+            _ => unreachable!(),
+        }
+    }
+    o
 }
 
 use std::collections::HashMap;
@@ -472,7 +626,7 @@ pub fn compile_protos(
 ) -> std::io::Result<()> {
     let mut packages = HashMap::<Vec<u8>, Package>::new();
     for path in protos {
-        dbg!(path.as_ref());
+        // dbg!(path.as_ref());
         let mut tokens = read_to_token_stream(path);
         let mut package = Package::new(&mut tokens);
         if let Some(existed) = packages.get_mut(&package.name) {
@@ -482,14 +636,14 @@ pub fn compile_protos(
         }
     }
     for (name, package) in packages {
-        // std::fs::write(
-        //     format!(
-        //         "{}/{}",
-        //         std::env::var("OUT_DIR").unwrap(),
-        //         String::from_utf8(name).unwrap()
-        //     ),
-        //     translate(package),
-        // )?;
+        std::fs::write(
+            format!(
+                "{}/{}.rs",
+                std::env::var("OUT_DIR").unwrap(),
+                String::from_utf8(name).unwrap()
+            ),
+            translate(package),
+        )?;
     }
     Ok(())
 }
