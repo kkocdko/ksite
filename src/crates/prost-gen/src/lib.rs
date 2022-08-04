@@ -1,9 +1,7 @@
 // https://developers.google.com/protocol-buffers/docs/proto
 // https://developers.google.com/protocol-buffers/docs/proto3
 /*
-fn to_snake()
-S2CHead => S2cHead
-s2CHead => s2_c_head
+
 */
 use std::iter::Peekable;
 
@@ -310,56 +308,20 @@ fn next_token(s: &mut Peekable<std::vec::IntoIter<u8>>) -> (TokenKind, Vec<u8>) 
 }
 
 fn to_big_camel(i: &[u8]) -> Vec<u8> {
-    // S2CHead => S2cHead
-    let mut parts = Vec::<Vec<u8>>::new();
-    let mut idx: usize = 0;
-    while let Some(&first) = i.get(idx) {
-        let mut part = vec![first];
-        idx += 1;
-        let first_is_u = first.is_ascii_uppercase();
-        let mut recent_is_u = first_is_u;
-        let mut is_first = true;
-        loop {
-            let next = match i.get(idx) {
-                Some(v) => *v,
-                None => break,
-            };
-            if next == b'_' {
-                idx += 1;
-                break;
-            } else if is_first && !next.is_ascii_uppercase() {
-                part.push(next);
-                idx += 1;
-                recent_is_u = false;
-            } else if !recent_is_u && !next.is_ascii_uppercase() {
-                part.push(next);
-                idx += 1;
-                recent_is_u = false;
-            } else if !recent_is_u && next.is_ascii_uppercase() {
-                break;
-            } else if recent_is_u && next.is_ascii_uppercase() {
-                part.push(next);
-                idx += 1;
-            } else if recent_is_u && !next.is_ascii_uppercase() {
-                idx -= 1;
-                part.pop();
-                break;
-            } else {
-                todo!();
-                break;
-            }
-            is_first = false;
-        }
-        parts.push(part);
+    use heck::ToUpperCamelCase;
+    let mut o: Vec<u8> = std::str::from_utf8(i).unwrap().to_upper_camel_case().into();
+    if is_rust_key_word(&o) {
+        let mut p = b"r#".to_vec();
+        p.append(&mut o);
+        return p;
+    } else {
+        o
     }
-    for part in &mut parts {
-        part[0] = part[0].to_ascii_uppercase();
-        for c in part.iter_mut().skip(1) {
-            *c = c.to_ascii_lowercase();
-        }
-    }
-    // dbg!(&parts);
-    let o = parts.into_iter().flatten().collect();
+}
+
+fn to_snake(i: &[u8]) -> Vec<u8> {
+    use heck::ToSnakeCase;
+    let o: Vec<u8> = std::str::from_utf8(i).unwrap().to_snake_case().into();
     if is_rust_key_word(&o) {
         let mut p = b"r#".to_vec();
         p.extend(o);
@@ -367,39 +329,6 @@ fn to_big_camel(i: &[u8]) -> Vec<u8> {
     } else {
         o
     }
-}
-
-#[test]
-fn test_to_big_camel() {
-    fn test_once(i: &str, o: &str) {
-        let r = to_big_camel(i.as_bytes());
-        let r = std::str::from_utf8(&r).unwrap();
-        assert_eq!(o, r);
-    }
-    test_once("ABCDE", "Abcde");
-    test_once("ABCde", "AbCde");
-    test_once("ABcde", "ABcde");
-    test_once("AbCDEf", "AbCdEf");
-    test_once("ab_cde", "AbCde");
-}
-
-fn to_snake(i: &[u8]) -> Vec<u8> {
-    let mut o = Vec::new();
-    for &c in i {
-        if c.is_ascii_uppercase() {
-            o.push(b'_');
-            o.push(c.to_ascii_lowercase());
-        } else {
-            o.push(c);
-        }
-    }
-    o[0] = o[0].to_ascii_lowercase();
-    if is_rust_key_word(&o) {
-        let mut p = b"r#".to_vec();
-        p.extend(o);
-        return p;
-    }
-    o
 }
 
 fn to_rust_type(i: &Vec<u8>) -> &'static [u8] {
@@ -432,14 +361,15 @@ fn is_rust_key_word(i: &Vec<u8>) -> bool {
         b"false"=>1,b"fn"=>1,b"for"=>1,b"if"=>1,b"impl"=>1,b"in"=>1,b"let"=>1,
         b"loop"=>1,b"match"=>1,b"mod"=>1,b"move"=>1,b"mut"=>1,b"pub"=>1,b"ref"=>1,
         b"return"=>1,b"self"=>1,b"static"=>1,b"struct"=>1,b"super"=>1,b"trait"=>1,
-        b"1"=>1,b"type"=>1,b"union"=>1,b"unsafe"=>1,b"use"=>1,b"where"=>1,b"while"=>1,
+        b"true"=>1,b"type"=>1,b"union"=>1,b"unsafe"=>1,b"use"=>1,b"where"=>1,b"while"=>1,
         _ => 0,
     }
 }
 
 fn translate(package: Package) -> Vec<u8> {
+    let mut enums = HashSet::<Vec<u8>>::new();
     let mut o = Vec::<u8>::new();
-    fn handle_message(message: Message, o: &mut Vec<u8>) {
+    fn handle_message(message: Message, o: &mut Vec<u8>, enums: &HashSet<Vec<u8>>) {
         let mut has_nest = false;
         o.extend(b"#[derive(Clone, PartialEq, ::prost::Message)]\n");
         o.extend(b"pub struct ");
@@ -451,7 +381,13 @@ fn translate(package: Package) -> Vec<u8> {
                     // attr macros
                     o.extend(b"    #[prost(");
                     if to_rust_type(&field.data_type) == b"struct" {
-                        o.extend(b"message, ");
+                        if enums.contains(&field.data_type) {
+                            o.extend(b"enumeration=\"");
+                            o.extend(to_big_camel(&field.data_type));
+                            o.extend(b"\", ");
+                        } else {
+                            o.extend(b"message, ");
+                        }
                     } else {
                         if field.data_type == b"bytes" {
                             o.extend(b"bytes=\"vec\", ");
@@ -494,7 +430,13 @@ fn translate(package: Package) -> Vec<u8> {
                         depth += 1;
                     }
                     match to_rust_type(&field.data_type) {
-                        b"struct" => o.extend(to_big_camel(&field.data_type)),
+                        b"struct" => {
+                            if enums.contains(&field.data_type) {
+                                o.extend(b"i32");
+                            } else {
+                                o.extend(to_big_camel(&field.data_type));
+                            }
+                        }
                         t => o.extend(t),
                     }
                     for _ in 0..depth {
@@ -527,7 +469,8 @@ fn translate(package: Package) -> Vec<u8> {
                     o.extend(b">,\n");
                 }
                 Entry::Message(i_message) => {
-                    handle_message(i_message.clone(), o);
+                    has_nest = true;
+                    handle_message(i_message.clone(), o, enums);
                 }
                 _ => unreachable!(),
             }
@@ -542,7 +485,7 @@ fn translate(package: Package) -> Vec<u8> {
             for msg_entry in message.entries {
                 match msg_entry {
                     Entry::Message(message) => {
-                        handle_message(message, o);
+                        handle_message(message, o, enums);
                     }
                     Entry::Oneof(oneof) => {
                         o.extend(b"    #[derive(Clone, PartialEq, ::prost::Oneof)]\n");
@@ -564,7 +507,7 @@ fn translate(package: Package) -> Vec<u8> {
                             match to_rust_type(&field.data_type) {
                                 b"struct" => {
                                     o.extend(b"super::");
-                                    o.extend(to_big_camel(&field.name));
+                                    o.extend(to_big_camel(&field.data_type));
                                 }
                                 v => o.extend(v),
                             }
@@ -578,9 +521,19 @@ fn translate(package: Package) -> Vec<u8> {
             o.extend(b"}\n");
         }
     }
+    for pkg_entry in &package.entries {
+        match pkg_entry {
+            Entry::Enum(enume) => {
+                enums.insert(enume.name.clone());
+            }
+            Entry::Message(_) => {}
+            _ => unreachable!(),
+        }
+    }
     for pkg_entry in package.entries {
         match pkg_entry {
             Entry::Enum(enume) => {
+                enums.insert(enume.name.clone());
                 o.extend(b"#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]\n");
                 o.extend(b"#[repr(i32)]\n");
                 o.extend(b"pub enum ");
@@ -596,7 +549,7 @@ fn translate(package: Package) -> Vec<u8> {
                 o.extend(b"}\n");
             }
             Entry::Message(message) => {
-                handle_message(message, &mut o);
+                handle_message(message, &mut o, &enums);
             }
             _ => unreachable!(),
         }
@@ -604,7 +557,7 @@ fn translate(package: Package) -> Vec<u8> {
     o
 }
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 fn read_to_token_stream(path: impl AsRef<Path>) -> TokenStream {
