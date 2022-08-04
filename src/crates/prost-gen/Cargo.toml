@@ -2,6 +2,7 @@
 name = "prost-gen"
 version = "0.1.0"
 edition = "2021"
+description = "A messy alternative to prost-build."
 
 [profile.dev.package."*"]
 strip = true
@@ -9,6 +10,4 @@ opt-level = "z"
 
 [dependencies]
 heck = "0.4"
-
-[dev-dependencies]
-# prost-build = "0.9"
+prost-build = "0.9"

@@ -20,7 +20,10 @@ fn recursion(v: &mut Vec<String>, dir: impl AsRef<Path>) -> std::io::Result<()> 
 fn main() {
     let mut v = Vec::<String>::new();
     recursion(&mut v, "sample/pb").unwrap();
+    // recursion(&mut v, "sample_cur").unwrap();
 
+    std::fs::remove_dir_all("target/out").ok();
+    std::fs::create_dir_all("target/out").unwrap();
     std::env::set_var("OUT_DIR", "target/out");
     // prost_build::compile_protos(&v, &["sample/pb"]).unwrap();
     prost_gen::compile_protos(&v, &["sample/pb"]).unwrap();

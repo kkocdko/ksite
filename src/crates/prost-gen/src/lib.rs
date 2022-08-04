@@ -11,6 +11,11 @@ type TokenStream = Peekable<std::vec::IntoIter<(TokenKind, Vec<u8>)>>;
 #[derive(Default, Debug)]
 struct Package {
     name: Vec<u8>,
+    // The packed option can be enabled for repeated primitive fields to enable
+    // a more efficient representation on the wire. Rather than repeatedly
+    // writing the tag and type for each element, the entire array is encoded as
+    // a single length-delimited blob. In proto3, only explicit setting it to
+    // false will avoid using packed encoding.
     syntax: Vec<u8>,
     entries: Vec<Entry>,
 }
@@ -367,9 +372,15 @@ fn is_rust_key_word(i: &Vec<u8>) -> bool {
 }
 
 fn translate(package: Package) -> Vec<u8> {
-    let mut enums = HashSet::<Vec<u8>>::new();
+    let mut nesteds = HashMap::<Vec<u8>, &'static [u8]>::new();
     let mut o = Vec::<u8>::new();
-    fn handle_message(message: Message, o: &mut Vec<u8>, enums: &HashSet<Vec<u8>>) {
+    fn handle_message(
+        pbv: i32,
+        message: Message,
+        o: &mut Vec<u8>,
+        nesteds: &HashMap<Vec<u8>, &'static [u8]>,
+    ) {
+        let mut nesteds_cur = nesteds.clone();
         let mut has_nest = false;
         o.extend(b"#[derive(Clone, PartialEq, ::prost::Message)]\n");
         o.extend(b"pub struct ");
@@ -377,11 +388,25 @@ fn translate(package: Package) -> Vec<u8> {
         o.extend(b" {\n");
         for msg_entry in &message.entries {
             match msg_entry {
+                Entry::Message(i_message) => {
+                    has_nest = true;
+                    nesteds_cur.insert(i_message.name.clone(), b"message");
+                    // handle_message(i_message.clone(), o, enums);
+                }
+                _ => {}
+            }
+        }
+        for msg_entry in &message.entries {
+            match msg_entry {
                 Entry::MessageField(field) => {
                     // attr macros
                     o.extend(b"    #[prost(");
                     if to_rust_type(&field.data_type) == b"struct" {
-                        if enums.contains(&field.data_type) {
+                        if nesteds_cur
+                            .get(&field.data_type)
+                            .and_then(|v| Some(v == b"enum"))
+                            == Some(true)
+                        {
                             o.extend(b"enumeration=\"");
                             o.extend(to_big_camel(&field.data_type));
                             o.extend(b"\", ");
@@ -401,8 +426,11 @@ fn translate(package: Package) -> Vec<u8> {
                     }
                     if field.repeated {
                         o.extend(b"repeated, ");
+                        // proto2 or proto3
                         if to_rust_type(&field.data_type) != b"struct"
                             && field.data_type != b"bytes"
+                            && field.data_type != b"string"
+                            && pbv == 2
                         {
                             o.extend(b"packed=\"false\", ");
                         }
@@ -431,8 +459,14 @@ fn translate(package: Package) -> Vec<u8> {
                     }
                     match to_rust_type(&field.data_type) {
                         b"struct" => {
-                            if enums.contains(&field.data_type) {
-                                o.extend(b"i32");
+                            if let Some(k) = nesteds_cur.get(&field.data_type) {
+                                if k == b"enum" {
+                                    o.extend(b"i32");
+                                } else if k == b"message" {
+                                    o.extend(to_snake(&message.name));
+                                    o.extend(b"::");
+                                    o.extend(to_big_camel(&field.data_type));
+                                }
                             } else {
                                 o.extend(to_big_camel(&field.data_type));
                             }
@@ -468,10 +502,7 @@ fn translate(package: Package) -> Vec<u8> {
                     o.extend(to_big_camel(&oneof.name));
                     o.extend(b">,\n");
                 }
-                Entry::Message(i_message) => {
-                    has_nest = true;
-                    handle_message(i_message.clone(), o, enums);
-                }
+                Entry::Message(_) => {}
                 _ => unreachable!(),
             }
         }
@@ -485,7 +516,7 @@ fn translate(package: Package) -> Vec<u8> {
             for msg_entry in message.entries {
                 match msg_entry {
                     Entry::Message(message) => {
-                        handle_message(message, o, enums);
+                        handle_message(pbv, message, o, nesteds);
                     }
                     Entry::Oneof(oneof) => {
                         o.extend(b"    #[derive(Clone, PartialEq, ::prost::Oneof)]\n");
@@ -524,16 +555,23 @@ fn translate(package: Package) -> Vec<u8> {
     for pkg_entry in &package.entries {
         match pkg_entry {
             Entry::Enum(enume) => {
-                enums.insert(enume.name.clone());
+                nesteds.insert(enume.name.clone(), b"enum");
             }
-            Entry::Message(_) => {}
+            Entry::Message(message) => {}
             _ => unreachable!(),
         }
     }
     for pkg_entry in package.entries {
         match pkg_entry {
+            Entry::Message(message) => {
+                let pbv = match &package.syntax[..] {
+                    b"proto2" => 2,
+                    b"proto3" => 3,
+                    _ => unreachable!(),
+                };
+                handle_message(pbv, message, &mut o, &nesteds);
+            }
             Entry::Enum(enume) => {
-                enums.insert(enume.name.clone());
                 o.extend(b"#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]\n");
                 o.extend(b"#[repr(i32)]\n");
                 o.extend(b"pub enum ");
@@ -547,9 +585,6 @@ fn translate(package: Package) -> Vec<u8> {
                     o.extend(b",\n");
                 }
                 o.extend(b"}\n");
-            }
-            Entry::Message(message) => {
-                handle_message(message, &mut o, &enums);
             }
             _ => unreachable!(),
         }
@@ -577,25 +612,27 @@ pub fn compile_protos(
     protos: &[impl AsRef<Path>],
     _includes: &[impl AsRef<Path>],
 ) -> std::io::Result<()> {
-    let mut packages = HashMap::<Vec<u8>, Package>::new();
+    let mut outs = HashMap::<Vec<u8>, Vec<u8>>::new();
     for path in protos {
         // dbg!(path.as_ref());
         let mut tokens = read_to_token_stream(path);
-        let mut package = Package::new(&mut tokens);
-        if let Some(existed) = packages.get_mut(&package.name) {
-            existed.entries.append(&mut package.entries);
+        let  package = Package::new(&mut tokens);
+        let name = package.name.clone();
+        let mut out = translate(package);
+        if let Some(existed) = outs.get_mut(&name) {
+            existed.append(&mut out);
         } else {
-            packages.insert(package.name.clone(), package);
+            outs.insert(name, out);
         }
     }
-    for (name, package) in packages {
+    for (name, out) in outs {
         std::fs::write(
             format!(
                 "{}/{}.rs",
                 std::env::var("OUT_DIR").unwrap(),
                 String::from_utf8(name).unwrap()
             ),
-            translate(package),
+            out,
         )?;
     }
     Ok(())
