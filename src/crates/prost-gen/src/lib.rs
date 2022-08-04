@@ -240,7 +240,7 @@ fn ignore_semi(s: &mut TokenStream) {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Eq, Debug)]
 enum TokenKind {
     Word,
     Symbol,
@@ -250,10 +250,7 @@ enum TokenKind {
 
 fn next_token(s: &mut Peekable<std::vec::IntoIter<u8>>) -> (TokenKind, Vec<u8>) {
     fn is_symbol(v: u8) -> bool {
-        match v {
-            b'{' | b'}' | b'=' | b';' | b'"' => true,
-            _ => false,
-        }
+        matches!(v, b'{' | b'}' | b'=' | b';' | b'"')
     }
     let mut ret = Vec::new();
     let mut doing = false;
@@ -265,7 +262,7 @@ fn next_token(s: &mut Peekable<std::vec::IntoIter<u8>>) -> (TokenKind, Vec<u8>) 
                 assert!(s.next().unwrap() == b'/');
                 match s.next().unwrap() {
                     b'/' => {
-                        while let Some(v) = s.next() {
+                        for v in s.by_ref() {
                             if v == b'\n' {
                                 break;
                             }
@@ -318,7 +315,7 @@ fn to_big_camel(i: &[u8]) -> Vec<u8> {
     if is_rust_key_word(&o) {
         let mut p = b"r#".to_vec();
         p.append(&mut o);
-        return p;
+        p
     } else {
         o
     }
@@ -330,14 +327,14 @@ fn to_snake(i: &[u8]) -> Vec<u8> {
     if is_rust_key_word(&o) {
         let mut p = b"r#".to_vec();
         p.extend(o);
-        return p;
+        p
     } else {
         o
     }
 }
 
-fn to_rust_type(i: &Vec<u8>) -> &'static [u8] {
-    match &i[..] {
+fn to_rust_type(i: &[u8]) -> &'static [u8] {
+    match i {
         b"double" => b"f64",
         b"float" => b"f32",
         b"int32" => b"i32",
@@ -358,8 +355,8 @@ fn to_rust_type(i: &Vec<u8>) -> &'static [u8] {
 }
 
 #[rustfmt::skip]
-fn is_rust_key_word(i: &Vec<u8>) -> bool {
-    1 == match &i[..] {
+fn is_rust_key_word(i: &[u8]) -> bool {
+    1 == match i {
         // https://doc.rust-lang.org/std/index.html#keywords
         b"SelfTy"=>1,b"as"=>1,b"async"=>1,b"await"=>1,b"break"=>1,b"const"=>1,
         b"continue"=>1,b"crate"=>1,b"dyn"=>1,b"else"=>1,b"enum"=>1,b"extern"=>1,
@@ -387,13 +384,9 @@ fn translate(package: Package) -> Vec<u8> {
         o.extend(to_big_camel(&message.name));
         o.extend(b" {\n");
         for msg_entry in &message.entries {
-            match msg_entry {
-                Entry::Message(i_message) => {
-                    has_nest = true;
-                    nesteds_cur.insert(i_message.name.clone(), b"message");
-                    // handle_message(i_message.clone(), o, enums);
-                }
-                _ => {}
+            if let Entry::Message(i_message) = msg_entry {
+                has_nest = true;
+                nesteds_cur.insert(i_message.name.clone(), b"message");
             }
         }
         for msg_entry in &message.entries {
@@ -402,24 +395,18 @@ fn translate(package: Package) -> Vec<u8> {
                     // attr macros
                     o.extend(b"    #[prost(");
                     if to_rust_type(&field.data_type) == b"struct" {
-                        if nesteds_cur
-                            .get(&field.data_type)
-                            .and_then(|v| Some(v == b"enum"))
-                            == Some(true)
-                        {
+                        if nesteds_cur.get(&field.data_type).map(|v| v == b"enum") == Some(true) {
                             o.extend(b"enumeration=\"");
                             o.extend(to_big_camel(&field.data_type));
                             o.extend(b"\", ");
                         } else {
                             o.extend(b"message, ");
                         }
+                    } else if field.data_type == b"bytes" {
+                        o.extend(b"bytes=\"vec\", ");
                     } else {
-                        if field.data_type == b"bytes" {
-                            o.extend(b"bytes=\"vec\", ");
-                        } else {
-                            o.extend(&field.data_type);
-                            o.extend(b", ");
-                        }
+                        o.extend(&field.data_type);
+                        o.extend(b", ");
                     }
                     if field.optional {
                         o.extend(b"optional, ");
@@ -557,7 +544,7 @@ fn translate(package: Package) -> Vec<u8> {
             Entry::Enum(enume) => {
                 nesteds.insert(enume.name.clone(), b"enum");
             }
-            Entry::Message(message) => {}
+            Entry::Message(_) => {}
             _ => unreachable!(),
         }
     }
@@ -592,7 +579,7 @@ fn translate(package: Package) -> Vec<u8> {
     o
 }
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::Path;
 
 fn read_to_token_stream(path: impl AsRef<Path>) -> TokenStream {
@@ -613,10 +600,11 @@ pub fn compile_protos(
     _includes: &[impl AsRef<Path>],
 ) -> std::io::Result<()> {
     let mut outs = HashMap::<Vec<u8>, Vec<u8>>::new();
+    let begin_instant = std::time::Instant::now();
     for path in protos {
         // dbg!(path.as_ref());
         let mut tokens = read_to_token_stream(path);
-        let  package = Package::new(&mut tokens);
+        let package = Package::new(&mut tokens);
         let name = package.name.clone();
         let mut out = translate(package);
         if let Some(existed) = outs.get_mut(&name) {
@@ -625,6 +613,7 @@ pub fn compile_protos(
             outs.insert(name, out);
         }
     }
+    println!("{}", begin_instant.elapsed().as_millis());
     for (name, out) in outs {
         std::fs::write(
             format!(
