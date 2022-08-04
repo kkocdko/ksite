@@ -1,6 +1,6 @@
 [package]
-name = "prost-gen"
-version = "0.1.0"
+name = "prost-build"
+version = "0.9.900"
 edition = "2021"
 description = "A messy alternative to prost-build."
 
@@ -10,4 +10,4 @@ opt-level = "z"
 
 [dependencies]
 heck = "0.4"
-prost-build = "0.9"
+# prost-build = "0.9"
