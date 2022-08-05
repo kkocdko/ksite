@@ -8,6 +8,8 @@ All in one solution for my server.
 
 - `units::status`: speed, latency, network status. ssl cert remain.
 
+- `units::paste`: account system.
+
 ## Build with MUSL
 
 Use [messense/cargo-zigbuild](https://github.com/messense/cargo-zigbuild) please.

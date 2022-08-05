@@ -54,8 +54,8 @@ impl<'a> Message<'a> {
         while let Some(token) = s.peek() {
             match (&token.0, token.1) {
                 (TokenKind::Symbol, b"}") => {
-                    s.next(); // current token
-                    if matches!(s.peek(), Some((TokenKind::Symbol, t)) if t == b";") {
+                    s.next();
+                    if let Some((_, b";")) = s.peek() {
                         s.next();
                     }
                     break;
@@ -146,7 +146,7 @@ impl<'a> Enum<'a> {
             match (&token.0, token.1) {
                 (TokenKind::Symbol, b"}") => {
                     s.next();
-                    if matches!(s.peek(), Some((TokenKind::Symbol, t)) if t == b";") {
+                    if let Some((_, b";")) = s.peek() {
                         s.next();
                     }
                     break;
@@ -186,7 +186,7 @@ impl<'a> Oneof<'a> {
             match (&token.0, token.1) {
                 (TokenKind::Symbol, b"}") => {
                     s.next();
-                    if matches!(s.peek(), Some((TokenKind::Symbol, t)) if t == b";") {
+                    if let Some((_, b";")) = s.peek() {
                         s.next();
                     }
                     break;
@@ -210,9 +210,9 @@ impl<'a> Oneof<'a> {
 }
 
 enum TokenKind {
-    Word,
     Symbol,
     Number,
+    Word,
     End,
 }
 
@@ -255,21 +255,20 @@ impl<'a> TokenStream<'a> {
 }
 
 fn next_token<'a>(s: &mut &'a [u8]) -> Token<'a> {
-    fn is_symbol(v: u8) -> bool {
-        matches!(v, b'{' | b'}' | b'=' | b';' | b'"')
-    }
-    let mut doing = false;
     let mut kind = TokenKind::End;
+    let mut begun = false;
     let mut range = (0, 0);
-    let found = |begin, t| begin + s[begin..].iter().position(|v| *v == t).unwrap();
+    let found = |from, c| from + s[from..].iter().position(|&v| v == c).unwrap();
+    let is_symbol = |c| matches!(c, b'{' | b'}' | b'=' | b';' | b'"');
     while let Some(&v) = s.get(range.1) {
-        match doing {
+        match begun {
             false if v == b'/' => {
                 // comments
-                match s[range.1 + 1] {
-                    b'/' => range.1 = found(range.1 + 2, b'\n'),
+                range.1 += 1;
+                match s[range.1] {
+                    b'/' => range.1 = found(range.1 + 1, b'\n'),
                     b'*' => loop {
-                        range.1 = found(range.1 + 2, b'*');
+                        range.1 = found(range.1 + 1, b'*');
                         if s[range.1 + 1] == b'/' {
                             range.1 += 2;
                             break;
@@ -288,7 +287,7 @@ fn next_token<'a>(s: &mut &'a [u8]) -> Token<'a> {
                     _ => TokenKind::Word,
                 };
                 range.0 = range.1;
-                doing = true;
+                begun = true;
             }
             true => match kind {
                 TokenKind::Symbol => {
@@ -444,6 +443,10 @@ fn translate(package: Package) -> Vec<u8> {
     // https://developers.google.com/protocol-buffers/docs/proto
     // https://developers.google.com/protocol-buffers/docs/proto3
 
+    type Context<'a> = HashMap<&'a [u8], (&'static [u8], i32)>; // <name, (type, depth)>
+    let mut ctx = Context::new(); // names context
+    let mut o = Vec::<u8>::new();
+
     fn indent(n: i32, o: &mut Vec<u8>) {
         for _ in 0..n {
             o.extend(b"    ");
@@ -466,17 +469,8 @@ fn translate(package: Package) -> Vec<u8> {
         }
     }
 
-    let pbv = match package.syntax {
-        b"proto2" => 2,
-        b"proto3" => 3,
-        _ => panic!("syntax version not supported"),
-    };
-    type ContextMap<'a> = HashMap<&'a [u8], (&'static [u8], i32)>; // <name, (type, depth)>
-    let mut cx = ContextMap::new(); // names context
-    let mut o = Vec::<u8>::new();
-
-    fn handle_message(depth: i32, pbv: i32, message: &Message, o: &mut Vec<u8>, cx: &ContextMap) {
-        let mut cx = cx.clone(); // sub context
+    fn handle_message(message: &Message, pbv: &[u8], ctx: &Context, depth: i32, o: &mut Vec<u8>) {
+        let mut cx = ctx.clone(); // sub context
         let mut has_nested = false;
         indent(depth, o);
         o.extend(b"#[derive(Clone, PartialEq, ::prost::Message)]\n");
@@ -484,8 +478,8 @@ fn translate(package: Package) -> Vec<u8> {
         o.extend(b"pub struct ");
         o.append(&mut to_big_camel(message.name));
         o.extend(b" {\n");
-        for msg_entry in &message.entries {
-            match msg_entry {
+        for entry in &message.entries {
+            match entry {
                 Entry::Enum(Enum { name, .. }) => {
                     has_nested = true;
                     cx.insert(name, (b"enum", depth));
@@ -501,8 +495,8 @@ fn translate(package: Package) -> Vec<u8> {
                 Entry::MessageField(_) => {}
             }
         }
-        for msg_entry in &message.entries {
-            match msg_entry {
+        for entry in &message.entries {
+            match entry {
                 Entry::MessageField(field) => {
                     // # From proto doc
                     // For string, bytes, and message fields, optional is compatible with
@@ -557,7 +551,7 @@ fn translate(package: Package) -> Vec<u8> {
                         // repeatedly writing the tag and type for each element, the entire array
                         // is encoded as a single length-delimited blob. In proto3, only explicit
                         // setting it to false will avoid using packed encoding.
-                        if pbv == 2 // proto2
+                        if pbv == b"proto2"
                             && rust_type != b"struct"
                             && field.data_type != b"bytes"
                             && field.data_type != b"string"
@@ -606,8 +600,6 @@ fn translate(package: Package) -> Vec<u8> {
                     o.extend(b",\n");
                 }
                 Entry::Oneof(oneof) => {
-                    has_nested = true;
-
                     // attr macros
                     indent(depth + 1, o);
                     o.extend(b"#[prost(oneof=\"");
@@ -650,11 +642,10 @@ fn translate(package: Package) -> Vec<u8> {
             o.extend(b"pub mod ");
             o.append(&mut to_snake(message.name));
             o.extend(b" {\n");
-            for msg_entry in &message.entries {
-                match msg_entry {
-                    Entry::Message(message) => {
-                        handle_message(depth + 1, pbv, message, o, &cx);
-                    }
+            for entry in &message.entries {
+                match entry {
+                    Entry::Enum(v) => handle_enum(v, depth + 1, o),
+                    Entry::Message(v) => handle_message(v, pbv, &cx, depth + 1, o),
                     Entry::Oneof(oneof) => {
                         indent(depth + 1, o);
                         o.extend(b"#[derive(Clone, PartialEq, ::prost::Oneof)]\n");
@@ -691,9 +682,6 @@ fn translate(package: Package) -> Vec<u8> {
                         indent(depth + 1, o);
                         o.extend(b"}\n");
                     }
-                    Entry::Enum(enume) => {
-                        handle_enum(depth + 1, enume, o);
-                    }
                     Entry::MessageField(_) => {}
                 }
             }
@@ -702,7 +690,7 @@ fn translate(package: Package) -> Vec<u8> {
         }
     }
 
-    fn handle_enum(mut depth: i32, enume: &Enum, o: &mut Vec<u8>) {
+    fn handle_enum(enume: &Enum, mut depth: i32, o: &mut Vec<u8>) {
         indent(depth, o);
         o.extend(b"#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]\n");
         indent(depth, o);
@@ -725,19 +713,17 @@ fn translate(package: Package) -> Vec<u8> {
     }
 
     let depth = -1;
-    for pkg_entry in &package.entries {
-        match pkg_entry {
-            Entry::Enum(enume) => {
-                cx.insert(enume.name, (b"enum", depth));
-            }
+    for entry in &package.entries {
+        match entry {
+            Entry::Enum(v) => (ctx.insert(v.name, (b"enum", depth)), ()).1, // aha
             Entry::Message(_) => {}
             _ => unreachable!(),
         }
     }
-    for pkg_entry in &package.entries {
-        match pkg_entry {
-            Entry::Message(message) => handle_message(depth + 1, pbv, message, &mut o, &cx),
-            Entry::Enum(enume) => handle_enum(depth + 1, enume, &mut o),
+    for entry in &package.entries {
+        match entry {
+            Entry::Enum(v) => handle_enum(v, depth + 1, &mut o),
+            Entry::Message(v) => handle_message(v, package.syntax, &ctx, depth + 1, &mut o),
             _ => unreachable!(),
         }
     }
@@ -753,7 +739,7 @@ pub fn compile_protos(
     // let begin_instant = std::time::Instant::now();
     for path in protos {
         // dbg!(path.as_ref());
-        let src = std::fs::read(path).unwrap();
+        let src = std::fs::read(path)?;
         let token_stream = TokenStream::new(&src);
         let package = Package::new(&token_stream);
         let name = package.name.to_vec();

@@ -1,3 +1,4 @@
+//! Provide login, token storage and other base functions.
 use super::gen_reply;
 use crate::utils::slot;
 use crate::{care, db};
