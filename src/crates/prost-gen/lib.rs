@@ -600,7 +600,7 @@ pub fn compile_protos(
     _includes: &[impl AsRef<Path>],
 ) -> std::io::Result<()> {
     let mut outs = HashMap::<Vec<u8>, Vec<u8>>::new();
-    let begin_instant = std::time::Instant::now();
+    // let begin_instant = std::time::Instant::now();
     for path in protos {
         // dbg!(path.as_ref());
         let mut tokens = read_to_token_stream(path);
@@ -613,7 +613,7 @@ pub fn compile_protos(
             outs.insert(name, out);
         }
     }
-    println!("{}", begin_instant.elapsed().as_millis());
+    // println!("{}", begin_instant.elapsed().as_millis());
     for (name, out) in outs {
         std::fs::write(
             format!(

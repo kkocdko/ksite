@@ -1,13 +1,24 @@
+# prost-gen, a messy alternative to prost-build.
+
 [package]
-name = "prost-build"
+name = "prost-build" # faked name
 version = "0.9.900"
 edition = "2021"
-description = "A messy alternative to prost-build."
 
+[lib]
+path = "lib.rs"
+
+[[bin]]
+name = "prost-gen"
+path = "lib.rs"
+
+[profile.dev]
+debug = false
+panic = "abort"
 [profile.dev.package."*"]
 strip = true
 opt-level = "z"
 
 [dependencies]
 heck = "0.4"
-# prost-build = "0.9"
+# prost-build-offical = { version = "0.9", package = "prost-build" }

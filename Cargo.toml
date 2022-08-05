@@ -19,7 +19,7 @@ codegen-units = 256
 
 # For incremental build speed and disk usage, `mold -run cargo run`.
 [profile.dev]
-debug = false   # this dose not affect backtrace
+debug = false # this dose not affect backtrace
 panic = "abort"
 [profile.dev.package."*"]
 strip = true
@@ -52,5 +52,5 @@ tower-http = { version = "0.3", features = ["auth"] }
 
 [patch.crates-io]
 ricq = { rev = "9eb56c5", git = "https://github.com/lz1998/ricq" }
-futures = { path = "./src/crates/futures-fake" } # for `cached` crate, see `Cargo.lock`
+futures = { path = "./src/crates/futures-fake" } # for `cached` crate
 prost-build = { path = "./src/crates/prost-gen" } # for `ricq-core` crate
