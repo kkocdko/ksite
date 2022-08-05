@@ -1,5 +1,3 @@
-# prost-gen, a messy alternative to prost-build.
-
 [package]
 name = "prost-build" # faked name
 version = "0.9.900"
@@ -20,5 +18,5 @@ strip = true
 opt-level = "z"
 
 [dependencies]
-heck = "0.4"
+# heck = "0.4"
 # prost-build-offical = { version = "0.9", package = "prost-build" }

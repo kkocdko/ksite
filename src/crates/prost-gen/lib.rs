@@ -3,7 +3,6 @@ use std::iter::Peekable;
 use std::path::Path;
 
 /// The AST Root
-#[derive(Default)]
 struct Package {
     name: Vec<u8>,
     syntax: Vec<u8>,
@@ -12,39 +11,35 @@ struct Package {
 
 impl Package {
     fn new(s: &mut TokenStream) -> Self {
-        let mut ret = Self::default();
+        assert!(s.next().unwrap().1 == b"syntax");
+        s.next().unwrap(); // '='
+        s.next().unwrap(); // '"'
+        let syntax = s.next().unwrap().1;
+        s.next().unwrap(); // '"'
+        s.next().unwrap(); // ';'
+        assert!(s.next().unwrap().1 == b"package");
+        let name = s.next().unwrap().1;
+        s.next().unwrap(); // ';'
+        let mut entries = Vec::new();
         while let Some(token) = s.peek() {
             match (&token.0, &token.1[..]) {
-                (TokenKind::Word, b"syntax") => {
-                    s.next().unwrap(); // current token
-                    s.next().unwrap(); // eq
-                    s.next().unwrap(); // quote
-                    ret.syntax = s.next().unwrap().1;
-                    // https://developers.google.com/protocol-buffers/docs/proto
-                    // https://developers.google.com/protocol-buffers/docs/proto3
-                    // assert!(package.syntax == b"proto2"); // TODO
-                    s.next().unwrap(); // quote
-                    s.next().unwrap(); // semi
-                }
-                (TokenKind::Word, b"package") => {
-                    s.next().unwrap(); // current token
-                    ret.name = s.next().unwrap().1;
-                    s.next().unwrap(); // semi
-                }
                 (TokenKind::Word, b"enum") => {
-                    ret.entries.push(Entry::Enum(Enum::new(s)));
+                    entries.push(Entry::Enum(Enum::new(s)));
                 }
                 (TokenKind::Word, b"message") => {
-                    ret.entries.push(Entry::Message(Message::new(s)));
+                    entries.push(Entry::Message(Message::new(s)));
                 }
                 _ => unreachable!(),
             };
         }
-        ret
+        Self {
+            name,
+            syntax,
+            entries,
+        }
     }
 }
 
-#[derive(Default)]
 struct Message {
     name: Vec<u8>,
     entries: Vec<Entry>,
@@ -52,10 +47,10 @@ struct Message {
 
 impl Message {
     fn new(s: &mut TokenStream) -> Self {
-        let mut ret = Self::default();
         assert!(s.next().unwrap().1 == b"message");
-        ret.name = s.next().unwrap().1;
+        let name = s.next().unwrap().1;
         s.next().unwrap(); // '{'
+        let mut entries = Vec::new();
         while let Some(token) = s.peek() {
             match (&token.0, &token.1[..]) {
                 (TokenKind::Symbol, b"}") => {
@@ -64,20 +59,20 @@ impl Message {
                     break;
                 }
                 (TokenKind::Word, b"message") => {
-                    ret.entries.push(Entry::Message(Message::new(s)));
+                    entries.push(Entry::Message(Message::new(s)));
                 }
                 (TokenKind::Word, b"oneof") => {
-                    ret.entries.push(Entry::Oneof(Oneof::new(s)));
+                    entries.push(Entry::Oneof(Oneof::new(s)));
                 }
                 (TokenKind::Word, b"enum") => {
-                    ret.entries.push(Entry::Enum(Enum::new(s)));
+                    entries.push(Entry::Enum(Enum::new(s)));
                 }
                 _ => {
-                    ret.entries.push(Entry::MessageField(MessageField::new(s)));
+                    entries.push(Entry::MessageField(MessageField::new(s)));
                 }
             };
         }
-        ret
+        Self { name, entries }
     }
 }
 
@@ -99,37 +94,36 @@ struct MessageField {
 
 impl MessageField {
     fn new(s: &mut TokenStream) -> Self {
-        let mut field = Self::default();
+        let mut ret = Self::default();
         while let Some(token) = s.peek() {
             match (&token.0, &token.1[..]) {
                 (TokenKind::Word, b"optional") => {
                     s.next().unwrap(); // current token
-                    field.optional = true;
+                    ret.optional = true;
                 }
                 (TokenKind::Word, b"repeated") => {
                     s.next().unwrap(); // current token
-                    field.repeated = true;
+                    ret.repeated = true;
                 }
-                (TokenKind::Word, _) if field.data_type.is_empty() => {
-                    field.data_type = s.next().unwrap().1;
+                (TokenKind::Word, _) if ret.data_type.is_empty() => {
+                    ret.data_type = s.next().unwrap().1;
                 }
-                (TokenKind::Word, _) if field.name.is_empty() => {
-                    field.name = s.next().unwrap().1;
+                (TokenKind::Word, _) if ret.name.is_empty() => {
+                    ret.name = s.next().unwrap().1;
                 }
                 (TokenKind::Symbol, b"=") => {
                     s.next().unwrap(); // current token
-                    field.tag = s.next().unwrap().1;
+                    ret.tag = s.next().unwrap().1;
                     s.next().unwrap(); // semi
                     break;
                 }
                 _ => unreachable!(),
             };
         }
-        field
+        ret
     }
 }
 
-#[derive(Default)]
 struct Enum {
     name: Vec<u8>,
     fields: Vec<EnumField>,
@@ -142,10 +136,10 @@ struct EnumField {
 
 impl Enum {
     fn new(s: &mut TokenStream) -> Self {
-        let mut ret = Self::default();
         assert!(s.next().unwrap().1 == b"enum");
-        ret.name = s.next().unwrap().1;
+        let name = s.next().unwrap().1;
         s.next().unwrap(); // '{'
+        let mut fields = Vec::new();
         while let Some(token) = s.peek() {
             match (&token.0, &token.1[..]) {
                 (TokenKind::Symbol, b"}") => {
@@ -158,16 +152,15 @@ impl Enum {
                     s.next().unwrap(); // '='
                     let tag = s.next().unwrap().1;
                     s.next().unwrap(); // ';'
-                    ret.fields.push(EnumField { name, tag });
+                    fields.push(EnumField { name, tag });
                 }
                 _ => unreachable!(),
             };
         }
-        ret
+        Self { name, fields }
     }
 }
 
-#[derive(Default)]
 struct Oneof {
     name: Vec<u8>,
     fields: Vec<OneofField>,
@@ -181,10 +174,10 @@ struct OneofField {
 
 impl Oneof {
     fn new(s: &mut TokenStream) -> Self {
-        let mut ret = Self::default();
         assert!(s.next().unwrap().1 == b"oneof");
-        ret.name = s.next().unwrap().1;
+        let name = s.next().unwrap().1;
         s.next().unwrap(); // '{'
+        let mut fields = Vec::new();
         while let Some(token) = s.peek() {
             match (&token.0, &token.1[..]) {
                 (TokenKind::Symbol, b"}") => {
@@ -198,7 +191,7 @@ impl Oneof {
                     s.next().unwrap(); // '='
                     let tag = s.next().unwrap().1;
                     s.next().unwrap(); // ';'
-                    ret.fields.push(OneofField {
+                    fields.push(OneofField {
                         name,
                         data_type,
                         tag,
@@ -206,15 +199,7 @@ impl Oneof {
                 }
             };
         }
-        ret
-    }
-}
-
-fn ignore_semi(s: &mut TokenStream) {
-    if let Some((TokenKind::Symbol, b)) = s.peek() {
-        if b == b";" {
-            s.next().unwrap();
-        }
+        Self { name, fields }
     }
 }
 
@@ -226,6 +211,14 @@ enum TokenKind {
 }
 
 type TokenStream = Peekable<std::vec::IntoIter<(TokenKind, Vec<u8>)>>;
+
+fn ignore_semi(s: &mut TokenStream) {
+    if let Some((TokenKind::Symbol, b)) = s.peek() {
+        if b == b";" {
+            s.next().unwrap();
+        }
+    }
+}
 
 fn next_token(s: &mut Peekable<std::vec::IntoIter<u8>>) -> (TokenKind, Vec<u8>) {
     fn is_symbol(v: u8) -> bool {
@@ -288,62 +281,135 @@ fn next_token(s: &mut Peekable<std::vec::IntoIter<u8>>) -> (TokenKind, Vec<u8>) 
     (kind, ret)
 }
 
-fn to_big_camel(i: &[u8]) -> Vec<u8> {
-    use heck::ToUpperCamelCase;
-    let mut o: Vec<u8> = std::str::from_utf8(i).unwrap().to_upper_camel_case().into();
-    if is_rust_key_word(&o) {
+fn to_any_case(s: &[u8]) -> Vec<Vec<u8>> {
+    // C2CReadReport
+    // c2_c_read_report
+    let mut idx: usize = 0;
+    let mut parts = Vec::new();
+    while let Some(&f) = s.get(idx) {
+        idx += 1;
+        let mut part = vec![f];
+        let (mut r_u, mut r_d) = (f.is_ascii_uppercase() as u8, f.is_ascii_uppercase() as u8);
+        while let Some(&c) = s.get(idx) {
+            let (c_u, c_d) = (c.is_ascii_uppercase() as u8, c.is_ascii_digit() as u8);
+            match (r_u, r_d, c_u, c_d) {
+                _ if c == b'_' => {
+                    idx += 1;
+                    break;
+                }
+                (_, _, 1, _) if idx + 1 < s.len() && s[idx + 1].is_ascii_lowercase() => {
+                    break;
+                }
+                (1, _, 0, 0) | (1, _, 1, 0) | (0, 0, 0, 0) | (_, 0, 0, 1) | (_, 1, 0, _) => {
+                    idx += 1;
+                    part.push(c);
+                }
+                (0, _, 1, 0) => break,
+                v => panic!("illegal state {:?}", v),
+            }
+            if c_d != 1 {
+                r_u = c_u;
+            }
+            r_d = c_d;
+        }
+        parts.push(part);
+    }
+    parts
+}
+
+fn make_legal_rust_ident(i: &mut Vec<u8>) {
+    #[rustfmt::skip]
+    #[inline]
+    fn is_rust_key_word(i: &[u8]) -> bool {1 == match i {
+    // https://doc.rust-lang.org/std/index.html#keywords
+    b"Self"=>1,b"as"=>1,b"async"=>1,b"await"=>1,b"break"=>1,b"const"=>1,b"continue"=>1,
+    b"crate"=>1,b"dyn"=>1,b"else"=>1,b"enum"=>1,b"extern"=>1,b"false"=>1,b"fn"=>1,b"for"=>1,
+    b"if"=>1,b"impl"=>1,b"in"=>1,b"let"=>1,b"loop"=>1,b"match"=>1,b"mod"=>1,b"move"=>1,b"mut"=>1,
+    b"pub"=>1,b"ref"=>1,b"return"=>1,b"self"=>1,b"static"=>1,b"struct"=>1,b"super"=>1,b"trait"=>1,
+    b"true"=>1,b"type"=>1,b"union"=>1,b"unsafe"=>1,b"use"=>1,b"where"=>1,b"while"=>1,
+    _=>0}}
+    if is_rust_key_word(i) {
         let mut p = b"r#".to_vec();
-        p.append(&mut o);
-        p
-    } else {
-        o
+        p.append(i);
+        *i = p;
     }
 }
 
-fn to_snake(i: &[u8]) -> Vec<u8> {
-    use heck::ToSnakeCase;
-    let o: Vec<u8> = std::str::from_utf8(i).unwrap().to_snake_case().into();
-    if is_rust_key_word(&o) {
-        let mut p = b"r#".to_vec();
-        p.extend(o);
-        p
-    } else {
-        o
+fn to_big_camel(i: &[u8]) -> Vec<u8> {
+    let mut o = Vec::new();
+    for mut part in to_any_case(i) {
+        for c in &mut part {
+            c.make_ascii_lowercase();
+        }
+        part[0].make_ascii_uppercase();
+        o.append(&mut part);
     }
+    make_legal_rust_ident(&mut o);
+    o
+}
+
+fn to_snake(i: &[u8]) -> Vec<u8> {
+    let mut o = Vec::new();
+    for mut part in to_any_case(i) {
+        for c in &mut part {
+            c.make_ascii_lowercase();
+        }
+        o.append(&mut part);
+        o.push(b'_');
+    }
+    if o.ends_with(b"_") {
+        o.pop();
+    }
+    make_legal_rust_ident(&mut o);
+    o
+}
+
+#[cfg(target_feature = "tests")]
+fn test_case() {
+    fn test_once(i: &str) {
+        // to_any_case(i.as_bytes())
+        //     .into_iter()
+        //     .map(|v| String::from_utf8(v).unwrap())
+        //     .for_each(|v| {
+        //         println!("{v}");
+        //     });
+
+        use heck::{ToSnakeCase, ToUpperCamelCase};
+
+        let expect = i.to_upper_camel_case();
+        let ans = String::from_utf8(to_big_camel(i.as_bytes())).unwrap();
+        // dbg!(&ans);
+        assert_eq!(expect, ans, "to_big_camel wrong");
+
+        let expect = i.to_snake_case();
+        let ans = String::from_utf8(to_snake(i.as_bytes())).unwrap();
+        assert_eq!(expect, ans, "to_snake wrong");
+    }
+    test_once("ABC4Defg");
+    test_once("abc4defg");
+    test_once("ABC4DEFG");
+    test_once("abC4dEfg");
+    test_once("abC4d_efg");
+    test_once("ab3efg");
+    test_once("ab3Efg");
+    test_once("abcDA3Eg");
+    test_once("abcDA3EFg");
+    test_once("abcDEFg");
+    test_once("c2CReadReport");
 }
 
 fn to_rust_type(i: &[u8]) -> &'static [u8] {
     match i {
-        b"double" => b"f64",
-        b"float" => b"f32",
-        b"int32" => b"i32",
-        b"int64" => b"i64",
-        b"uint32" => b"u32",
-        b"uint64" => b"u64",
-        b"sint32" => b"i32",
-        b"sint64" => b"i64",
-        b"fixed32" => b"u32",
-        b"fixed64" => b"u64",
-        b"sfixed32" => todo!(),
-        b"sfixed64" => todo!(),
         b"bool" => b"bool",
+        b"float" => b"f32",
+        b"double" => b"f64",
+        b"int32" | b"sint32" | b"sfixed32" => b"i32",
+        b"int64" | b"sint64" | b"sfixed64" => b"i64",
+        b"uint32" | b"fixed32" => b"u32",
+        b"uint64" | b"fixed64" => b"u64",
         b"string" => b"::prost::alloc::string::String",
         b"bytes" => b"::prost::alloc::vec::Vec<u8>",
         _ => b"struct",
-    }
-}
-
-#[rustfmt::skip]
-fn is_rust_key_word(i: &[u8]) -> bool {
-    1 == match i {
-        // https://doc.rust-lang.org/std/index.html#keywords
-        b"SelfTy"=>1,b"as"=>1,b"async"=>1,b"await"=>1,b"break"=>1,b"const"=>1,
-        b"continue"=>1,b"crate"=>1,b"dyn"=>1,b"else"=>1,b"enum"=>1,b"extern"=>1,
-        b"false"=>1,b"fn"=>1,b"for"=>1,b"if"=>1,b"impl"=>1,b"in"=>1,b"let"=>1,
-        b"loop"=>1,b"match"=>1,b"mod"=>1,b"move"=>1,b"mut"=>1,b"pub"=>1,b"ref"=>1,
-        b"return"=>1,b"self"=>1,b"static"=>1,b"struct"=>1,b"super"=>1,b"trait"=>1,
-        b"true"=>1,b"type"=>1,b"union"=>1,b"unsafe"=>1,b"use"=>1,b"where"=>1,b"while"=>1,
-        _ => 0,
     }
 }
 
@@ -353,9 +419,12 @@ fn indent(n: i32, o: &mut Vec<u8>) {
     }
 }
 
+/// Translate AST to Rust source code.
 fn translate(package: Package) -> Vec<u8> {
-    // names context
-    let mut cx = HashMap::<Vec<u8>, &'static [u8]>::new();
+    // https://developers.google.com/protocol-buffers/docs/proto
+    // https://developers.google.com/protocol-buffers/docs/proto3
+
+    let mut cx = HashMap::<Vec<u8>, &'static [u8]>::new(); // names context
     let mut o = Vec::<u8>::new();
     fn handle_message(
         depth: i32,
@@ -590,7 +659,7 @@ fn translate(package: Package) -> Vec<u8> {
                 let pbv = match &package.syntax[..] {
                     b"proto2" => 2,
                     b"proto3" => 3,
-                    _ => panic!("syntax not supported"),
+                    _ => panic!("syntax version not supported"),
                 };
                 handle_message(0, pbv, message, &mut o, &cx);
             }
@@ -628,6 +697,7 @@ fn read_to_token_stream(path: impl AsRef<Path>) -> TokenStream {
     tokens.into_iter().peekable()
 }
 
+/// Compile .proto files into Rust files during a Cargo build.
 pub fn compile_protos(
     protos: &[impl AsRef<Path>],
     _includes: &[impl AsRef<Path>],
@@ -646,7 +716,7 @@ pub fn compile_protos(
             outs.insert(name, out);
         }
     }
-    // println!("{}", begin_instant.elapsed().as_millis());
+    // dbg!(begin_instant.elapsed().as_millis());
     for (name, out) in outs {
         std::fs::write(
             format!(
@@ -671,7 +741,10 @@ fn recurse_dir(v: &mut Vec<String>, dir: impl AsRef<Path>) {
     }
 }
 
+/// # DON'T USE THIS IN LIB TARGET.
 pub fn main() {
+    // return test_case();
+
     const IN_DIR: &str = "target/1_in";
     const OUT_DIR: &str = "target/2_out";
     let mut v = Vec::new();
