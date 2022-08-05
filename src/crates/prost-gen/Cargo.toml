@@ -6,9 +6,9 @@ edition = "2021"
 [lib]
 path = "lib.rs"
 
-[[bin]]
-name = "prost-gen"
-path = "lib.rs"
+# [[bin]]
+# name = "prost-gen"
+# path = "lib.rs"
 
 [profile.dev]
 debug = false
@@ -17,6 +17,6 @@ panic = "abort"
 strip = true
 opt-level = "z"
 
-[dependencies]
+# [dependencies]
 # heck = "0.4"
 # prost-build-offical = { version = "0.9", package = "prost-build" }

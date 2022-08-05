@@ -8,9 +8,7 @@ A pure-rust, zero-dependency alternative to [prost-build](https://crates.io/crat
 
 ## Why
 
-The prost-build is troubled by compilation issues [for a long time](https://github.com/tokio-rs/prost/pull/620). In version `0.9` and before, it embed a prebuilded `protoc` binary; At `0.10`, it uses cmake to build one temporarily; Currently (`0.11`) it removed cmake and predicts you have `protoc` installed already in your environment.
-
-The goal of this crate is just able to compile [ricq's proto files](https://github.com/lz1998/ricq/tree/master/ricq-core/src/pb).
+I don't need the complex features of prost-build which is troubled by compilation issues [for a long time](https://github.com/tokio-rs/prost/pull/620). The goal of this crate is just able to compile [ricq's proto files](https://github.com/lz1998/ricq/tree/master/ricq-core/src/pb).
 
 ## Usage
 
