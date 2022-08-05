@@ -1,58 +1,50 @@
-// https://developers.google.com/protocol-buffers/docs/proto
-// https://developers.google.com/protocol-buffers/docs/proto3
-/*
-
-*/
+use std::collections::HashMap;
 use std::iter::Peekable;
-
-type TokenStream = Peekable<std::vec::IntoIter<(TokenKind, Vec<u8>)>>;
+use std::path::Path;
 
 /// The AST Root
-#[derive(Default, Debug)]
+#[derive(Default)]
 struct Package {
     name: Vec<u8>,
-    // The packed option can be enabled for repeated primitive fields to enable
-    // a more efficient representation on the wire. Rather than repeatedly
-    // writing the tag and type for each element, the entire array is encoded as
-    // a single length-delimited blob. In proto3, only explicit setting it to
-    // false will avoid using packed encoding.
     syntax: Vec<u8>,
     entries: Vec<Entry>,
 }
 
 impl Package {
     fn new(s: &mut TokenStream) -> Self {
-        let mut package = Self::default();
+        let mut ret = Self::default();
         while let Some(token) = s.peek() {
             match (&token.0, &token.1[..]) {
                 (TokenKind::Word, b"syntax") => {
                     s.next().unwrap(); // current token
                     s.next().unwrap(); // eq
                     s.next().unwrap(); // quote
-                    package.syntax = s.next().unwrap().1;
+                    ret.syntax = s.next().unwrap().1;
+                    // https://developers.google.com/protocol-buffers/docs/proto
+                    // https://developers.google.com/protocol-buffers/docs/proto3
                     // assert!(package.syntax == b"proto2"); // TODO
                     s.next().unwrap(); // quote
                     s.next().unwrap(); // semi
                 }
                 (TokenKind::Word, b"package") => {
                     s.next().unwrap(); // current token
-                    package.name = s.next().unwrap().1;
+                    ret.name = s.next().unwrap().1;
                     s.next().unwrap(); // semi
                 }
                 (TokenKind::Word, b"enum") => {
-                    package.entries.push(Entry::Enum(Enum::new(s)));
+                    ret.entries.push(Entry::Enum(Enum::new(s)));
                 }
                 (TokenKind::Word, b"message") => {
-                    package.entries.push(Entry::Message(Message::new(s)));
+                    ret.entries.push(Entry::Message(Message::new(s)));
                 }
                 _ => unreachable!(),
             };
         }
-        package
+        ret
     }
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default)]
 struct Message {
     name: Vec<u8>,
     entries: Vec<Entry>,
@@ -60,12 +52,10 @@ struct Message {
 
 impl Message {
     fn new(s: &mut TokenStream) -> Self {
-        let mut message = Self::default();
-
-        assert!(s.next().unwrap().1 == b"message"); // current token
-        message.name = s.next().unwrap().1; // current token
+        let mut ret = Self::default();
+        assert!(s.next().unwrap().1 == b"message");
+        ret.name = s.next().unwrap().1;
         s.next().unwrap(); // '{'
-
         while let Some(token) = s.peek() {
             match (&token.0, &token.1[..]) {
                 (TokenKind::Symbol, b"}") => {
@@ -74,26 +64,23 @@ impl Message {
                     break;
                 }
                 (TokenKind::Word, b"message") => {
-                    message.entries.push(Entry::Message(Message::new(s)));
+                    ret.entries.push(Entry::Message(Message::new(s)));
                 }
                 (TokenKind::Word, b"oneof") => {
-                    message.entries.push(Entry::Oneof(Oneof::new(s)));
+                    ret.entries.push(Entry::Oneof(Oneof::new(s)));
                 }
                 (TokenKind::Word, b"enum") => {
-                    message.entries.push(Entry::Enum(Enum::new(s)));
+                    ret.entries.push(Entry::Enum(Enum::new(s)));
                 }
                 _ => {
-                    message
-                        .entries
-                        .push(Entry::MessageField(MessageField::new(s)));
+                    ret.entries.push(Entry::MessageField(MessageField::new(s)));
                 }
             };
         }
-        message
+        ret
     }
 }
 
-#[derive(Debug, Clone)]
 enum Entry {
     Message(Message),
     MessageField(MessageField),
@@ -101,7 +88,7 @@ enum Entry {
     Enum(Enum),
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default)]
 struct MessageField {
     name: Vec<u8>,
     data_type: Vec<u8>,
@@ -125,9 +112,6 @@ impl MessageField {
                 }
                 (TokenKind::Word, _) if field.data_type.is_empty() => {
                     field.data_type = s.next().unwrap().1;
-                    if to_rust_type(&field.data_type) == b"struct" && !field.repeated {
-                        field.optional = true;
-                    }
                 }
                 (TokenKind::Word, _) if field.name.is_empty() => {
                     field.name = s.next().unwrap().1;
@@ -138,24 +122,19 @@ impl MessageField {
                     s.next().unwrap(); // semi
                     break;
                 }
-                v => {
-                    dbg!(v);
-                    dbg!(field.name);
-                    unreachable!();
-                }
+                _ => unreachable!(),
             };
         }
         field
     }
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default)]
 struct Enum {
     name: Vec<u8>,
     fields: Vec<EnumField>,
 }
 
-#[derive(Default, Debug, Clone)]
 struct EnumField {
     name: Vec<u8>,
     tag: Vec<u8>,
@@ -188,13 +167,12 @@ impl Enum {
     }
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default)]
 struct Oneof {
     name: Vec<u8>,
     fields: Vec<OneofField>,
 }
 
-#[derive(Default, Debug, Clone)]
 struct OneofField {
     name: Vec<u8>,
     data_type: Vec<u8>,
@@ -240,13 +218,14 @@ fn ignore_semi(s: &mut TokenStream) {
     }
 }
 
-#[derive(PartialEq, Eq, Debug)]
 enum TokenKind {
     Word,
     Symbol,
     Number,
     End,
 }
+
+type TokenStream = Peekable<std::vec::IntoIter<(TokenKind, Vec<u8>)>>;
 
 fn next_token(s: &mut Peekable<std::vec::IntoIter<u8>>) -> (TokenKind, Vec<u8>) {
     fn is_symbol(v: u8) -> bool {
@@ -368,34 +347,69 @@ fn is_rust_key_word(i: &[u8]) -> bool {
     }
 }
 
+fn indent(n: i32, o: &mut Vec<u8>) {
+    for _ in 0..n {
+        o.extend(b"    ");
+    }
+}
+
 fn translate(package: Package) -> Vec<u8> {
-    let mut nesteds = HashMap::<Vec<u8>, &'static [u8]>::new();
+    // names context
+    let mut cx = HashMap::<Vec<u8>, &'static [u8]>::new();
     let mut o = Vec::<u8>::new();
     fn handle_message(
+        depth: i32,
         pbv: i32,
         message: Message,
         o: &mut Vec<u8>,
-        nesteds: &HashMap<Vec<u8>, &'static [u8]>,
+        cx: &HashMap<Vec<u8>, &'static [u8]>,
     ) {
-        let mut nesteds_cur = nesteds.clone();
-        let mut has_nest = false;
+        let mut cx = cx.clone(); // sub context
+        let mut nested = false;
+        indent(depth, o);
         o.extend(b"#[derive(Clone, PartialEq, ::prost::Message)]\n");
+        indent(depth, o);
         o.extend(b"pub struct ");
         o.extend(to_big_camel(&message.name));
         o.extend(b" {\n");
         for msg_entry in &message.entries {
             if let Entry::Message(i_message) = msg_entry {
-                has_nest = true;
-                nesteds_cur.insert(i_message.name.clone(), b"message");
+                nested = true;
+                cx.insert(i_message.name.clone(), b"message");
             }
         }
         for msg_entry in &message.entries {
             match msg_entry {
                 Entry::MessageField(field) => {
+                    // # From proto doc
+                    // For string, bytes, and message fields, optional is compatible with
+                    // repeated. Given serialized data of a repeated field as input, clients that
+                    // expect this field to be optional will take the last input value if it's a
+                    // primitive type field or merge all input elements if it's a message type
+                    // field. Note that this is not generally safe for numeric types, including
+                    // bools and enums. Repeated fields of numeric types can be serialized in the
+                    // packed format, which will not be parsed correctly when an optional field
+                    // is expected.
+                    let rust_type = to_rust_type(&field.data_type);
+                    let _in_ctx = cx.get(&field.data_type);
+                    let is_in_ctx = rust_type == b"struct" && _in_ctx.is_some();
+                    let is_enum = _in_ctx.map(|v| v == b"enum") == Some(true);
+                    let is_optional = {
+                        if field.optional && field.repeated {
+                            assert!(
+                                field.data_type == b"string"
+                                    || field.data_type == b"bytes"
+                                    || (rust_type == b"struct" && !is_enum)
+                            );
+                        }
+                        field.optional || (rust_type == b"struct" && !field.repeated && !is_enum)
+                    };
+
                     // attr macros
-                    o.extend(b"    #[prost(");
-                    if to_rust_type(&field.data_type) == b"struct" {
-                        if nesteds_cur.get(&field.data_type).map(|v| v == b"enum") == Some(true) {
+                    indent(depth + 1, o);
+                    o.extend(b"#[prost(");
+                    if rust_type == b"struct" {
+                        if cx.get(&field.data_type).map(|v| v == b"enum") == Some(true) {
                             o.extend(b"enumeration=\"");
                             o.extend(to_big_camel(&field.data_type));
                             o.extend(b"\", ");
@@ -408,16 +422,21 @@ fn translate(package: Package) -> Vec<u8> {
                         o.extend(&field.data_type);
                         o.extend(b", ");
                     }
-                    if field.optional {
+                    if is_optional {
                         o.extend(b"optional, ");
                     }
                     if field.repeated {
                         o.extend(b"repeated, ");
-                        // proto2 or proto3
-                        if to_rust_type(&field.data_type) != b"struct"
+                        // # From proto doc
+                        // The packed option can be enabled for repeated primitive fields to
+                        // enable a more efficient representation on the wire. Rather than
+                        // repeatedly writing the tag and type for each element, the entire array
+                        // is encoded as a single length-delimited blob. In proto3, only explicit
+                        // setting it to false will avoid using packed encoding.
+                        if pbv == 2 // proto2
+                            && rust_type != b"struct"
                             && field.data_type != b"bytes"
                             && field.data_type != b"string"
-                            && pbv == 2
                         {
                             o.extend(b"packed=\"false\", ");
                         }
@@ -432,11 +451,14 @@ fn translate(package: Package) -> Vec<u8> {
                     o.extend(b")]\n");
 
                     // value
-                    o.extend(b"    pub ");
+                    indent(depth + 1, o);
+                    o.extend(b"pub ");
                     o.extend(to_snake(&field.name));
                     o.extend(b": ");
                     let mut depth = 0;
-                    if field.optional {
+                    // don't use `field.optional`, that only rely on whether `optional` keyword
+                    // appeared in source file and AST. see `is_optional`'s define above.
+                    if is_optional {
                         o.extend(b"::core::option::Option<");
                         depth += 1;
                     }
@@ -444,21 +466,16 @@ fn translate(package: Package) -> Vec<u8> {
                         o.extend(b"::prost::alloc::vec::Vec<");
                         depth += 1;
                     }
-                    match to_rust_type(&field.data_type) {
-                        b"struct" => {
-                            if let Some(k) = nesteds_cur.get(&field.data_type) {
-                                if k == b"enum" {
-                                    o.extend(b"i32");
-                                } else if k == b"message" {
-                                    o.extend(to_snake(&message.name));
-                                    o.extend(b"::");
-                                    o.extend(to_big_camel(&field.data_type));
-                                }
-                            } else {
-                                o.extend(to_big_camel(&field.data_type));
-                            }
-                        }
-                        t => o.extend(t),
+                    if is_enum {
+                        o.extend(b"i32");
+                    } else if is_in_ctx {
+                        o.extend(to_snake(&message.name));
+                        o.extend(b"::");
+                        o.extend(to_big_camel(&field.data_type));
+                    } else if rust_type == b"struct" {
+                        o.extend(to_big_camel(&field.data_type))
+                    } else {
+                        o.extend(rust_type);
                     }
                     for _ in 0..depth {
                         o.extend(b">");
@@ -466,8 +483,11 @@ fn translate(package: Package) -> Vec<u8> {
                     o.extend(b",\n");
                 }
                 Entry::Oneof(oneof) => {
-                    has_nest = true;
-                    o.extend(b"    #[prost(oneof=\"");
+                    nested = true;
+
+                    // attr macros
+                    indent(depth + 1, o);
+                    o.extend(b"#[prost(oneof=\"");
                     o.extend(to_snake(&message.name));
                     o.extend(b"::");
                     o.extend(to_big_camel(&oneof.name));
@@ -481,7 +501,10 @@ fn translate(package: Package) -> Vec<u8> {
                         o.pop();
                     }
                     o.extend(b"\")]\n");
-                    o.extend(b"    pub ");
+
+                    // value
+                    indent(depth + 1, o);
+                    o.extend(b"pub ");
                     o.extend(to_snake(&oneof.name));
                     o.extend(b": ::core::option::Option<");
                     o.extend(to_snake(&message.name));
@@ -493,25 +516,33 @@ fn translate(package: Package) -> Vec<u8> {
                 _ => unreachable!(),
             }
         }
+        indent(depth, o);
         o.extend(b"}\n");
-        if has_nest {
+        if nested {
+            indent(depth, o);
             o.extend(b"/// Nested message and enum types in `");
-            o.extend(to_big_camel(&message.name));
-            o.extend(b"`.\npub mod ");
+            o.extend(&message.name);
+            o.extend(b"`.\n");
+            indent(depth, o);
+            o.extend(b"pub mod ");
             o.extend(to_snake(&message.name));
             o.extend(b" {\n");
             for msg_entry in message.entries {
                 match msg_entry {
                     Entry::Message(message) => {
-                        handle_message(pbv, message, o, nesteds);
+                        handle_message(depth + 1, pbv, message, o, &cx);
                     }
                     Entry::Oneof(oneof) => {
-                        o.extend(b"    #[derive(Clone, PartialEq, ::prost::Oneof)]\n");
-                        o.extend(b"    pub enum ");
+                        indent(depth + 1, o);
+                        o.extend(b"#[derive(Clone, PartialEq, ::prost::Oneof)]\n");
+                        indent(depth + 1, o);
+                        o.extend(b"pub enum ");
                         o.extend(to_big_camel(&oneof.name));
                         o.extend(b" {\n");
                         for field in oneof.fields {
-                            o.extend(b"        #[prost(");
+                            // attr macros
+                            indent(depth + 2, o);
+                            o.extend(b"#[prost(");
                             if to_rust_type(&field.data_type) == b"struct" {
                                 o.extend(b"message");
                             } else {
@@ -519,7 +550,10 @@ fn translate(package: Package) -> Vec<u8> {
                             }
                             o.extend(b", tag=\"");
                             o.extend(field.tag);
-                            o.extend(b"\")]\n        ");
+                            o.extend(b"\")]\n");
+
+                            // value
+                            indent(depth + 2, o);
                             o.extend(to_big_camel(&field.name));
                             o.extend(b"(");
                             match to_rust_type(&field.data_type) {
@@ -531,18 +565,20 @@ fn translate(package: Package) -> Vec<u8> {
                             }
                             o.extend(b"),\n");
                         }
-                        o.extend(b"    }\n");
+                        indent(depth + 1, o);
+                        o.extend(b"}\n");
                     }
                     _ => {}
                 }
             }
+            indent(depth, o);
             o.extend(b"}\n");
         }
     }
     for pkg_entry in &package.entries {
         match pkg_entry {
             Entry::Enum(enume) => {
-                nesteds.insert(enume.name.clone(), b"enum");
+                cx.insert(enume.name.clone(), b"enum");
             }
             Entry::Message(_) => {}
             _ => unreachable!(),
@@ -554,9 +590,9 @@ fn translate(package: Package) -> Vec<u8> {
                 let pbv = match &package.syntax[..] {
                     b"proto2" => 2,
                     b"proto3" => 3,
-                    _ => unreachable!(),
+                    _ => panic!("syntax not supported"),
                 };
-                handle_message(pbv, message, &mut o, &nesteds);
+                handle_message(0, pbv, message, &mut o, &cx);
             }
             Entry::Enum(enume) => {
                 o.extend(b"#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]\n");
@@ -565,7 +601,7 @@ fn translate(package: Package) -> Vec<u8> {
                 o.extend(to_big_camel(&enume.name));
                 o.extend(b" {\n");
                 for field in enume.fields {
-                    o.extend(b"    ");
+                    indent(1, &mut o);
                     o.extend(to_big_camel(&field.name));
                     o.extend(b" = ");
                     o.extend(to_big_camel(&field.tag));
@@ -579,15 +615,12 @@ fn translate(package: Package) -> Vec<u8> {
     o
 }
 
-use std::collections::HashMap;
-use std::path::Path;
-
 fn read_to_token_stream(path: impl AsRef<Path>) -> TokenStream {
     let mut src = std::fs::read(path).unwrap().into_iter().peekable();
     let mut tokens = Vec::new();
     loop {
         let token = next_token(&mut src);
-        if token.0 == TokenKind::End {
+        if let TokenKind::End = token.0 {
             break;
         }
         tokens.push(token);
@@ -625,4 +658,29 @@ pub fn compile_protos(
         )?;
     }
     Ok(())
+}
+
+fn recurse_dir(v: &mut Vec<String>, dir: impl AsRef<Path>) {
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            recurse_dir(v, path);
+        } else if path.extension().map(|v| v == "proto").unwrap() {
+            v.push(path.to_str().unwrap().into());
+        }
+    }
+}
+
+pub fn main() {
+    const IN_DIR: &str = "target/1_in";
+    const OUT_DIR: &str = "target/2_out";
+    let mut v = Vec::new();
+    recurse_dir(&mut v, IN_DIR);
+
+    std::fs::remove_dir_all(OUT_DIR).ok();
+    std::fs::create_dir_all(OUT_DIR).unwrap();
+    std::env::set_var("OUT_DIR", OUT_DIR);
+
+    // prost_build_offical::compile_protos(&v, &[IN_DIR]).unwrap();
+    compile_protos(&v, &[IN_DIR]).unwrap();
 }
