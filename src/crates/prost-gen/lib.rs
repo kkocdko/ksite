@@ -12,14 +12,14 @@ struct Package {
 impl Package {
     fn new(s: &mut TokenStream) -> Self {
         assert!(s.next().unwrap().1 == b"syntax");
-        s.next().unwrap(); // '='
-        s.next().unwrap(); // '"'
+        s.next(); // '='
+        s.next(); // '"'
         let syntax = s.next().unwrap().1;
-        s.next().unwrap(); // '"'
-        s.next().unwrap(); // ';'
+        s.next(); // '"'
+        s.next(); // ';'
         assert!(s.next().unwrap().1 == b"package");
         let name = s.next().unwrap().1;
-        s.next().unwrap(); // ';'
+        s.next(); // ';'
         let mut entries = Vec::new();
         while let Some(token) = s.peek() {
             match (&token.0, &token.1[..]) {
@@ -49,13 +49,15 @@ impl Message {
     fn new(s: &mut TokenStream) -> Self {
         assert!(s.next().unwrap().1 == b"message");
         let name = s.next().unwrap().1;
-        s.next().unwrap(); // '{'
+        s.next(); // '{'
         let mut entries = Vec::new();
         while let Some(token) = s.peek() {
             match (&token.0, &token.1[..]) {
                 (TokenKind::Symbol, b"}") => {
-                    s.next().unwrap(); // current token
-                    ignore_semi(s);
+                    s.next(); // current token
+                    if matches!(s.peek(), Some((TokenKind::Symbol, t)) if t == b";") {
+                        s.next();
+                    }
                     break;
                 }
                 (TokenKind::Word, b"message") => {
@@ -98,11 +100,11 @@ impl MessageField {
         while let Some(token) = s.peek() {
             match (&token.0, &token.1[..]) {
                 (TokenKind::Word, b"optional") => {
-                    s.next().unwrap(); // current token
+                    s.next(); // current token
                     ret.optional = true;
                 }
                 (TokenKind::Word, b"repeated") => {
-                    s.next().unwrap(); // current token
+                    s.next(); // current token
                     ret.repeated = true;
                 }
                 (TokenKind::Word, _) if ret.data_type.is_empty() => {
@@ -112,9 +114,9 @@ impl MessageField {
                     ret.name = s.next().unwrap().1;
                 }
                 (TokenKind::Symbol, b"=") => {
-                    s.next().unwrap(); // current token
+                    s.next(); // current token
                     ret.tag = s.next().unwrap().1;
-                    s.next().unwrap(); // semi
+                    s.next(); // semi
                     break;
                 }
                 _ => unreachable!(),
@@ -138,20 +140,22 @@ impl Enum {
     fn new(s: &mut TokenStream) -> Self {
         assert!(s.next().unwrap().1 == b"enum");
         let name = s.next().unwrap().1;
-        s.next().unwrap(); // '{'
+        s.next(); // '{'
         let mut fields = Vec::new();
         while let Some(token) = s.peek() {
             match (&token.0, &token.1[..]) {
                 (TokenKind::Symbol, b"}") => {
-                    s.next().unwrap();
-                    ignore_semi(s);
+                    s.next();
+                    if matches!(s.peek(), Some((TokenKind::Symbol, t)) if t == b";") {
+                        s.next();
+                    }
                     break;
                 }
                 (TokenKind::Word, _) => {
                     let name = s.next().unwrap().1;
-                    s.next().unwrap(); // '='
+                    s.next(); // '='
                     let tag = s.next().unwrap().1;
-                    s.next().unwrap(); // ';'
+                    s.next(); // ';'
                     fields.push(EnumField { name, tag });
                 }
                 _ => unreachable!(),
@@ -176,21 +180,23 @@ impl Oneof {
     fn new(s: &mut TokenStream) -> Self {
         assert!(s.next().unwrap().1 == b"oneof");
         let name = s.next().unwrap().1;
-        s.next().unwrap(); // '{'
+        s.next(); // '{'
         let mut fields = Vec::new();
         while let Some(token) = s.peek() {
             match (&token.0, &token.1[..]) {
                 (TokenKind::Symbol, b"}") => {
-                    s.next().unwrap();
-                    ignore_semi(s);
+                    s.next();
+                    if matches!(s.peek(), Some((TokenKind::Symbol, t)) if t == b";") {
+                        s.next();
+                    }
                     break;
                 }
                 _ => {
                     let data_type = s.next().unwrap().1;
                     let name = s.next().unwrap().1;
-                    s.next().unwrap(); // '='
+                    s.next(); // '='
                     let tag = s.next().unwrap().1;
-                    s.next().unwrap(); // ';'
+                    s.next(); // ';'
                     fields.push(OneofField {
                         name,
                         data_type,
@@ -211,14 +217,6 @@ enum TokenKind {
 }
 
 type TokenStream = Peekable<std::vec::IntoIter<(TokenKind, Vec<u8>)>>;
-
-fn ignore_semi(s: &mut TokenStream) {
-    if let Some((TokenKind::Symbol, b)) = s.peek() {
-        if b == b";" {
-            s.next().unwrap();
-        }
-    }
-}
 
 fn next_token(s: &mut Peekable<std::vec::IntoIter<u8>>) -> (TokenKind, Vec<u8>) {
     fn is_symbol(v: u8) -> bool {
@@ -282,8 +280,6 @@ fn next_token(s: &mut Peekable<std::vec::IntoIter<u8>>) -> (TokenKind, Vec<u8>) 
 }
 
 fn to_any_case(s: &[u8]) -> Vec<Vec<u8>> {
-    // C2CReadReport
-    // c2_c_read_report
     let mut idx: usize = 0;
     let mut parts = Vec::new();
     while let Some(&f) = s.get(idx) {
@@ -320,14 +316,13 @@ fn to_any_case(s: &[u8]) -> Vec<Vec<u8>> {
 fn make_legal_rust_ident(i: &mut Vec<u8>) {
     #[rustfmt::skip]
     #[inline]
-    fn is_rust_key_word(i: &[u8]) -> bool {1 == match i {
     // https://doc.rust-lang.org/std/index.html#keywords
-    b"Self"=>1,b"as"=>1,b"async"=>1,b"await"=>1,b"break"=>1,b"const"=>1,b"continue"=>1,
-    b"crate"=>1,b"dyn"=>1,b"else"=>1,b"enum"=>1,b"extern"=>1,b"false"=>1,b"fn"=>1,b"for"=>1,
-    b"if"=>1,b"impl"=>1,b"in"=>1,b"let"=>1,b"loop"=>1,b"match"=>1,b"mod"=>1,b"move"=>1,b"mut"=>1,
-    b"pub"=>1,b"ref"=>1,b"return"=>1,b"self"=>1,b"static"=>1,b"struct"=>1,b"super"=>1,b"trait"=>1,
-    b"true"=>1,b"type"=>1,b"union"=>1,b"unsafe"=>1,b"use"=>1,b"where"=>1,b"while"=>1,
-    _=>0}}
+    fn is_rust_key_word(i: &[u8]) -> bool { matches!(i,
+        b"Self"|b"as"|b"async"|b"await"|b"break"|b"const"|b"continue"|b"crate"|b"dyn"|
+        b"else"|b"enum"|b"extern"|b"false"|b"fn"|b"for"|b"if"|b"impl"|b"in"|b"let"|b"loop"|
+        b"match"|b"mod"|b"move"|b"mut"|b"pub"|b"ref"|b"return"|b"self"|b"static"|b"struct"|
+        b"super"|b"trait"|b"true"|b"type"|b"union"|b"unsafe"|b"use"|b"where"|b"while")
+    }
     if is_rust_key_word(i) {
         let mut p = b"r#".to_vec();
         p.append(i);
