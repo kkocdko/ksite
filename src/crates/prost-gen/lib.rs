@@ -419,23 +419,34 @@ fn translate(package: Package) -> Vec<u8> {
         }
     }
 
+    fn mod_path(sub: i32, cur_mod: &[u8], o: &mut Vec<u8>) {
+        match sub {
+            0 => {
+                o.extend(to_snake(cur_mod));
+                o.extend(b"::");
+            }
+            1 => {}
+            2..=i32::MAX => {
+                for _ in 0..(sub - 1) {
+                    o.extend(b"super::");
+                }
+            }
+            _ => unreachable!(),
+        }
+    }
+
     let pbv = match &package.syntax[..] {
         b"proto2" => 2,
         b"proto3" => 3,
         _ => panic!("syntax version not supported"),
     };
-    let mut cx = HashMap::<Vec<u8>, &'static [u8]>::new(); // names context
+    type ContextMap<'a> = HashMap<&'a [u8], (&'static [u8], i32)>; // <name, (type, depth)>
+    let mut cx = ContextMap::new(); // names context
     let mut o = Vec::<u8>::new();
 
-    fn handle_message(
-        mut depth: i32,
-        pbv: i32,
-        message: Message,
-        o: &mut Vec<u8>,
-        cx: &HashMap<Vec<u8>, &'static [u8]>,
-    ) {
+    fn handle_message(depth: i32, pbv: i32, message: &Message, o: &mut Vec<u8>, cx: &ContextMap) {
         let mut cx = cx.clone(); // sub context
-        let mut nested = false;
+        let mut has_nested = false;
         indent(depth, o);
         o.extend(b"#[derive(Clone, PartialEq, ::prost::Message)]\n");
         indent(depth, o);
@@ -445,15 +456,15 @@ fn translate(package: Package) -> Vec<u8> {
         for msg_entry in &message.entries {
             match msg_entry {
                 Entry::Enum(Enum { name, .. }) => {
-                    nested = true;
-                    cx.insert(name.clone(), b"enum");
+                    has_nested = true;
+                    cx.insert(name, (b"enum", depth));
                 }
                 Entry::Message(Message { name, .. }) => {
-                    nested = true;
-                    cx.insert(name.clone(), b"message");
+                    has_nested = true;
+                    cx.insert(name, (b"message", depth));
                 }
                 Entry::Oneof(_) => {
-                    nested = true;
+                    has_nested = true;
                     // oneof is anonymous
                 }
                 Entry::MessageField(_) => {}
@@ -472,9 +483,9 @@ fn translate(package: Package) -> Vec<u8> {
                     // packed format, which will not be parsed correctly when an optional field
                     // is expected.
                     let rust_type = to_rust_type(&field.data_type);
-                    let _in_ctx = cx.get(&field.data_type);
+                    let _in_ctx = cx.get(&field.data_type[..]);
                     let is_in_ctx = rust_type == b"struct" && _in_ctx.is_some();
-                    let is_enum = _in_ctx.map(|v| v == b"enum") == Some(true);
+                    let is_enum = _in_ctx.map(|v| v.0 == b"enum") == Some(true);
                     let is_optional = {
                         if field.optional && field.repeated {
                             assert!(
@@ -490,8 +501,9 @@ fn translate(package: Package) -> Vec<u8> {
                     indent(depth + 1, o);
                     o.extend(b"#[prost(");
                     if rust_type == b"struct" {
-                        if cx.get(&field.data_type).map(|v| v == b"enum") == Some(true) {
+                        if cx.get(&field.data_type[..]).map(|v| v.0 == b"enum") == Some(true) {
                             o.extend(b"enumeration=\"");
+                            mod_path(depth - cx[&field.data_type[..]].1, &message.name, o);
                             o.extend(to_big_camel(&field.data_type));
                             o.extend(b"\", ");
                         } else {
@@ -536,35 +548,34 @@ fn translate(package: Package) -> Vec<u8> {
                     o.extend(b"pub ");
                     o.extend(to_snake(&field.name));
                     o.extend(b": ");
-                    let mut depth = 0;
+                    let mut field_depth = 0;
                     // don't use `field.optional`, that only rely on whether `optional` keyword
                     // appeared in source file and AST. see `is_optional`'s define above.
                     if is_optional {
                         o.extend(b"::core::option::Option<");
-                        depth += 1;
+                        field_depth += 1;
                     }
                     if field.repeated {
                         o.extend(b"::prost::alloc::vec::Vec<");
-                        depth += 1;
+                        field_depth += 1;
                     }
                     if is_enum {
                         o.extend(b"i32");
                     } else if is_in_ctx {
-                        o.extend(to_snake(&message.name));
-                        o.extend(b"::");
+                        mod_path(depth - cx[&field.data_type[..]].1, &message.name, o);
                         o.extend(to_big_camel(&field.data_type));
                     } else if rust_type == b"struct" {
                         o.extend(to_big_camel(&field.data_type))
                     } else {
                         o.extend(rust_type);
                     }
-                    for _ in 0..depth {
+                    for _ in 0..field_depth {
                         o.extend(b">");
                     }
                     o.extend(b",\n");
                 }
                 Entry::Oneof(oneof) => {
-                    nested = true;
+                    has_nested = true;
 
                     // attr macros
                     indent(depth + 1, o);
@@ -599,7 +610,7 @@ fn translate(package: Package) -> Vec<u8> {
         }
         indent(depth, o);
         o.extend(b"}\n");
-        if nested {
+        if has_nested {
             indent(depth, o);
             o.extend(b"/// Nested message and enum types in `");
             o.extend(&message.name);
@@ -608,23 +619,21 @@ fn translate(package: Package) -> Vec<u8> {
             o.extend(b"pub mod ");
             o.extend(to_snake(&message.name));
             o.extend(b" {\n");
-            depth += 1;
-            for msg_entry in message.entries {
+            for msg_entry in &message.entries {
                 match msg_entry {
                     Entry::Message(message) => {
-                        handle_message(depth, pbv, message, o, &cx);
+                        handle_message(depth + 1, pbv, message, o, &cx);
                     }
                     Entry::Oneof(oneof) => {
-                        indent(depth, o);
+                        indent(depth + 1, o);
                         o.extend(b"#[derive(Clone, PartialEq, ::prost::Oneof)]\n");
-                        indent(depth, o);
+                        indent(depth + 1, o);
                         o.extend(b"pub enum ");
                         o.extend(to_big_camel(&oneof.name));
                         o.extend(b" {\n");
-                        depth += 1;
-                        for field in oneof.fields {
+                        for field in &oneof.fields {
                             // attr macros
-                            indent(depth, o);
+                            indent(depth + 2, o);
                             o.extend(b"#[prost(");
                             if to_rust_type(&field.data_type) == b"struct" {
                                 o.extend(b"message");
@@ -632,11 +641,11 @@ fn translate(package: Package) -> Vec<u8> {
                                 o.extend(&field.data_type);
                             }
                             o.extend(b", tag=\"");
-                            o.extend(field.tag);
+                            o.extend(&field.tag);
                             o.extend(b"\")]\n");
 
                             // value
-                            indent(depth, o);
+                            indent(depth + 2, o);
                             o.extend(to_big_camel(&field.name));
                             o.extend(b"(");
                             match to_rust_type(&field.data_type) {
@@ -648,23 +657,21 @@ fn translate(package: Package) -> Vec<u8> {
                             }
                             o.extend(b"),\n");
                         }
-                        depth -= 1;
-                        indent(depth, o);
+                        indent(depth + 1, o);
                         o.extend(b"}\n");
                     }
                     Entry::Enum(enume) => {
-                        handle_enum(depth, enume, o);
+                        handle_enum(depth + 1, enume, o);
                     }
                     Entry::MessageField(_) => {}
                 }
             }
-            depth -= 1;
             indent(depth, o);
             o.extend(b"}\n");
         }
     }
 
-    fn handle_enum(mut depth: i32, enume: Enum, o: &mut Vec<u8>) {
+    fn handle_enum(mut depth: i32, enume: &Enum, o: &mut Vec<u8>) {
         indent(depth, o);
         o.extend(b"#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]\n");
         indent(depth, o);
@@ -674,7 +681,7 @@ fn translate(package: Package) -> Vec<u8> {
         o.extend(to_big_camel(&enume.name));
         o.extend(b" {\n");
         depth += 1;
-        for field in enume.fields {
+        for field in &enume.fields {
             indent(depth, o);
             o.extend(to_big_camel(&field.name));
             o.extend(b" = ");
@@ -686,19 +693,20 @@ fn translate(package: Package) -> Vec<u8> {
         o.extend(b"}\n");
     }
 
+    let depth = -1;
     for pkg_entry in &package.entries {
         match pkg_entry {
             Entry::Enum(enume) => {
-                cx.insert(enume.name.clone(), b"enum");
+                cx.insert(&enume.name, (b"enum", depth));
             }
             Entry::Message(_) => {}
             _ => unreachable!(),
         }
     }
-    for pkg_entry in package.entries {
+    for pkg_entry in &package.entries {
         match pkg_entry {
-            Entry::Message(message) => handle_message(0, pbv, message, &mut o, &cx),
-            Entry::Enum(enume) => handle_enum(0, enume, &mut o),
+            Entry::Message(message) => handle_message(depth + 1, pbv, message, &mut o, &cx),
+            Entry::Enum(enume) => handle_enum(depth + 1, enume, &mut o),
             _ => unreachable!(),
         }
     }
