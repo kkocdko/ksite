@@ -2,7 +2,7 @@ use std::cell::Cell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-/// The AST Root
+/// The Root of AST.
 struct Package<'a> {
     name: &'a [u8],
     syntax: &'a [u8],
@@ -238,6 +238,7 @@ impl<'a> TokenStream<'a> {
         self.next().1
     }
 
+    /// Create `TokenStream` from proto file data.
     fn new(mut s: &'a [u8]) -> Self {
         let mut tokens = Vec::new();
         loop {
@@ -309,92 +310,48 @@ fn next_token<'a>(s: &mut &'a [u8]) -> Token<'a> {
     ret
 }
 
-// performance hotpoint here
-fn to_any_case(s: &[u8]) -> Vec<Vec<u8>> {
-    let mut idx: usize = 0;
-    let mut parts = Vec::new();
-    while let Some(&f) = s.get(idx) {
-        idx += 1;
-        let mut part = vec![f];
-        let (mut r_u, mut r_d) = (f.is_ascii_uppercase() as u8, f.is_ascii_uppercase() as u8);
-        while let Some(&c) = s.get(idx) {
-            let (c_u, c_d) = (c.is_ascii_uppercase() as u8, c.is_ascii_digit() as u8);
+/// Split an identifier into sections for case transforms later.
+fn to_any_case(s: &[u8]) -> Vec<&[u8]> {
+    let mut parts = Vec::<&[u8]>::new();
+    let mut range = (0, 0);
+    'label: while let Some(&f) = s.get(range.1) {
+        range.1 += 1;
+        let (mut r_u, mut r_d) = (f.is_ascii_uppercase(), f.is_ascii_uppercase());
+        while let Some(&c) = s.get(range.1) {
+            let (c_u, c_d) = (c.is_ascii_uppercase(), c.is_ascii_digit());
             match (r_u, r_d, c_u, c_d) {
                 _ if c == b'_' => {
-                    idx += 1;
+                    parts.push(&s[range.0..range.1]);
+                    range.1 += 1; // skip current char
+                    range.0 = range.1;
+                    continue 'label;
+                }
+                (_, _, true, _) if range.1 + 1 < s.len() && s[range.1 + 1].is_ascii_lowercase() => {
                     break;
                 }
-                (_, _, 1, _) if idx + 1 < s.len() && s[idx + 1].is_ascii_lowercase() => {
-                    break;
+                (_, _, _, true) | (true, _, true, false) | (_, _, false, false) => {
+                    range.1 += 1;
                 }
-                (1, _, 0, 0) | (1, _, 1, 0) | (0, 0, 0, 0) | (_, 0, 0, 1) | (_, 1, 0, _) => {
-                    idx += 1;
-                    part.push(c);
-                }
-                (0, _, 1, 0) => break,
-                v => panic!("illegal state {:?}", v),
+                (false, _, true, false) => break,
+                // v => panic!("illegal state {:?}", v),
             }
-            if c_d != 1 {
+            if !c_d {
                 r_u = c_u;
             }
             r_d = c_d;
         }
-        parts.push(part);
+        parts.push(&s[range.0..range.1]);
+        range.0 = range.1;
     }
     parts
 }
 
-fn make_legal_rust_ident(i: &mut Vec<u8>) {
-    #[rustfmt::skip]
-    #[inline]
-    // https://doc.rust-lang.org/std/index.html#keywords
-    fn is_rust_key_word(i: &[u8]) -> bool { matches!(i,
-        b"Self"|b"as"|b"async"|b"await"|b"break"|b"const"|b"continue"|b"crate"|b"dyn"|
-        b"else"|b"enum"|b"extern"|b"false"|b"fn"|b"for"|b"if"|b"impl"|b"in"|b"let"|b"loop"|
-        b"match"|b"mod"|b"move"|b"mut"|b"pub"|b"ref"|b"return"|b"self"|b"static"|b"struct"|
-        b"super"|b"trait"|b"true"|b"type"|b"union"|b"unsafe"|b"use"|b"where"|b"while")
-    }
-    if is_rust_key_word(i) {
-        let mut p = b"r#".to_vec();
-        p.append(i);
-        *i = p;
-    }
-}
-
-// TODO: cache using unsafe?
-// static CASE_CACHE: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
-
-fn to_big_camel(i: &[u8]) -> Vec<u8> {
-    let mut o = Vec::new();
-    for mut part in to_any_case(i) {
-        part.make_ascii_lowercase();
-        part[0].make_ascii_uppercase();
-        o.append(&mut part);
-    }
-    make_legal_rust_ident(&mut o);
-    o
-}
-
-fn to_snake(i: &[u8]) -> Vec<u8> {
-    let mut o = Vec::new();
-    for mut part in to_any_case(i) {
-        part.make_ascii_lowercase();
-        o.append(&mut part);
-        o.push(b'_');
-    }
-    if o.ends_with(b"_") {
-        o.pop();
-    }
-    make_legal_rust_ident(&mut o);
-    o
-}
-
 #[cfg(target_feature = "tests")]
-fn test_case() {
+fn test_to_any_case() {
     fn test_once(i: &str) {
         // to_any_case(i.as_bytes())
         //     .into_iter()
-        //     .map(|v| String::from_utf8(v).unwrap())
+        //     .map(|v| String::from_utf8(v.to_vec()).unwrap())
         //     .for_each(|v| {
         //         println!("{v}");
         //     });
@@ -402,12 +359,16 @@ fn test_case() {
         use heck::{ToSnakeCase, ToUpperCamelCase};
 
         let expect = i.to_upper_camel_case();
-        let ans = String::from_utf8(to_big_camel(i.as_bytes())).unwrap();
+        let mut o = Vec::new();
+        push_big_camel(i.as_bytes(), &mut o);
+        let ans = String::from_utf8(o).unwrap();
         // dbg!(&ans);
         assert_eq!(expect, ans, "to_big_camel wrong");
 
         let expect = i.to_snake_case();
-        let ans = String::from_utf8(to_snake(i.as_bytes())).unwrap();
+        let mut o = Vec::new();
+        push_snake(i.as_bytes(), &mut o);
+        let ans = String::from_utf8(o).unwrap();
         assert_eq!(expect, ans, "to_snake wrong");
     }
     test_once("ABC4Defg");
@@ -421,6 +382,69 @@ fn test_case() {
     test_once("abcDA3EFg");
     test_once("abcDEFg");
     test_once("c2CReadReport");
+}
+
+#[rustfmt::skip]
+#[inline]
+fn is_rust_key_word(i: &[u8]) -> bool { matches!(i,
+// https://doc.rust-lang.org/std/index.html#keywords
+b"Self"|b"as"|b"async"|b"await"|b"break"|b"const"|b"continue"|b"crate"|b"dyn"|
+b"else"|b"enum"|b"extern"|b"false"|b"fn"|b"for"|b"if"|b"impl"|b"in"|b"let"|b"loop"|
+b"match"|b"mod"|b"move"|b"mut"|b"pub"|b"ref"|b"return"|b"self"|b"static"|b"struct"|
+b"super"|b"trait"|b"true"|b"type"|b"union"|b"unsafe"|b"use"|b"where"|b"while")
+}
+
+/// Push the identifier as big camel case.
+fn push_big_camel(i: &[u8], o: &mut Vec<u8>) {
+    let parts = to_any_case(i);
+    let parts_len = parts.len();
+    if parts_len == 1 && is_rust_key_word(parts[0]) {
+        o.extend(b"r#");
+    }
+    for part in parts {
+        o.push(part[0].to_ascii_uppercase());
+        for c in &part[1..] {
+            o.push(c.to_ascii_lowercase());
+        }
+    }
+}
+
+/// Push the identifier as snake case.
+fn push_snake(i: &[u8], o: &mut Vec<u8>) {
+    let parts = to_any_case(i);
+    let parts_len = parts.len();
+    if parts_len == 1 && is_rust_key_word(parts[0]) {
+        o.extend(b"r#");
+    }
+    for part in parts {
+        for c in part {
+            o.push(c.to_ascii_lowercase());
+        }
+        o.push(b'_');
+    }
+    o.pop();
+}
+
+fn push_indent(n: i32, o: &mut Vec<u8>) {
+    for _ in 0..n {
+        o.extend(b"    ");
+    }
+}
+
+fn push_mod_path(depth_diff: i32, cur_mod: &[u8], o: &mut Vec<u8>) {
+    match depth_diff {
+        0 => {
+            push_snake(cur_mod, o);
+            o.extend(b"::");
+        }
+        1 => {}
+        2..=i32::MAX => {
+            for _ in 0..(depth_diff - 1) {
+                o.extend(b"super::");
+            }
+        }
+        _ => unreachable!(),
+    }
 }
 
 fn to_rust_type(i: &[u8]) -> &'static [u8] {
@@ -439,7 +463,7 @@ fn to_rust_type(i: &[u8]) -> &'static [u8] {
 }
 
 /// Translate AST to Rust source code.
-fn translate(package: Package) -> Vec<u8> {
+fn translate(package: &Package) -> Vec<u8> {
     // https://developers.google.com/protocol-buffers/docs/proto
     // https://developers.google.com/protocol-buffers/docs/proto3
 
@@ -447,36 +471,14 @@ fn translate(package: Package) -> Vec<u8> {
     let mut ctx = Context::new(); // names context
     let mut o = Vec::<u8>::new();
 
-    fn indent(n: i32, o: &mut Vec<u8>) {
-        for _ in 0..n {
-            o.extend(b"    ");
-        }
-    }
-
-    fn mod_path(sub: i32, cur_mod: &[u8], o: &mut Vec<u8>) {
-        match sub {
-            0 => {
-                o.append(&mut to_snake(cur_mod));
-                o.extend(b"::");
-            }
-            1 => {}
-            2..=i32::MAX => {
-                for _ in 0..(sub - 1) {
-                    o.extend(b"super::");
-                }
-            }
-            _ => unreachable!(),
-        }
-    }
-
     fn handle_message(message: &Message, pbv: &[u8], ctx: &Context, depth: i32, o: &mut Vec<u8>) {
         let mut cx = ctx.clone(); // sub context
         let mut has_nested = false;
-        indent(depth, o);
+        push_indent(depth, o);
         o.extend(b"#[derive(Clone, PartialEq, ::prost::Message)]\n");
-        indent(depth, o);
+        push_indent(depth, o);
         o.extend(b"pub struct ");
-        o.append(&mut to_big_camel(message.name));
+        push_big_camel(message.name, o);
         o.extend(b" {\n");
         for entry in &message.entries {
             match entry {
@@ -523,13 +525,13 @@ fn translate(package: Package) -> Vec<u8> {
                     };
 
                     // attr macros
-                    indent(depth + 1, o);
+                    push_indent(depth + 1, o);
                     o.extend(b"#[prost(");
                     if rust_type == b"struct" {
                         if cx.get(field.data_type).map(|v| v.0 == b"enum") == Some(true) {
                             o.extend(b"enumeration=\"");
-                            mod_path(depth - cx[field.data_type].1, message.name, o);
-                            o.append(&mut to_big_camel(field.data_type));
+                            push_mod_path(depth - cx[field.data_type].1, message.name, o);
+                            push_big_camel(field.data_type, o);
                             o.extend(b"\", ");
                         } else {
                             o.extend(b"message, ");
@@ -569,9 +571,9 @@ fn translate(package: Package) -> Vec<u8> {
                     o.extend(b")]\n");
 
                     // value
-                    indent(depth + 1, o);
+                    push_indent(depth + 1, o);
                     o.extend(b"pub ");
-                    o.append(&mut to_snake(field.name));
+                    push_snake(field.name, o);
                     o.extend(b": ");
                     let mut field_depth = 0;
                     // don't use `field.optional`, that only rely on whether `optional` keyword
@@ -587,10 +589,10 @@ fn translate(package: Package) -> Vec<u8> {
                     if is_enum {
                         o.extend(b"i32");
                     } else if is_in_ctx {
-                        mod_path(depth - cx[field.data_type].1, message.name, o);
-                        o.append(&mut to_big_camel(field.data_type));
+                        push_mod_path(depth - cx[field.data_type].1, message.name, o);
+                        push_big_camel(field.data_type, o);
                     } else if rust_type == b"struct" {
-                        o.append(&mut to_big_camel(field.data_type))
+                        push_big_camel(field.data_type, o);
                     } else {
                         o.extend(rust_type);
                     }
@@ -601,11 +603,11 @@ fn translate(package: Package) -> Vec<u8> {
                 }
                 Entry::Oneof(oneof) => {
                     // attr macros
-                    indent(depth + 1, o);
+                    push_indent(depth + 1, o);
                     o.extend(b"#[prost(oneof=\"");
-                    o.append(&mut to_snake(message.name));
+                    push_snake(message.name, o);
                     o.extend(b"::");
-                    o.append(&mut to_big_camel(oneof.name));
+                    push_big_camel(oneof.name, o);
                     o.extend(b"\", tags=\"");
                     for field in &oneof.fields {
                         o.extend(field.tag);
@@ -618,44 +620,44 @@ fn translate(package: Package) -> Vec<u8> {
                     o.extend(b"\")]\n");
 
                     // value
-                    indent(depth + 1, o);
+                    push_indent(depth + 1, o);
                     o.extend(b"pub ");
-                    o.append(&mut to_snake(oneof.name));
+                    push_snake(oneof.name, o);
                     o.extend(b": ::core::option::Option<");
-                    o.append(&mut to_snake(message.name));
+                    push_snake(message.name, o);
                     o.extend(b"::");
-                    o.append(&mut to_big_camel(oneof.name));
+                    push_big_camel(oneof.name, o);
                     o.extend(b">,\n");
                 }
                 Entry::Message(_) => {}
                 Entry::Enum(_) => {}
             }
         }
-        indent(depth, o);
+        push_indent(depth, o);
         o.extend(b"}\n");
         if has_nested {
-            indent(depth, o);
+            push_indent(depth, o);
             o.extend(b"/// Nested message and enum types in `");
             o.extend(message.name);
             o.extend(b"`.\n");
-            indent(depth, o);
+            push_indent(depth, o);
             o.extend(b"pub mod ");
-            o.append(&mut to_snake(message.name));
+            push_snake(message.name, o);
             o.extend(b" {\n");
             for entry in &message.entries {
                 match entry {
                     Entry::Enum(v) => handle_enum(v, depth + 1, o),
                     Entry::Message(v) => handle_message(v, pbv, &cx, depth + 1, o),
                     Entry::Oneof(oneof) => {
-                        indent(depth + 1, o);
+                        push_indent(depth + 1, o);
                         o.extend(b"#[derive(Clone, PartialEq, ::prost::Oneof)]\n");
-                        indent(depth + 1, o);
+                        push_indent(depth + 1, o);
                         o.extend(b"pub enum ");
-                        o.append(&mut to_big_camel(oneof.name));
+                        push_big_camel(oneof.name, o);
                         o.extend(b" {\n");
                         for field in &oneof.fields {
                             // attr macros
-                            indent(depth + 2, o);
+                            push_indent(depth + 2, o);
                             o.extend(b"#[prost(");
                             if to_rust_type(field.data_type) == b"struct" {
                                 o.extend(b"message");
@@ -667,48 +669,48 @@ fn translate(package: Package) -> Vec<u8> {
                             o.extend(b"\")]\n");
 
                             // value
-                            indent(depth + 2, o);
-                            o.append(&mut to_big_camel(field.name));
+                            push_indent(depth + 2, o);
+                            push_big_camel(field.name, o);
                             o.extend(b"(");
                             match to_rust_type(field.data_type) {
                                 b"struct" => {
                                     o.extend(b"super::");
-                                    o.append(&mut to_big_camel(field.data_type));
+                                    push_big_camel(field.data_type, o);
                                 }
                                 v => o.extend(v),
                             }
                             o.extend(b"),\n");
                         }
-                        indent(depth + 1, o);
+                        push_indent(depth + 1, o);
                         o.extend(b"}\n");
                     }
                     Entry::MessageField(_) => {}
                 }
             }
-            indent(depth, o);
+            push_indent(depth, o);
             o.extend(b"}\n");
         }
     }
 
     fn handle_enum(enume: &Enum, mut depth: i32, o: &mut Vec<u8>) {
-        indent(depth, o);
+        push_indent(depth, o);
         o.extend(b"#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]\n");
-        indent(depth, o);
+        push_indent(depth, o);
         o.extend(b"#[repr(i32)]\n");
-        indent(depth, o);
+        push_indent(depth, o);
         o.extend(b"pub enum ");
-        o.append(&mut to_big_camel(enume.name));
+        push_big_camel(enume.name, o);
         o.extend(b" {\n");
         depth += 1;
         for field in &enume.fields {
-            indent(depth, o);
-            o.append(&mut to_big_camel(field.name));
+            push_indent(depth, o);
+            push_big_camel(field.name, o);
             o.extend(b" = ");
-            o.append(&mut to_big_camel(field.tag));
+            push_big_camel(field.tag, o);
             o.extend(b",\n");
         }
         depth -= 1;
-        indent(depth, o);
+        push_indent(depth, o);
         o.extend(b"}\n");
     }
 
@@ -743,7 +745,7 @@ pub fn compile_protos(
         let token_stream = TokenStream::new(&src);
         let package = Package::new(&token_stream);
         let name = package.name.to_vec();
-        let mut out = translate(package);
+        let mut out = translate(&package);
         if let Some(existed) = outs.get_mut(&name) {
             existed.append(&mut out);
         } else {
@@ -766,7 +768,7 @@ pub fn compile_protos(
 
 /// # DON'T USE THIS IN LIB TARGET!
 pub fn main() {
-    // return test_case();
+    // return test_to_any_case();
 
     const IN_DIR: &str = "target/1_in";
     const OUT_DIR: &str = "target/2_out";
