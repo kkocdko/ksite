@@ -406,11 +406,11 @@ fn test_to_any_case() {
 #[rustfmt::skip]
 #[inline]
 fn is_rust_key_word(i: &[u8]) -> bool { matches!(i,
-// https://doc.rust-lang.org/std/index.html#keywords
-b"Self"|b"as"|b"async"|b"await"|b"break"|b"const"|b"continue"|b"crate"|b"dyn"|
-b"else"|b"enum"|b"extern"|b"false"|b"fn"|b"for"|b"if"|b"impl"|b"in"|b"let"|b"loop"|
-b"match"|b"mod"|b"move"|b"mut"|b"pub"|b"ref"|b"return"|b"self"|b"static"|b"struct"|
-b"super"|b"trait"|b"true"|b"type"|b"union"|b"unsafe"|b"use"|b"where"|b"while")
+    // https://doc.rust-lang.org/std/index.html#keywords
+    b"Self"|b"as"|b"async"|b"await"|b"break"|b"const"|b"continue"|b"crate"|b"dyn"|
+    b"else"|b"enum"|b"extern"|b"false"|b"fn"|b"for"|b"if"|b"impl"|b"in"|b"let"|b"loop"|
+    b"match"|b"mod"|b"move"|b"mut"|b"pub"|b"ref"|b"return"|b"self"|b"static"|b"struct"|
+    b"super"|b"trait"|b"true"|b"type"|b"union"|b"unsafe"|b"use"|b"where"|b"while")
 }
 
 /// Push the identifier as big camel case.
@@ -450,10 +450,21 @@ fn push_indent(n: i32, o: &mut Vec<u8>) {
     }
 }
 
-fn push_mod_path(depth_diff: i32, cur_mod: &[u8], o: &mut Vec<u8>) {
+/// Push the type name with mod path prefix.
+fn push_type(depth_diff: i32, message: &Message, field: &MessageField, o: &mut Vec<u8>) {
+    let mod_name = message.name;
+    let data_type = field.data_type;
+    // is imported from other pkg?
+    if let Some(pos) = data_type.iter().position(|&c| c == b'.') {
+        o.extend(b"super::"); // it's terrible! only supports 1 dot
+        push_snake(&data_type[..pos], o);
+        o.extend(b"::");
+        push_big_camel(&data_type[pos + 1..], o);
+        return;
+    }
     match depth_diff {
         0 => {
-            push_snake(cur_mod, o);
+            push_snake(mod_name, o);
             o.extend(b"::");
         }
         1 => {}
@@ -464,6 +475,7 @@ fn push_mod_path(depth_diff: i32, cur_mod: &[u8], o: &mut Vec<u8>) {
         }
         _ => unreachable!(),
     }
+    push_big_camel(data_type, o);
 }
 
 fn to_rust_type(i: &[u8]) -> &'static [u8] {
@@ -544,8 +556,7 @@ fn translate(package: &Package) -> Vec<u8> {
                     o.extend(b"#[prost(");
                     if is_enum {
                         o.extend(b"enumeration=\"");
-                        push_mod_path(depth - ctx[field.data_type].1, message.name, o);
-                        push_big_camel(field.data_type, o);
+                        push_type(depth - ctx[field.data_type].1, message, field, o);
                         o.extend(b"\", ");
                     } else if rust_type == b"custom" {
                         o.extend(b"message, ");
@@ -602,11 +613,12 @@ fn translate(package: &Package) -> Vec<u8> {
                     }
                     if is_enum {
                         o.extend(b"i32");
-                    } else if is_in_ctx {
-                        push_mod_path(depth - ctx[field.data_type].1, message.name, o);
-                        push_big_camel(field.data_type, o);
                     } else if rust_type == b"custom" {
-                        push_big_camel(field.data_type, o);
+                        let depth_diff = match is_in_ctx {
+                            true => depth - ctx[field.data_type].1,
+                            false => 1, // is in same pkg's different file or different pkg?
+                        };
+                        push_type(depth_diff, message, field, o);
                     } else {
                         o.extend(rust_type);
                     }
