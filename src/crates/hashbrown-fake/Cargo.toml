@@ -1,0 +1,13 @@
+[package]
+name = "hashbrown"
+version = "0.11.2"
+edition = "2021"
+
+[lib]
+path = "lib.rs"
+
+[features]
+raw = []
+
+[dependencies]
+hashbrown = "0.12"

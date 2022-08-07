@@ -1,0 +1,33 @@
+[package]
+name = "tracing"
+version = "0.1.900"
+edition = "2021"
+
+[lib]
+path = "lib.rs"
+
+[features]
+default = []
+std = []
+attributes = []
+tracing-attributes = []
+log-always = []
+valuable = []
+release_max_level_off = []
+release_max_level_error = []
+max_level_info = []
+max_level_debug = []
+max_level_error = []
+release_max_level_trace = []
+max_level_off = []
+log = []
+max_level_warn = []
+async-await = []
+release_max_level_info = []
+release_max_level_warn = []
+max_level_trace = []
+release_max_level_debug = []
+
+[dependencies]
+# tracing = "0.1.36"
+pin-project-lite = "0.2"
