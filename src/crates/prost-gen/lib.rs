@@ -259,18 +259,17 @@ impl<'a> TokenStream<'a> {
 
     /// Create `TokenStream` from proto file data.
     fn new(mut s: &'a [u8]) -> Self {
-        let mut tokens = Vec::new();
-        loop {
-            let token = next_token(&mut s);
-            if let TokenKind::End = token.0 {
-                break;
-            }
-            tokens.push(token);
-        }
-        Self {
-            tokens,
+        let mut ret = Self {
+            tokens: Vec::new(),
             idx: Cell::new(0),
+        };
+        loop {
+            match next_token(&mut s) {
+                (TokenKind::End, _) => break,
+                token => ret.tokens.push(token),
+            }
         }
+        ret
     }
 }
 
@@ -331,33 +330,39 @@ fn next_token<'a>(s: &mut &'a [u8]) -> Token<'a> {
 
 /// Split an identifier into sections for case transforms later.
 fn to_any_case(s: &[u8]) -> Vec<&[u8]> {
-    let mut parts = Vec::<&[u8]>::new();
+    // return vec![s];
+    let mut parts = Vec::<&[u8]>::with_capacity(8);
     let mut range = (0, 0);
+    let kind_of = |c| match c {
+        b'A'..=b'Z' => 1i8, //  1 = uppercase
+        b'0'..=b'9' => 0i8, //  0 = digit
+        _ => -1i8,          // -1 = lowercase
+    };
     'label: while let Some(&f) = s.get(range.1) {
         range.1 += 1;
-        let (mut r_u, mut r_d) = (f.is_ascii_uppercase(), f.is_ascii_uppercase());
+        let mut r_k = kind_of(f); // TODO: prefix with '_' ?
         while let Some(&c) = s.get(range.1) {
-            let (c_u, c_d) = (c.is_ascii_uppercase(), c.is_ascii_digit());
-            match (r_u, r_d, c_u, c_d) {
+            let c_k = kind_of(c);
+            match (r_k, c_k) {
                 _ if c == b'_' => {
                     parts.push(&s[range.0..range.1]);
                     range.1 += 1; // skip current char
                     range.0 = range.1;
                     continue 'label;
                 }
-                (_, _, true, _) if range.1 + 1 < s.len() && s[range.1 + 1].is_ascii_lowercase() => {
+                (-1, 1) => break,
+                (1, 1) if matches!(s.get(range.1 + 1), Some(b'a'..=b'z')) => {
                     break;
                 }
-                (_, _, _, true) | (true, _, true, false) | (_, _, false, false) => {
+                (_, 0 | -1) | (0 | 1, 1) => {
                     range.1 += 1;
                 }
-                (false, _, true, false) => break,
+                _ => unreachable!(),
                 // v => panic!("illegal state {:?}", v),
             }
-            if !c_d {
-                r_u = c_u;
+            if c_k != 0 {
+                r_k = c_k;
             }
-            r_d = c_d;
         }
         parts.push(&s[range.0..range.1]);
         range.0 = range.1;
@@ -367,40 +372,44 @@ fn to_any_case(s: &[u8]) -> Vec<&[u8]> {
 
 #[cfg(target_feature = "tests")]
 fn test_to_any_case() {
-    fn test_once(i: &str) {
-        // to_any_case(i.as_bytes())
-        //     .into_iter()
-        //     .map(|v| String::from_utf8(v.to_vec()).unwrap())
-        //     .for_each(|v| {
-        //         println!("{v}");
-        //     });
+    fn test_once(i: &[u8]) {
+        // for part in to_any_case(i) {
+        //     println!("part = {}", std::str::from_utf8(part).unwrap());
+        // }
 
         use heck::{ToSnakeCase, ToUpperCamelCase};
+        let s = std::str::from_utf8(i).unwrap();
 
-        let expect = i.to_upper_camel_case();
         let mut o = Vec::new();
-        push_big_camel(i.as_bytes(), &mut o);
+        push_big_camel(i, &mut o);
         let ans = String::from_utf8(o).unwrap();
-        // dbg!(&ans);
-        assert_eq!(expect, ans, "to_big_camel wrong");
+        let expect = s.to_upper_camel_case();
+        assert_eq!(expect, ans, "push_big_camel({s}) wrong");
 
-        let expect = i.to_snake_case();
         let mut o = Vec::new();
-        push_snake(i.as_bytes(), &mut o);
+        push_snake(i, &mut o);
         let ans = String::from_utf8(o).unwrap();
-        assert_eq!(expect, ans, "to_snake wrong");
+        let expect = s.to_snake_case();
+        assert_eq!(expect, ans, "push_snake({s}) wrong");
     }
-    test_once("ABC4Defg");
-    test_once("abc4defg");
-    test_once("ABC4DEFG");
-    test_once("abC4dEfg");
-    test_once("abC4d_efg");
-    test_once("ab3efg");
-    test_once("ab3Efg");
-    test_once("abcDA3Eg");
-    test_once("abcDA3EFg");
-    test_once("abcDEFg");
-    test_once("c2CReadReport");
+    const CHARS: [u8; 4] = [b'A', b'0', b'a', b'_'];
+    const LEN: usize = 9;
+    fn recurse_test(i: usize, chars: &mut [u8; LEN]) {
+        match i {
+            1 | LEN if chars[i - 1] == b'_' => return, // prefix or suffix '_'
+            2..=LEN if chars[i - 2..i] == *b"__" => return, // has "__"
+            LEN => {
+                test_once(chars);
+                return;
+            }
+            _ => {}
+        }
+        for c in CHARS {
+            chars[i] = c;
+            recurse_test(i + 1, chars);
+        }
+    }
+    recurse_test(0, &mut [0; LEN]);
 }
 
 #[rustfmt::skip]
@@ -500,7 +509,7 @@ fn translate(package: &Package) -> Vec<u8> {
 
     type Context<'a> = HashMap<&'a [u8], (&'static [u8], i32)>; // <name, (type, depth)>
     let mut ctx = Context::new(); // names context
-    let mut o = Vec::<u8>::new();
+    let mut o = Vec::with_capacity(2048);
 
     fn handle_message(message: &Message, pbv: &[u8], ctx: &Context, depth: i32, o: &mut Vec<u8>) {
         let mut ctx = ctx.clone(); // sub context
@@ -551,7 +560,6 @@ fn translate(package: &Package) -> Vec<u8> {
                         field.optional || (!is_prime && !field.repeated)
                     };
 
-                    // attr macros
                     push_indent(depth + 1, o);
                     o.extend(b"#[prost(");
                     if is_enum {
@@ -594,8 +602,6 @@ fn translate(package: &Package) -> Vec<u8> {
                         o.pop();
                     }
                     o.extend(b")]\n");
-
-                    // value
                     push_indent(depth + 1, o);
                     o.extend(b"pub ");
                     push_snake(field.name, o);
@@ -616,7 +622,7 @@ fn translate(package: &Package) -> Vec<u8> {
                     } else if rust_type == b"custom" {
                         let depth_diff = match is_in_ctx {
                             true => depth - ctx[field.data_type].1,
-                            false => 1, // is in same pkg's different file or different pkg?
+                            false => 1, // is in included files
                         };
                         push_type(depth_diff, message, field, o);
                     } else {
@@ -628,7 +634,6 @@ fn translate(package: &Package) -> Vec<u8> {
                     o.extend(b",\n");
                 }
                 Entry::Oneof(oneof) => {
-                    // attr macros
                     push_indent(depth + 1, o);
                     o.extend(b"#[prost(oneof=\"");
                     push_snake(message.name, o);
@@ -644,8 +649,6 @@ fn translate(package: &Package) -> Vec<u8> {
                         o.pop();
                     }
                     o.extend(b"\")]\n");
-
-                    // value
                     push_indent(depth + 1, o);
                     o.extend(b"pub ");
                     push_snake(oneof.name, o);
@@ -688,7 +691,6 @@ fn translate(package: &Package) -> Vec<u8> {
                     push_big_camel(oneof.name, o);
                     o.extend(b" {\n");
                     for field in &oneof.fields {
-                        // attr macros
                         push_indent(depth + 2, o);
                         o.extend(b"#[prost(");
                         if to_rust_type(field.data_type) == b"custom" {
@@ -699,8 +701,6 @@ fn translate(package: &Package) -> Vec<u8> {
                         o.extend(b", tag=\"");
                         o.extend(field.tag);
                         o.extend(b"\")]\n");
-
-                        // value
                         push_indent(depth + 2, o);
                         push_big_camel(field.name, o);
                         o.extend(b"(");
@@ -807,8 +807,8 @@ pub fn compile_protos(
 pub fn main() {
     // return test_to_any_case();
 
-    const IN_DIR: &str = "./1_in";
-    const OUT_DIR: &str = "./2_out";
+    const IN_DIR: &str = "target/3_next_in";
+    const OUT_DIR: &str = "target/2_out";
     let mut v = Vec::new();
     recurse_dir(&mut v, IN_DIR);
     fn recurse_dir(v: &mut Vec<PathBuf>, dir: impl AsRef<Path>) {
