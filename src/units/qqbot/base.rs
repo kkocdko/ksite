@@ -14,9 +14,8 @@ use ricq::{Client, Device, LoginResponse, Protocol, QRCodeState};
 use serde::Deserialize;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 use tokio::sync::mpsc::Receiver;
-use tokio::time::Duration;
 
 macro_rules! push_log {
     ($($arg:tt)*) => {{
@@ -127,7 +126,7 @@ async fn launch(mut rx: Receiver<QEvent>) -> Result<()> {
     if let Some(v) = db_cfg_get_text(K_TOKEN) {
         let token = serde_json::from_str(&v)?;
         CLIENT.token_login(token).await?;
-        push_log!("login with token succeed");
+        push_log!("login by token succeed");
     } else {
         let mut qr_resp = CLIENT.fetch_qrcode().await?;
         let mut img_sig = Vec::new();
@@ -151,7 +150,7 @@ async fn launch(mut rx: Receiver<QEvent>) -> Result<()> {
                     if let LoginResponse::DeviceLockLogin { .. } = login_resp {
                         CLIENT.device_lock_login().await?;
                     }
-                    push_log!("login with qrcode succeed");
+                    push_log!("login by qrcode succeed");
                     let token = serde_json::to_string(&CLIENT.gen_token().await)?;
                     db_cfg_set(K_TOKEN, token.as_bytes());
                     break;

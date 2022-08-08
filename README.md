@@ -6,8 +6,6 @@ All in one solution for my server.
 
 - `units::record`: record evidence picture, audio and video in real-time.
 
-- `units::status`: speed, latency, network status. ssl cert remain.
-
 - `units::paste`: account system.
 
 ## Build with MUSL

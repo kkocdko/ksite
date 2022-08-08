@@ -13,7 +13,7 @@ use std::time::Duration;
 
 #[tokio::main]
 async fn main() {
-    println!("[ksite v{}]", env!("CARGO_PKG_VERSION"));
+    println!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
     println!("enter :q to quit");
     println!("authorization token = {}", *auth::TOKEN);
 
@@ -34,11 +34,10 @@ async fn main() {
             .merge(units::admin::service())
             .merge(units::chat::service())
             .merge(units::health::service())
+            .merge(units::info::service())
             .merge(units::magazine::service())
             .merge(units::paste::service())
             .merge(units::qqbot::service())
-            // .merge(units::record::service())
-            .merge(units::welcome::service())
             .into_make_service();
         // .into_make_service_with_connect_info::<SocketAddr>();
 

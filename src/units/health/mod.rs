@@ -7,6 +7,7 @@ use axum::response::{Html, IntoResponse, Redirect};
 use axum::routing::{MethodRouter, Router};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
+use std::fmt::Write as _;
 
 fn db_init() {
     db!("CREATE TABLE health_list (id INTEGER, token TEXT, body TEXT)").ok();
@@ -55,7 +56,6 @@ struct Member {
 async fn get_handler() -> impl IntoResponse {
     let mut log = String::new();
     for (time, id, ret) in db_log_get() {
-        use std::fmt::Write as FmtWrite;
         writeln!(&mut log, "{time} | {id} | {ret}").unwrap();
     }
     log = askama_escape::escape(&log, askama_escape::Html).to_string();

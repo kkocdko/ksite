@@ -93,12 +93,9 @@ async fn refresh() -> Result<()> {
     ];
     o.push(PAGE[1]);
     let o = miniz_oxide::deflate::compress_to_vec(o.join("").as_bytes(), 10);
-    let expires = SystemTime::now() + Duration::from_secs(3600);
+    let expires = httpdate::fmt_http_date(SystemTime::now() + Duration::from_secs(3600));
     *CACHE.write().await = (
-        [
-            (EXPIRES, httpdate::fmt_http_date(expires)),
-            (CONTENT_ENCODING, "deflate".into()),
-        ],
+        [(EXPIRES, expires), (CONTENT_ENCODING, "deflate".into())],
         Html(o),
     );
     Ok(())

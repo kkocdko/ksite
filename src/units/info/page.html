@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+
+<head>
+  <meta name="viewport" content="width=device-width" />
+  <link rel="icon" href="data:" />
+  <title>Info - ksite</title>
+</head>
+
+<style>
+  body {
+    margin: 8px 10px;
+    font: 14px / 1.4 monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    * {
+      color: #fff;
+      background: #000;
+    }
+  }
+</style>
+
+<pre id="$v">/*{slot}*/</pre>
+
+<script type="module">
+  const now = performance.now();
+  if ((await (await fetch("/info/p")).text()) !== "pong") throw 1;
+  const duration = Math.round(performance.now() - now);
+  $v.textContent += `Server <-> Client : ${duration} ms\n`;
+</script>

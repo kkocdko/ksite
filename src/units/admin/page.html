@@ -62,10 +62,7 @@
       const v = ($v.value + "\n").replace(/(^|\n)-.+-\n/g, "").trim();
       const blob = await fetch(`data:;base64,${v}`).then((v) => v.blob());
       await fetch(`/admin?k=${$k.value}`, { method: "post", body: blob });
-    } else {
-      alert("not supported key type");
-      return;
-    }
+    } else return alert("not supported key type");
     alert("submit succeed");
   };
 </script>
