@@ -28,6 +28,6 @@ release_max_level_warn = []
 max_level_trace = []
 release_max_level_debug = []
 
-[dependencies]
+# [dependencies]
 # tracing = "0.1.36"
-pin-project-lite = "0.2"
+# pin-project-lite = "0.2"
