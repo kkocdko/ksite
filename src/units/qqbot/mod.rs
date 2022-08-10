@@ -1,3 +1,4 @@
+//! QQ robot for fun.
 mod base;
 use crate::care;
 use crate::ticker::Ticker;

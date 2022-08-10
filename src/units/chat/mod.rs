@@ -1,3 +1,4 @@
+//! Simple chat rooms, client-to-client encrypted.
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::Path;
 use axum::http::header::CACHE_CONTROL;

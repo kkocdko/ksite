@@ -1,3 +1,4 @@
+//! Online clipboard.
 use crate::db;
 use crate::utils::slot;
 use axum::extract::{Form, Path};
@@ -11,14 +12,14 @@ fn db_init() {
 }
 fn db_insert(data: &str) -> u64 {
     db!("INSERT INTO paste VALUES (NULL, ?)", [data]).unwrap();
-    db!("SELECT last_insert_rowid() FROM paste", [], (0)).unwrap()[0].0
+    db!("SELECT last_insert_rowid() FROM paste", [], |r| r.get(0)).unwrap()[0]
 }
 fn db_update(id: u64, data: &str) {
     db!("UPDATE paste SET data = ?1 WHERE id = ?2;", [data, id]).unwrap();
 }
 fn db_get(id: u64) -> Option<String> {
-    let result = db!("SELECT data FROM paste WHERE id = ?", [id], (0));
-    result.ok()?.pop().map(|v| v.0)
+    let r = db!("SELECT data FROM paste WHERE id = ?", [id], |r| r.get(0));
+    r.unwrap().pop()
 }
 
 fn escape(v: &str) -> String {

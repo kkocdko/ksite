@@ -413,7 +413,6 @@ fn test_to_any_case() {
 }
 
 #[rustfmt::skip]
-#[inline]
 fn is_rust_key_word(i: &[u8]) -> bool { matches!(i,
     // https://doc.rust-lang.org/std/index.html#keywords
     b"Self"|b"as"|b"async"|b"await"|b"break"|b"const"|b"continue"|b"crate"|b"dyn"|

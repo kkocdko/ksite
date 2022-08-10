@@ -2,7 +2,6 @@
 // https://github.com/ctz/hyper-rustls/blob/master/examples/server.rs
 // https://github.com/seanmonstar/warp/pull/431
 use crate::db;
-use core::task::{Context, Poll};
 use futures_util::ready;
 use hyper::server::accept::Accept;
 use hyper::server::conn::{AddrIncoming, AddrStream};
@@ -11,6 +10,7 @@ use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio_rustls::rustls::{Certificate, PrivateKey, ServerConfig};
 
@@ -33,6 +33,8 @@ impl AsyncRead for Connection {
         buf: &mut ReadBuf,
     ) -> Poll<io::Result<()>> {
         match &mut *self {
+            // BUG: a slow TLS handshake can affect all other new connections waiting for it to finish.
+            // https://github.com/hyperium/hyper/blob/master/docs/ROADMAP.md#higher-level-client-and-server-problems
             Self::Handshaking(accept) => match ready!(Pin::new(accept).poll(cx)) {
                 Ok(mut stream) => {
                     let result = Pin::new(&mut stream).poll_read(cx, buf);
@@ -126,8 +128,8 @@ impl Accept for Acceptor {
 /// Create an incoming stream for `hyper::Server`
 pub fn incoming(addr: &SocketAddr) -> Acceptor {
     fn db_get(k: &str) -> Vec<u8> {
-        let result = db!("SELECT v FROM admin WHERE k = ?", [k], (0));
-        result.unwrap().pop().unwrap().0
+        let r = db!("SELECT v FROM admin WHERE k = ?", [k], |r| r.get(0));
+        r.unwrap().pop().unwrap()
     }
 
     let certs = vec![Certificate(db_get("ssl_cert"))];
@@ -137,7 +139,7 @@ pub fn incoming(addr: &SocketAddr) -> Acceptor {
         .with_no_client_auth() // TODO: vertify? see warp's source code?
         .with_single_cert(certs, key)
         .unwrap();
-    // HTTP2 needs hyper features = ["http2"]
+    // HTTP2 needs hyper / axum feature "http2"
     cfg.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
 
     Acceptor {

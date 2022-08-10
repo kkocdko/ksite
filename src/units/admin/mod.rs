@@ -1,3 +1,4 @@
+//! Admin console.
 use crate::db;
 use axum::extract::{BodyStream, RawQuery};
 use axum::response::Html;

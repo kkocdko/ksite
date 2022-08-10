@@ -1,3 +1,4 @@
+//! Auto submit JUST's health check-in form.
 use crate::ticker::Ticker;
 use crate::utils::{fetch, slot};
 use crate::{care, db};
@@ -18,13 +19,12 @@ fn db_list_insert(Member { id, token, body }: &Member) {
     db!(sql, [id, token, body]).unwrap();
 }
 fn db_list_get() -> Vec<Member> {
-    let map = |r: (_, _, _)| Member {
-        id: r.0,
-        token: r.1,
-        body: r.2,
-    };
-    let result = db!("SELECT * FROM health_list", [], (0, 1, 2));
-    result.unwrap().into_iter().map(map).collect()
+    db!("SELECT * FROM health_list", [], |r| Ok(Member {
+        id: r.get(0)?,
+        token: r.get(1)?,
+        body: r.get(2)?,
+    }))
+    .unwrap()
 }
 fn db_log_insert(id: u64, ret: &str) {
     let sql = "INSERT INTO health_log VALUES (strftime('%s','now'), ?1, ?2)";
@@ -36,7 +36,7 @@ fn db_log_get() -> Vec<(u64, u64, String)> {
         WHERE strftime('%s','now') - time <= 3600 * 24 * 5
         ORDER BY time DESC
     ";
-    db!(sql, [], (0, 1, 2)).unwrap()
+    db!(sql, [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).unwrap()
 }
 fn db_log_clean() {
     let sql = "
@@ -46,7 +46,7 @@ fn db_log_clean() {
     db!(sql).unwrap();
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 struct Member {
     id: u64,
     token: String,
@@ -59,9 +59,9 @@ async fn get_handler() -> impl IntoResponse {
         writeln!(&mut log, "{time} | {id} | {ret}").unwrap();
     }
     log = askama_escape::escape(&log, askama_escape::Html).to_string();
-    const PAGE: [&str; 3] = slot(include_str!("page.html"));
-    const CRYPTOJS: &str = include_str!("crypto-js.min.js"); // cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.js
-    Html([PAGE[0], &log, PAGE[1], CRYPTOJS, PAGE[2]].join(""))
+    const PAGE: [&str; 2] = slot(include_str!("page.html"));
+    const SUFFIX: &str = concat!("<script>", include_str!("crypto-js.min.js"), "</script>");
+    Html(PAGE[0].to_string() + &log + PAGE[1] + SUFFIX)
 }
 
 async fn post_handler(Form(member): Form<Member>) -> impl IntoResponse {

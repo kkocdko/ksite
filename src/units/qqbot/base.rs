@@ -42,15 +42,14 @@ fn db_cfg_set(k: &str, v: &[u8]) {
     db!("INSERT OR REPLACE INTO qqbot_cfg VALUES (?1, ?2)", [k, v]).unwrap();
 }
 fn db_cfg_get(k: &str) -> Option<Vec<u8>> {
-    let result = db!("SELECT v FROM qqbot_cfg WHERE k = ?", [k], (0));
-    result.unwrap().pop()?.0
+    let r = db!("SELECT v FROM qqbot_cfg WHERE k = ?", [k], |r| r.get(0));
+    r.unwrap().pop()
 }
 fn db_cfg_get_text(k: &str) -> Option<String> {
     Some(String::from_utf8(db_cfg_get(k)?).unwrap())
 }
 fn db_groups_get() -> Vec<i64> {
-    let result = db!("SELECT * FROM qqbot_groups", [], (0));
-    result.unwrap().into_iter().map(|r| r.0).collect()
+    db!("SELECT * FROM qqbot_groups", [], |r| r.get(0)).unwrap()
 }
 pub fn db_groups_insert(group_id: i64) {
     db!("INSERT INTO qqbot_groups VALUES (?)", [group_id]).unwrap();

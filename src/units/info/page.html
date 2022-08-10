@@ -25,5 +25,5 @@
   const now = performance.now();
   if ((await (await fetch("/info/p")).text()) !== "pong") throw 1;
   const duration = Math.round(performance.now() - now);
-  $v.textContent += `Server <-> Client : ${duration} ms\n`;
+  $v.textContent += `Client <-> Server : ${duration} ms\n`;
 </script>

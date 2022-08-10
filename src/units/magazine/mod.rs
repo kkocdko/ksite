@@ -1,3 +1,4 @@
+//! Collections of my favorite news source.
 use crate::care;
 use crate::ticker::Ticker;
 use crate::utils::{fetch_text, slot, OptionResult};
@@ -79,7 +80,7 @@ static CACHE: Lazy<RwLock<Res>> = Lazy::new(|| {
 async fn refresh() -> Result<()> {
     let mut o = vec![PAGE[0]];
     macro_rules! load {
-        ( $( ($idx:tt, $url:expr) ),* ) => {
+        ( $( ($idx:tt, $url:expr) ),* $(,)? ) => {
             let r = tokio::join!( $( fetch_text($url), )* );
             let r = ($( r.$idx?, )*);
             $( generate(&r.$idx, &mut o, 20)?; )*
@@ -89,7 +90,7 @@ async fn refresh() -> Result<()> {
         (0, "https://rss.itggg.cn/zhihu/daily"),
         (1, "https://rss.itggg.cn/cnbeta"),
         (2, "https://rss.itggg.cn/oschina/news/industry"),
-        (3, "https://rss.itggg.cn/1point3acres/post/hot3")
+        (3, "https://rss.itggg.cn/1point3acres/post/hot3"),
     ];
     o.push(PAGE[1]);
     let o = miniz_oxide::deflate::compress_to_vec(o.join("").as_bytes(), 10);
