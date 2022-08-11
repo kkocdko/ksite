@@ -10,9 +10,7 @@ All in one solution for my server.
 
 - `units::paste`: crypto.
 
-- sqlite `WAL` mode sync config?
-
-- replace `crate::tls` to [axum/examples/low-level-rustls](https://github.com/tokio-rs/axum/blob/main/examples/low-level-rustls/src/main.rs).
+- Sqlite `WAL` mode sync config?
 
 ## Build with MUSL
 

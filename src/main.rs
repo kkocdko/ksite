@@ -2,7 +2,6 @@ mod auth;
 mod database;
 mod ticker;
 mod tls;
-mod tls_next;
 mod units;
 mod utils;
 use axum::Router;
@@ -43,8 +42,7 @@ async fn main() {
         // .into_make_service_with_connect_info::<SocketAddr>();
 
         // axum::Server::bind(&addr).serve(app).await.unwrap();
-        // tls::serve(&addr, app).await;
-        tls_next::serve(&addr, app).await;
+        tls::serve(&addr, app).await;
     };
 
     let oscillator = async {
