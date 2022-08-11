@@ -2,6 +2,8 @@
 // https://github.com/ctz/hyper-rustls/blob/master/examples/server.rs
 // https://github.com/seanmonstar/warp/pull/431
 use crate::db;
+use axum::routing::IntoMakeService;
+use axum::{Router, Server};
 use futures_util::ready;
 use hyper::server::accept::Accept;
 use hyper::server::conn::{AddrIncoming, AddrStream};
@@ -126,7 +128,7 @@ impl Accept for Acceptor {
 }
 
 /// Create an incoming stream for `hyper::Server`
-pub fn incoming(addr: &SocketAddr) -> Acceptor {
+fn incoming(addr: &SocketAddr) -> Acceptor {
     fn db_get(k: &str) -> Vec<u8> {
         let r = db!("SELECT v FROM admin WHERE k = ?", [k], |r| r.get(0));
         r.unwrap().pop().unwrap()
@@ -146,4 +148,8 @@ pub fn incoming(addr: &SocketAddr) -> Acceptor {
         cfg: Arc::new(cfg),
         incoming: AddrIncoming::bind(addr).unwrap(),
     }
+}
+
+pub async fn serve(addr: &SocketAddr, app: IntoMakeService<Router>) {
+    Server::builder(incoming(&addr)).serve(app).await.unwrap();
 }

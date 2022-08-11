@@ -2,10 +2,10 @@ mod auth;
 mod database;
 mod ticker;
 mod tls;
-// mod tls_next;
+mod tls_next;
 mod units;
 mod utils;
-use axum::{Router, Server};
+use axum::Router;
 use std::io;
 use std::net::SocketAddr;
 use std::process;
@@ -42,11 +42,9 @@ async fn main() {
             .into_make_service();
         // .into_make_service_with_connect_info::<SocketAddr>();
 
-        // let server = Server::bind(&addr).serve(app);
-        let server = Server::builder(tls::incoming(&addr)).serve(app);
-        // tls_next::run(&addr, app).await;
-
-        server.await.unwrap();
+        // axum::Server::bind(&addr).serve(app).await.unwrap();
+        // tls::serve(&addr, app).await;
+        tls_next::serve(&addr, app).await;
     };
 
     let oscillator = async {
