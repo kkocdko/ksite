@@ -1,6 +1,6 @@
 //! Provide login, token storage and other base functions.
 use super::gen_reply;
-use crate::utils::slot;
+use crate::utils::{slot, LoopStack};
 use crate::{care, db};
 use anyhow::Result;
 use axum::extract::Form;
@@ -12,22 +12,16 @@ use ricq::msg::elem::RQElem;
 use ricq::msg::MessageChain;
 use ricq::{Client, Device, LoginResponse, Protocol, QRCodeState};
 use serde::Deserialize;
-use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, UNIX_EPOCH};
 use tokio::sync::mpsc::Receiver;
 
 macro_rules! push_log {
     ($($arg:tt)*) => {{
         let s = format!($($arg)*);
         let mut log = LOG.lock().unwrap();
-        let max_len = 256;
-        if log.len() > max_len{
-            log.pop_front();
-        }
-        let epoch = SystemTime::UNIX_EPOCH;
-        let now = SystemTime::now().duration_since(epoch).unwrap().as_millis();
-        log.push_back(format!("[{now}] {s}"));
+        let now = UNIX_EPOCH.elapsed().unwrap().as_millis();
+        log.push(format!("[{now}] {s}"));
     }}
 }
 
@@ -83,9 +77,9 @@ pub fn get_login_qr() -> Vec<u8> {
     QR.lock().unwrap().clone()
 }
 
-static LOG: Lazy<Mutex<VecDeque<String>>> = Lazy::new(Default::default);
-static QR: Lazy<Mutex<Vec<u8>>> = Lazy::new(Default::default);
-static CLIENT: Lazy<Arc<ricq::Client>> = Lazy::new(|| {
+static LOG: Mutex<LoopStack<String, 256>> = Mutex::new(LoopStack::new());
+static QR: Mutex<Vec<u8>> = Mutex::new(Vec::new());
+static CLIENT: Lazy<Arc<Client>> = Lazy::new(|| {
     push_log!("init client");
     db_init();
     let device = match db_cfg_get_text(K_DEVICE) {
@@ -97,7 +91,7 @@ static CLIENT: Lazy<Arc<ricq::Client>> = Lazy::new(|| {
         }
     };
     let (tx, rx) = tokio::sync::mpsc::channel(1);
-    let client = Arc::new(Client::new(device, Protocol::AndroidWatch, tx));
+    let client = Arc::new(ricq::Client::new(device, Protocol::AndroidWatch, tx));
     tokio::spawn(async {
         tokio::join!(
             async {

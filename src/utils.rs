@@ -4,6 +4,7 @@ use hyper::client::HttpConnector;
 use hyper::{Body, Client, Request};
 use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
 use once_cell::sync::Lazy;
+use std::mem::MaybeUninit;
 use std::time::SystemTime;
 use tokio_rustls::rustls::{ClientConfig, OwnedTrustAnchor, RootCertStore};
 
@@ -279,4 +280,121 @@ const fn kmp<const A: usize, const B: usize>(s: &[u8], p: [u8; A]) -> [usize; B]
     // }
 
     ret
+}
+
+// use std::mem::MaybeUninit;
+
+pub struct LoopStack<T, const S: usize> {
+    data: [MaybeUninit<T>; S],
+    used: usize,
+    next_idx: usize,
+}
+
+impl<T, const S: usize> LoopStack<T, S> {
+    pub const fn new() -> Self {
+        Self {
+            // Create an uninitialized array of `MaybeUninit`. The `assume_init` is
+            // safe because the type we are claiming to have initialized here is a
+            // bunch of `MaybeUninit`s, which do not require initialization.
+            data: unsafe { MaybeUninit::uninit().assume_init() },
+            used: 0,
+            next_idx: 0,
+        }
+    }
+
+    pub fn push(&mut self, v: T) {
+        unsafe {
+            if self.used == S {
+                self.data
+                    .get_unchecked_mut(self.next_idx)
+                    .assume_init_drop();
+            } else {
+                self.used += 1;
+            }
+            self.data.get_unchecked_mut(self.next_idx).write(v);
+            let next_idx = self.next_idx + 1;
+            self.next_idx = next_idx.checked_sub(S).unwrap_or(next_idx);
+        }
+    }
+
+    pub fn iter(&self) -> LoopStackIter<T, S> {
+        LoopStackIter {
+            inner: self,
+            idx: 0,
+        }
+    }
+}
+
+impl<T, const S: usize> Drop for LoopStack<T, S> {
+    fn drop(&mut self) {
+        unsafe {
+            for i in 0..self.used {
+                self.data.get_unchecked_mut(i).assume_init_drop();
+            }
+        };
+    }
+}
+
+pub struct LoopStackIter<'a, T, const S: usize> {
+    inner: &'a LoopStack<T, S>,
+    idx: usize,
+}
+
+impl<'a, T, const S: usize> std::iter::Iterator for LoopStackIter<'a, T, S> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.idx == self.inner.used {
+            return None;
+        }
+        let idx = self.inner.used + self.inner.next_idx - 1 - self.idx;
+        let idx = idx.checked_sub(self.inner.used).unwrap_or(idx);
+        self.idx += 1;
+        Some(unsafe { self.inner.data.get_unchecked(idx).assume_init_ref() })
+    }
+}
+
+/// Please run this using miri.
+fn _test_loop_stack() {
+    fn test_ans(l: usize, expect: &[usize]) {
+        let mut ls = LoopStack::<usize, 4>::new();
+        for i in 0..l {
+            ls.push(i);
+        }
+        let mut ans = Vec::new();
+        for &v in ls.iter() {
+            ans.push(v);
+        }
+        assert_eq!(expect[..], ans);
+    }
+    test_ans(64, &[63, 62, 61, 60]);
+    test_ans(7, &[6, 5, 4, 3]);
+    test_ans(3, &[2, 1, 0]);
+    test_ans(2, &[1, 0]);
+    test_ans(1, &[0]);
+    test_ans(0, &[]);
+
+    fn test_safety<T: Clone>(v: T) {
+        {
+            let ls = LoopStack::<T, 4>::new();
+            for _ in ls.iter() {}
+        }
+        {
+            let mut ls = LoopStack::<T, 4>::new();
+            ls.push(v.clone());
+            ls.push(v.clone());
+            for _ in ls.iter() {}
+        }
+        {
+            let mut ls = LoopStack::<T, 4>::new();
+            for _ in 0..99 {
+                ls.push(v.clone());
+            }
+            for _ in ls.iter() {}
+        }
+    }
+    #[derive(Clone)]
+    struct TestZst;
+    test_safety(TestZst);
+    test_safety(String::from("hello world"));
 }

@@ -603,7 +603,7 @@ dependencies = [
 
 [[package]]
 name = "ksite"
-version = "0.5.4"
+version = "0.5.5"
 dependencies = [
  "anyhow",
  "askama_escape",
@@ -628,9 +628,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.129"
+version = "0.2.131"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64de3cc433455c14174d42e554d4027ee631c4d046d43e3ecc6efc4636cdc7a7"
+checksum = "04c3b4822ccebfa39c02fc03d1534441b22ead323fa0f48bb7ddd8e6ba076a40"
 
 [[package]]
 name = "libsqlite3-sys"
@@ -909,7 +909,7 @@ dependencies = [
 [[package]]
 name = "ricq"
 version = "0.1.16"
-source = "git+https://github.com/lz1998/ricq?rev=9eb56c5#9eb56c53950c4c8b1ac5ea1c04f6a69fdd152ea8"
+source = "git+https://github.com/lz1998/ricq?rev=e730935#e7309354ef6732040beb5fcd919bd9bb8d1af86a"
 dependencies = [
  "async-trait",
  "bytes",
@@ -931,7 +931,7 @@ dependencies = [
 [[package]]
 name = "ricq-core"
 version = "0.1.16"
-source = "git+https://github.com/lz1998/ricq?rev=9eb56c5#9eb56c53950c4c8b1ac5ea1c04f6a69fdd152ea8"
+source = "git+https://github.com/lz1998/ricq?rev=e730935#e7309354ef6732040beb5fcd919bd9bb8d1af86a"
 dependencies = [
  "byteorder",
  "bytes",
