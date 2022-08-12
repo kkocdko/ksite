@@ -12,6 +12,8 @@ All in one solution for my server.
 
 - Sqlite `WAL` mode sync config?
 
+- Use `Mutex::new` const fn widely.
+
 ## Build with MUSL
 
 Use [messense/cargo-zigbuild](https://github.com/messense/cargo-zigbuild) please.

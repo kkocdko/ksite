@@ -89,23 +89,23 @@ static CLIENT: Lazy<Client<HttpsConnector<HttpConnector>>> = Lazy::new(|| {
     Client::builder().build(connector)
 });
 
-/// Send the `Request` and returns response. Allow both HTTPS and HTTP
+/// Send the `Request` and returns response. Allow both HTTPS and HTTP.
 ///
-/// Unlike `reqwest` crate, this function dose not follow redirect
+/// Unlike `reqwest` crate, this function dose not follow redirect.
 pub async fn fetch(request: Request<Body>) -> Result<Vec<u8>> {
     let response = CLIENT.request(request).await?;
     let bytes = to_bytes(response.into_body()).await?;
     Ok(bytes.into())
 }
 
-/// Fetch a URI, returns as text
+/// Fetch a URI, returns as text.
 pub async fn fetch_text(uri: &str) -> Result<String> {
     let uri = encode_uri(uri);
     let request = Request::get(uri).body(Body::empty())?;
     Ok(String::from_utf8(fetch(request).await?)?)
 }
 
-/// Fetch a URI which response json, get field by pointer
+/// Fetch a URI which response json, get field by pointer.
 ///
 /// # Examples
 ///
@@ -131,7 +131,7 @@ pub fn elapse(stamp: f64) -> f64 {
 }
 
 #[macro_export]
-/// Care about the `Result`
+/// Care about the `Result`.
 macro_rules! care {
     ($result:expr) => {{
         let result = $result;
