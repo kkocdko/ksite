@@ -9,7 +9,7 @@ use base::{db_groups_insert, get_handler, get_login_qr, notify, post_handler};
 use once_cell::sync::Lazy;
 use rand::{thread_rng, Rng};
 use std::collections::HashMap;
-use tokio::sync::Mutex;
+use std::sync::Mutex;
 
 /// generate reply from message parts
 async fn gen_reply(msg: Vec<&str>) -> Result<String> {
@@ -74,10 +74,10 @@ async fn gen_reply(msg: Vec<&str>) -> Result<String> {
             format!("已为群 {v} 订阅通知")
         }
         ["设置回复", k, v] => {
-            REPLIES.lock().await.insert(k.into(), v.into());
+            REPLIES.lock().unwrap().insert(k.into(), v.into());
             "记住啦".into()
         }
-        [k, ..] => match REPLIES.lock().await.get(k) {
+        [k, ..] => match REPLIES.lock().unwrap().get(k) {
             Some(v) => v.clone(),
             None => "指令有误".into(),
         },
@@ -124,36 +124,43 @@ pub fn service() -> Router {
 }
 
 struct UpNotify {
-    name: String,
-    query_url: String,
+    name: &'static str,
+    query_url: &'static str,
     last: Mutex<String>,
 }
 
 impl UpNotify {
     async fn query(&self) -> Result<String> {
-        let ret = fetch_text(&self.query_url).await?;
+        let ret = fetch_text(self.query_url).await?;
         let ret = ret.rsplit_once(".nupkg").e()?.0.rsplit_once('/').e()?.1;
         Ok(ret.split_once('.').e()?.1.to_string())
     }
 
     async fn trigger(&self) {
         let v = care!(self.query().await, return);
-        let mut last = self.last.lock().await;
-        if !last.is_empty() && *last != v {
-            // store the latest value regardless of whether the notify succeeds or not
-            care!(notify(format!("{} {v} released!", self.name)).await).ok();
+        // https://github.com/rust-lang/rust-clippy/issues/6446
+        {
+            let mut last = self.last.lock().unwrap();
+            if !last.is_empty() && *last != v {
+                *last = v.clone();
+            } else {
+                // store the latest value regardless of whether the notify succeeds or not
+                *last = v;
+                return; // thanks NLL!
+            };
         }
-        *last = v;
+        care!(notify(format!("{} {v} released!", self.name)).await).ok();
     }
+}
 
-    fn new(name: &str, pkg_id: &str) -> Self {
-        let query_url = format!("https://community.chocolatey.org/api/v2/package/{pkg_id}");
-        Self {
-            name: name.to_string(),
-            query_url,
+macro_rules! up_notify {
+    ($name:literal, $pkg_id:literal) => {
+        UpNotify {
+            name: $name,
+            query_url: concat!("https://community.chocolatey.org/api/v2/package/", $pkg_id),
             last: Mutex::new(String::new()),
         }
-    }
+    };
 }
 
 static TICKER: Lazy<Ticker> = Lazy::new(|| Ticker::new_p8(&[(-1, 20, 0), (-1, 50, 0)]));
@@ -162,9 +169,9 @@ pub async fn tick() {
         return;
     }
 
-    static UP_CHROME: Lazy<UpNotify> = Lazy::new(|| UpNotify::new("Chrome", "googlechrome"));
-    static UP_VSCODE: Lazy<UpNotify> = Lazy::new(|| UpNotify::new("VSCode", "vscode"));
-    static UP_RUST: Lazy<UpNotify> = Lazy::new(|| UpNotify::new("Rust", "rust"));
+    static UP_CHROME: UpNotify = up_notify!("Chrome", "googlechrome");
+    static UP_VSCODE: UpNotify = up_notify!("VSCode", "vscode");
+    static UP_RUST: UpNotify = up_notify!("Rust", "rust");
     let _ = tokio::join!(
         // needless to spawn
         UP_CHROME.trigger(),

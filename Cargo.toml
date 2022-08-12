@@ -1,6 +1,6 @@
 [package]
 name = "ksite"
-version = "0.5.5"
+version = "0.5.6"
 edition = "2021"
 
 [profile.release]
@@ -22,6 +22,7 @@ codegen-units = 256
 # debug = false # this switch disabled backtrace
 panic = "abort"
 [profile.dev.package."*"]
+debug = false
 strip = true
 opt-level = "z"
 

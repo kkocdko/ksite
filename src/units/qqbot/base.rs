@@ -17,11 +17,10 @@ use std::time::{Duration, UNIX_EPOCH};
 use tokio::sync::mpsc::Receiver;
 
 macro_rules! push_log {
-    ($($arg:tt)*) => {{
-        let s = format!($($arg)*);
-        let mut log = LOG.lock().unwrap();
+    ($fmt:literal $(, $($arg:tt)+)?) => {{
         let now = UNIX_EPOCH.elapsed().unwrap().as_millis();
-        log.push(format!("[{now}] {s}"));
+        let mut log = LOG.lock().unwrap();
+        log.push(format!(concat!("[{}] ", $fmt), now, $($($arg)+)?));
     }}
 }
 
@@ -198,7 +197,7 @@ async fn on_event(event: QEvent) -> Result<()> {
                 .await?;
         }
         QEvent::GroupMessageRecall(_) => {}
-        QEvent::Login(e) => push_log!("login {e}"),
+        QEvent::Login(e) => push_log!("login {}", e),
         _ => {}
     }
     Ok(())

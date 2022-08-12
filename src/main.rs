@@ -1,3 +1,4 @@
+#![feature(const_slice_from_raw_parts)] // will be stabilized in 1.64
 mod auth;
 mod database;
 mod ticker;

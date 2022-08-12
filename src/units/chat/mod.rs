@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use tokio::sync::broadcast::{self, Sender};
 
+// TODO: use BTreeMap instead?
 static ROOMS: Lazy<Mutex<HashMap<u32, Room>>> = Lazy::new(Default::default);
 
 struct Room {

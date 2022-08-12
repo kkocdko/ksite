@@ -16,7 +16,7 @@ use tokio_rustls::rustls::{Certificate, PrivateKey, ServerConfig};
 use tokio_rustls::TlsAcceptor;
 use tower::MakeService;
 
-/// Serve the services.
+/// Serve the services over TLS.
 ///
 /// # Example
 ///
@@ -73,10 +73,10 @@ pub async fn serve(addr: &SocketAddr, mut app: IntoMakeService<Router>) {
 
     // safety: this fn called only once, so we don't need once_cell::sync::Lazy.
     static mut _TLS_ACCEPTOR: MaybeUninit<TlsAcceptor> = MaybeUninit::uninit();
-    unsafe { _TLS_ACCEPTOR.write(TlsAcceptor::from(Arc::new(rustls_cfg))) };
-    static TLS_ACCEPTOR: &TlsAcceptor = unsafe { _TLS_ACCEPTOR.assume_init_ref() };
     static mut _PROTOCOL: MaybeUninit<Http> = MaybeUninit::uninit();
+    unsafe { _TLS_ACCEPTOR.write(TlsAcceptor::from(Arc::new(rustls_cfg))) };
     unsafe { _PROTOCOL.write(Http::new()) };
+    static TLS_ACCEPTOR: &TlsAcceptor = unsafe { _TLS_ACCEPTOR.assume_init_ref() };
     static PROTOCOL: &Http = unsafe { _PROTOCOL.assume_init_ref() };
 
     let mut listener = AddrIncoming::bind(addr).unwrap();

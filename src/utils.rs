@@ -195,7 +195,8 @@ pub const fn slot<const N: usize>(raw: &str) -> [&str; N] {
         } else {
             (idxs[i - 1] + MARK.len(), raw.len())
         };
-        ret_b[i] = slice_cut(raw, begin, end);
+
+        ret_b[i] = unsafe { std::slice::from_raw_parts(raw.as_ptr().add(begin), end - begin) };
         i += 1;
     }
 
@@ -210,34 +211,6 @@ pub const fn slot<const N: usize>(raw: &str) -> [&str; N] {
         i += 1;
     }
     ret
-}
-
-const fn slice_cut(mut r: &[u8], begin: usize, end: usize) -> &[u8] {
-    // will be stabilized on 1.64
-    // https://github.com/rust-lang/rust/pull/97522
-    // #![feature(const_slice_from_raw_parts)]
-    // unsafe { std::slice::from_raw_parts(r.as_ptr().add(begin), end - begin) }
-
-    const fn unwrap_o<T: Copy>(o: Option<T>) -> T {
-        match o {
-            Some(v) => v,
-            None => panic!("called `unwrap_o()` on a `None` value"),
-        }
-    }
-
-    let mut i = r.len();
-    while i > end {
-        r = unwrap_o(r.split_last()).1;
-        i -= 1;
-    }
-
-    let mut i = 0;
-    while i < begin {
-        r = unwrap_o(r.split_first()).1;
-        i += 1;
-    }
-
-    r
 }
 
 const fn kmp<const A: usize, const B: usize>(s: &[u8], p: [u8; A]) -> [usize; B] {
@@ -282,8 +255,6 @@ const fn kmp<const A: usize, const B: usize>(s: &[u8], p: [u8; A]) -> [usize; B]
     ret
 }
 
-// use std::mem::MaybeUninit;
-
 pub struct LoopStack<T, const S: usize> {
     data: [MaybeUninit<T>; S],
     used: usize,
@@ -313,7 +284,7 @@ impl<T, const S: usize> LoopStack<T, S> {
             }
             self.data.get_unchecked_mut(self.next_idx).write(v);
             let next_idx = self.next_idx + 1;
-            self.next_idx = next_idx.checked_sub(S).unwrap_or(next_idx);
+            self.next_idx = if next_idx == S { 0 } else { next_idx };
         }
     }
 
