@@ -11,7 +11,7 @@ use rand::{thread_rng, Rng};
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-/// generate reply from message parts
+/// Generate reply from message parts
 async fn gen_reply(msg: Vec<&str>) -> Result<String> {
     static REPLIES: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(|| {
         Mutex::new(HashMap::from([
@@ -22,7 +22,7 @@ async fn gen_reply(msg: Vec<&str>) -> Result<String> {
     });
     Ok(match msg[..] {
         ["kk单身多久了"] => format!("kk已连续单身 {:.3} 天了", elapse(10485432e2)),
-        // ["开学倒计时"] => format!("距 开学 仅 {:.3} 天", -elapse(16561728e2)),
+        ["开学倒计时"] => format!("距 开学 仅 {:.3} 天", -elapse(16617312e2)),
         ["高考倒计时"] => format!("距 2023 高考仅 {:.3} 天", -elapse(16860996e2)),
         ["驶向深蓝"] => {
             let url = "https://api.lovelive.tools/api/SweetNothings?genderType=M";

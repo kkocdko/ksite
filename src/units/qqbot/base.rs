@@ -1,6 +1,6 @@
 //! Provide login, token storage and other base functions.
 use super::gen_reply;
-use crate::utils::{slot, LoopStack};
+use crate::utils::slot;
 use crate::{care, db};
 use anyhow::Result;
 use axum::extract::Form;
@@ -19,9 +19,15 @@ use tokio::sync::mpsc::Receiver;
 macro_rules! push_log {
     ($fmt:literal $(, $($arg:tt)+)?) => {{
         let now = UNIX_EPOCH.elapsed().unwrap().as_millis();
-        let mut log = LOG.lock().unwrap();
-        log.push(format!(concat!("[{}] ", $fmt), now, $($($arg)+)?));
+        push_log_(format!(concat!("[{}] ", $fmt), now, $($($arg)+)?));
     }}
+}
+fn push_log_(v: String) {
+    let mut log = LOG.lock().unwrap();
+    if log.len() >= 256 {
+        log.drain(..64);
+    }
+    log.push(v);
 }
 
 const K_DEVICE: &str = "device_json";
@@ -62,8 +68,7 @@ pub async fn post_handler(form: Form<Submit>) -> Redirect {
 pub async fn get_handler() -> Html<String> {
     const PAGE: [&str; 2] = slot(include_str!("page.html"));
     let mut body = PAGE[0].to_string();
-    #[allow(clippy::significant_drop_in_scrutinee)]
-    for line in LOG.lock().unwrap().iter() {
+    for line in LOG.lock().unwrap().iter().rev() {
         body += line;
         body += "\n";
     }
@@ -76,7 +81,7 @@ pub fn get_login_qr() -> Vec<u8> {
     QR.lock().unwrap().clone()
 }
 
-static LOG: Mutex<LoopStack<String, 256>> = Mutex::new(LoopStack::new());
+static LOG: Mutex<Vec<String>> = Mutex::new(Vec::new());
 static QR: Mutex<Vec<u8>> = Mutex::new(Vec::new());
 static CLIENT: Lazy<Arc<Client>> = Lazy::new(|| {
     push_log!("init client");
@@ -106,7 +111,7 @@ static CLIENT: Lazy<Arc<Client>> = Lazy::new(|| {
 async fn launch(mut rx: Receiver<QEvent>) -> Result<()> {
     // waiting for connected
     while CLIENT.get_status() == 0 {
-        tokio::time::sleep(Duration::from_secs_f32(0.2)).await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
     }
     tokio::task::yield_now().await;
     push_log!("server connected");
@@ -185,12 +190,12 @@ fn text_msg(content: String) -> MessageChain {
 async fn on_event(event: QEvent) -> Result<()> {
     match event {
         QEvent::GroupMessage(e) => {
-            match { e.inner.elements.0.get(0) }.map(|v| RQElem::from((v).clone())) {
+            match e.inner.elements.0.get(0).map(|v| RQElem::from(v.clone())) {
                 Some(RQElem::At(v)) if v.target == CLIENT.uin().await => {}
                 _ => return Ok(()), // it's not my business!
             }
             let msg = e.inner.elements.to_string();
-            let msg: Vec<&str> = msg.split_whitespace().skip(1).collect();
+            let msg = msg.split_whitespace().skip(1).collect();
             let reply = care!(gen_reply(msg).await)?;
             CLIENT
                 .send_group_message(e.inner.group_code, text_msg(reply))
