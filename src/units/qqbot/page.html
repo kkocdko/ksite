@@ -53,7 +53,10 @@
   </select>
   <input name="value" placeholder="VALUE" />
   <div><img src="/qqbot/qr" onerror="outerHTML='(@_@)'" /></div>
-  <textarea readonly spellcheck="false">/*{slot}*/</textarea>
+  <textarea id="$log" readonly spellcheck="false">/*{slot}*/</textarea>
 </form>
 
-<script></script>
+<script>
+  const stamp2str = (v) => new Date(v * 1e3).toLocaleString();
+  $log.value = $log.value.replace(/(?<=\n|^)\d+/g, stamp2str);
+</script>

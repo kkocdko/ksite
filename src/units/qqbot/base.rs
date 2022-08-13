@@ -10,6 +10,7 @@ use ricq::client::{Connector as _, DefaultConnector};
 use ricq::handler::QEvent;
 use ricq::msg::elem::RQElem;
 use ricq::msg::MessageChain;
+use ricq::structs::GroupMessage;
 use ricq::{Client, Device, LoginResponse, Protocol, QRCodeState};
 use serde::Deserialize;
 use std::sync::{Arc, Mutex};
@@ -18,14 +19,14 @@ use tokio::sync::mpsc::Receiver;
 
 macro_rules! push_log {
     ($fmt:literal $(, $($arg:tt)+)?) => {{
-        let now = UNIX_EPOCH.elapsed().unwrap().as_millis();
-        push_log_(format!(concat!("[{}] ", $fmt), now, $($($arg)+)?));
+        let now = UNIX_EPOCH.elapsed().unwrap().as_secs();
+        push_log_(format!(concat!("{} | ", $fmt), now, $($($arg)+)?));
     }}
 }
 fn push_log_(v: String) {
     let mut log = LOG.lock().unwrap();
-    if log.len() >= 256 {
-        log.drain(..64);
+    if log.len() >= 128 {
+        log.drain(..32);
     }
     log.push(v);
 }
@@ -95,7 +96,7 @@ static CLIENT: Lazy<Arc<Client>> = Lazy::new(|| {
         }
     };
     let (tx, rx) = tokio::sync::mpsc::channel(1);
-    let client = Arc::new(ricq::Client::new(device, Protocol::AndroidWatch, tx));
+    let client = Arc::new(ricq::Client::new(device, Protocol::AndroidWatch.into(), tx));
     tokio::spawn(async {
         tokio::join!(
             async {
@@ -188,6 +189,7 @@ fn text_msg(content: String) -> MessageChain {
 }
 
 async fn on_event(event: QEvent) -> Result<()> {
+    static RECENT: Mutex<Option<Vec<GroupMessage>>> = Mutex::new(Some(Vec::new()));
     match event {
         QEvent::GroupMessage(e) => {
             match e.inner.elements.0.get(0).map(|v| RQElem::from(v.clone())) {
@@ -195,13 +197,41 @@ async fn on_event(event: QEvent) -> Result<()> {
                 _ => return Ok(()), // it's not my business!
             }
             let msg = e.inner.elements.to_string();
-            let msg = msg.split_whitespace().skip(1).collect();
-            let reply = care!(gen_reply(msg).await)?;
+            let msg_parts = msg.split_whitespace().skip(1).collect();
+            let reply = care!(gen_reply(msg_parts).await)?;
             CLIENT
                 .send_group_message(e.inner.group_code, text_msg(reply))
                 .await?;
+            let time = e.inner.time;
+            let mut recent = RECENT.lock().unwrap();
+            recent.as_mut().unwrap().push(e.inner);
+            if recent.as_ref().unwrap().len() >= 64 {
+                let v: Vec<_> = recent
+                    .take()
+                    .unwrap()
+                    .into_iter()
+                    .filter(|v| time - v.time > 125)
+                    .collect();
+                push_log!("cleared {} messages from recent list", v.len());
+                *recent = Some(v);
+            }
         }
-        QEvent::GroupMessageRecall(_) => {}
+        QEvent::GroupMessageRecall(e) => {
+            // dbg!("QEvent::GroupMessageRecall");
+            if let Some(v) = RECENT
+                .lock()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .iter()
+                .find(|v| v.seqs.contains(&e.inner.msg_seq))
+            {
+                push_log!("recalled message = {:?}", v);
+            }
+        }
+        // QEvent::FriendMessageRecall(_) => {
+        //     dbg!("QEvent::FriendMessageRecall");
+        // }
         QEvent::Login(e) => push_log!("login {}", e),
         _ => {}
     }
