@@ -2,7 +2,7 @@ use once_cell::sync::Lazy;
 use std::sync::Mutex;
 
 /// # Use `db!()` macro instead of access directly!
-pub static _DB: Lazy<Mutex<rusqlite::Connection>> = Lazy::new(|| {
+pub static DB_: Lazy<Mutex<rusqlite::Connection>> = Lazy::new(|| {
     let path = std::env::current_exe().unwrap().with_extension("db");
     let db = rusqlite::Connection::open(path).unwrap();
 
@@ -27,13 +27,13 @@ pub static _DB: Lazy<Mutex<rusqlite::Connection>> = Lazy::new(|| {
 macro_rules! db {
     ( $sql:expr ) => {{ $crate::db!($sql, []) }};
     ( $sql:expr, [ $($param:tt)* ] ) => {{
-        { $crate::database::_DB.lock().unwrap() }
+        { $crate::database::DB_.lock().unwrap() }
             .prepare_cached($sql)
             .and_then(|mut s| s.execute(rusqlite::params![$($param)*]))
     }};
     ( $sql:expr, [ $($param:tt)* ], $f:expr ) => {(||{
         let mut ret = Vec::new();
-        let db = $crate::database::_DB.lock().unwrap();
+        let db = $crate::database::DB_.lock().unwrap();
         let mut stmd = db.prepare_cached($sql)?;
         for v in stmd.query_map(rusqlite::params![$($param)*], $f)? {
             ret.push(v?);

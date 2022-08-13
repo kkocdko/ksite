@@ -60,7 +60,7 @@ pub async fn serve(addr: &SocketAddr, mut app: IntoMakeService<Router>) {
         r.unwrap().pop().unwrap()
     }
 
-    let mut rustls_cfg = ServerConfig::builder()
+    let mut tls_cfg = ServerConfig::builder()
         .with_safe_defaults()
         .with_no_client_auth()
         .with_single_cert(
@@ -69,12 +69,12 @@ pub async fn serve(addr: &SocketAddr, mut app: IntoMakeService<Router>) {
         )
         .unwrap();
     // enable http2, needs hyper / axum feature "http2"
-    rustls_cfg.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+    tls_cfg.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
 
     // safety: this fn called only once, so we don't need once_cell::sync::Lazy.
     static mut _TLS_ACCEPTOR: MaybeUninit<TlsAcceptor> = MaybeUninit::uninit();
     static mut _PROTOCOL: MaybeUninit<Http> = MaybeUninit::uninit();
-    unsafe { _TLS_ACCEPTOR.write(TlsAcceptor::from(Arc::new(rustls_cfg))) };
+    unsafe { _TLS_ACCEPTOR.write(TlsAcceptor::from(Arc::new(tls_cfg))) };
     unsafe { _PROTOCOL.write(Http::new()) };
     static TLS_ACCEPTOR: &TlsAcceptor = unsafe { _TLS_ACCEPTOR.assume_init_ref() };
     static PROTOCOL: &Http = unsafe { _PROTOCOL.assume_init_ref() };

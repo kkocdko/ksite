@@ -6,9 +6,11 @@ All in one solution for my server.
 
 - `units::record`: record evidence picture, audio and video in real-time.
 
-- `units::chat`: webrtc?
+- `units::chat`: webrtc? sse?
 
 - `units::paste`: crypto.
+
+- `units::disk`: web disk.
 
 - Sqlite `WAL` mode sync config?
 
