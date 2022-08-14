@@ -7,8 +7,8 @@ use axum::http::header::{HeaderName, CACHE_CONTROL, CONTENT_ENCODING, EXPIRES, R
 use axum::response::Html;
 use axum::routing::{MethodRouter, Router};
 use once_cell::sync::Lazy;
+use std::sync::Mutex; // with small data, Mutex seems faster than RwLock
 use std::time::{Duration, SystemTime};
-use tokio::sync::RwLock;
 
 fn generate<'a>(mut i: &'a str, o: &mut Vec<&'a str>, mut limit: usize) -> Result<()> {
     while let Some(mut p) = i.split_once("<item>") {
@@ -69,9 +69,9 @@ type Res = ([(HeaderName, String); 2], Html<Vec<u8>>);
 
 const PAGE: [&str; 2] = slot(include_str!("page.html"));
 
-static CACHE: Lazy<RwLock<Res>> = Lazy::new(|| {
+static CACHE: Lazy<Mutex<Res>> = Lazy::new(|| {
     let body = format!("{}<h2>Magazine is generating ...</h2>{}", PAGE[0], PAGE[1]);
-    RwLock::new((
+    Mutex::new((
         [(CACHE_CONTROL, "no-store".into()), (REFRESH, "2".into())],
         Html(body.into_bytes()),
     ))
@@ -95,7 +95,7 @@ async fn refresh() -> Result<()> {
     o.push(PAGE[1]);
     let o = miniz_oxide::deflate::compress_to_vec(o.join("").as_bytes(), 10);
     let expires = httpdate::fmt_http_date(SystemTime::now() + Duration::from_secs(3600));
-    *CACHE.write().await = (
+    *CACHE.lock().unwrap() = (
         [(EXPIRES, expires), (CONTENT_ENCODING, "deflate".into())],
         Html(o),
     );
@@ -106,7 +106,7 @@ pub fn service() -> Router {
     tokio::spawn(async { care!(refresh().await).ok() });
     Router::new().route(
         "/magazine",
-        MethodRouter::new().get(|| async { CACHE.read().await.clone() }),
+        MethodRouter::new().get(|| async { CACHE.lock().unwrap().clone() }),
     )
 }
 

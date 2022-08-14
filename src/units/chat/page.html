@@ -85,23 +85,21 @@
     location.hash = prompt("Room ID", Math.round(Math.random() * 1e5));
     throw location.reload();
   }
-  const ws = new WebSocket(`${protocol}//${location.host}/chat/ws/${room}`);
-  await new Promise((r) => (ws.onopen = r));
+  const sse = new EventSource(`/chat/sse/${room}`);
   $send.placeholder += `, ROOM ${room}`;
-  // const wsSend = (data) => ws.send(JSON.stringify(data));
-  const wsSend = (data) => {
+  const sendData = (data) => {
     const v = JSON.stringify(data);
-    console.log(v);
-    ws.send(v);
+    fetch(`/chat/post/${room}`, { method: "POST", body: v });
   };
-  const joinRoom = () => wsSend({ op: "join", id: cfg.id, pubKey: cfg.pubKey });
+  const joinRoom = () =>
+    sendData({ op: "join", id: cfg.id, pubKey: cfg.pubKey });
   const sendMsg = (msg) => {
     cfg.friends.map(async (friend) => {
       const value = await friend.encrypt(msg);
-      wsSend({ op: "msg", id: cfg.id, target: friend.id, value });
+      sendData({ op: "msg", id: cfg.id, target: friend.id, value });
     });
   };
-  ws.onmessage = async (e) => {
+  sse.onmessage = async (e) => {
     const data = JSON.parse(e.data);
     if (data.op === "msg" && data.target === cfg.id) {
       const el = document.createElement("p");

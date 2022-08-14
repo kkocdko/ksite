@@ -2,9 +2,9 @@
 use crate::db;
 use axum::routing::IntoMakeService;
 use axum::Router;
-use futures_util::future::poll_fn;
 use hyper::server::accept::Accept;
 use hyper::server::conn::{AddrIncoming, Http};
+use std::future::poll_fn;
 use std::mem::MaybeUninit;
 use std::net::SocketAddr;
 use std::pin::Pin;
@@ -102,7 +102,7 @@ pub async fn serve(addr: &SocketAddr, mut app: IntoMakeService<Router>) {
             if let Ok(tls_stream) = TLS_ACCEPTOR.accept(stream).await {
                 PROTOCOL
                     .serve_connection(tls_stream, svc.await.unwrap())
-                    .with_upgrades() // allow WebSocket
+                    // .with_upgrades() // allow WebSocket
                     .await
                     .ok();
             }
