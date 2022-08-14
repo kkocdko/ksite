@@ -551,7 +551,7 @@ dependencies = [
 
 [[package]]
 name = "ksite"
-version = "0.5.8"
+version = "0.5.9"
 dependencies = [
  "anyhow",
  "askama_escape",
@@ -815,7 +815,7 @@ dependencies = [
 [[package]]
 name = "ricq"
 version = "0.1.17"
-source = "git+https://github.com/kkocdko/ricq?rev=fb6b837#fb6b837c32ebe40e949965b55fb65ec6b072eed4"
+source = "git+https://github.com/lz1998/ricq?rev=d687c19#d687c19c0027c510fac1a8040100591aa638ab73"
 dependencies = [
  "async-trait",
  "bytes",
@@ -837,7 +837,7 @@ dependencies = [
 [[package]]
 name = "ricq-core"
 version = "0.1.17"
-source = "git+https://github.com/kkocdko/ricq?rev=fb6b837#fb6b837c32ebe40e949965b55fb65ec6b072eed4"
+source = "git+https://github.com/lz1998/ricq?rev=d687c19#d687c19c0027c510fac1a8040100591aa638ab73"
 dependencies = [
  "byteorder",
  "bytes",

@@ -1,6 +1,6 @@
 [package]
 name = "ksite"
-version = "0.5.8"
+version = "0.5.9"
 edition = "2021"
 
 [profile.release]
@@ -53,7 +53,7 @@ tower-http = { version = "0.3", features = ["auth"] }
 # tls-listener = { version = "0.5", features = ["rustls", "hyper-h2"] }
 
 [patch.crates-io]
-ricq = { rev = "fb6b837", git = "https://github.com/kkocdko/ricq" }
+ricq = { rev = "d687c19", git = "https://github.com/lz1998/ricq" }
 futures = { path = "src/crates/futures-fake" } # for `cached` crate
 hashbrown = { path = "src/crates/hashbrown-fake" } # for `cached` crate
 prost-build = { path = "src/crates/prost-gen" } # for `ricq-core` crate

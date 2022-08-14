@@ -86,15 +86,23 @@
     throw location.reload();
   }
   const sse = new EventSource(`/chat/sse/${room}`);
+  await new Promise((r) => (sse.onopen = r));
   $send.placeholder += `, ROOM ${room}`;
-  const sendData = (data) => {
-    const v = JSON.stringify(data);
-    fetch(`/chat/post/${room}`, { method: "POST", body: v });
+  const sendData = async (data) => {
+    const body = JSON.stringify(data);
+    let error;
+    try {
+      const r = await fetch(`/chat/post/${room}`, { method: "POST", body });
+      error = await r.text();
+    } catch (e) {
+      error = e;
+    }
+    if (error) alert(`send data failed, error = ${e}`);
   };
   const joinRoom = () =>
     sendData({ op: "join", id: cfg.id, pubKey: cfg.pubKey });
   const sendMsg = (msg) => {
-    cfg.friends.map(async (friend) => {
+    cfg.friends.forEach(async (friend) => {
       const value = await friend.encrypt(msg);
       sendData({ op: "msg", id: cfg.id, target: friend.id, value });
     });
