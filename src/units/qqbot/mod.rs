@@ -144,7 +144,7 @@ impl UpNotify {
             if !last.is_empty() && *last != v {
                 *last = v.clone();
             } else {
-                // store the latest value regardless of whether the notify succeeds or not
+                // store the latest value regardless of whether the notify succeeded or not
                 *last = v;
                 return; // thanks NLL!
             };

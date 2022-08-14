@@ -1,5 +1,6 @@
 //! Admin console.
 use crate::db;
+use crate::utils::read_body;
 use axum::extract::{RawBody, RawQuery};
 use axum::response::Html;
 use axum::routing::{MethodRouter, Router};
@@ -13,8 +14,8 @@ fn db_set(k: &str, v: Vec<u8>) {
 
 async fn post_handler(q: RawQuery, RawBody(body): RawBody) {
     let q = q.0.unwrap();
-    let k = q.as_str().split_once('=').unwrap().1;
-    let v: Vec<u8> = hyper::body::to_bytes(body).await.unwrap().into();
+    let k = q.split_once('=').unwrap().1;
+    let v = read_body(body).await;
     db_set(k, v);
 }
 

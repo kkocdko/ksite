@@ -63,6 +63,6 @@
       const blob = await fetch(`data:;base64,${v}`).then((v) => v.blob());
       await fetch(`/admin?k=${$k.value}`, { method: "post", body: blob });
     } else return alert("not supported key type");
-    alert("submit succeed");
+    alert(`Set ${$k.value} succeeded`);
   };
 </script>

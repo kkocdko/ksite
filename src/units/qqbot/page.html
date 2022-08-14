@@ -43,15 +43,15 @@
   }
 </style>
 
-<form method="post">
+<form onsubmit="onSubmit(event)">
   <header>
     <input type="submit" value="Set" />
   </header>
-  <select name="key">
+  <select id="$k">
     <option value="device_json">device_json</option>
     <option value="token_json">token_json</option>
   </select>
-  <input name="value" placeholder="VALUE" />
+  <input id="$v" placeholder="VALUE" />
   <div><img src="/qqbot/qr" onerror="outerHTML='(@_@)'" /></div>
   <textarea id="$log" readonly spellcheck="false">/*{slot}*/</textarea>
 </form>
@@ -59,4 +59,9 @@
 <script>
   const stamp2str = (v) => new Date(v * 1e3).toLocaleString();
   $log.value = $log.value.replace(/(?<=\n|^)\d+/g, stamp2str);
+  const onSubmit = async (event) => {
+    event.preventDefault();
+    await fetch(`/qqbot?k=${$k.value}`, { method: "post", body: $v.value });
+    alert(`Set ${$k.value} succeeded`);
+  };
 </script>

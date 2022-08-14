@@ -1,10 +1,11 @@
 //! Provide login, token storage and other base functions.
 use super::gen_reply;
+use crate::utils::read_body;
 use crate::utils::slot;
 use crate::{care, db};
 use anyhow::Result;
-use axum::extract::Form;
-use axum::response::{Html, Redirect};
+use axum::extract::{RawBody, RawQuery};
+use axum::response::Html;
 use once_cell::sync::Lazy;
 use ricq::client::{Connector as _, DefaultConnector};
 use ricq::handler::QEvent;
@@ -12,10 +13,10 @@ use ricq::msg::elem::RQElem;
 use ricq::msg::MessageChain;
 use ricq::structs::GroupMessage;
 use ricq::{Client, Device, LoginResponse, Protocol, QRCodeState};
-use serde::Deserialize;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, UNIX_EPOCH};
-use tokio::sync::mpsc::Receiver;
 
 macro_rules! push_log {
     ($fmt:literal $(, $($arg:tt)+)?) => {{
@@ -38,7 +39,7 @@ fn db_init() {
     db!("CREATE TABLE qqbot_cfg (k TEXT UNIQUE, v BLOB)").ok();
     db!("CREATE TABLE qqbot_groups (group_id INTEGER UNIQUE)").ok();
 }
-fn db_cfg_set(k: &str, v: &[u8]) {
+fn db_cfg_set(k: &str, v: Vec<u8>) {
     db!("INSERT OR REPLACE INTO qqbot_cfg VALUES (?1, ?2)", [k, v]).unwrap();
 }
 fn db_cfg_get(k: &str) -> Option<Vec<u8>> {
@@ -55,15 +56,11 @@ pub fn db_groups_insert(group_id: i64) {
     db!("INSERT INTO qqbot_groups VALUES (?)", [group_id]).unwrap();
 }
 
-#[derive(Deserialize)]
-pub struct Submit {
-    key: String,
-    value: String,
-}
-
-pub async fn post_handler(form: Form<Submit>) -> Redirect {
-    db_cfg_set(&form.key, form.value.as_bytes());
-    Redirect::to("/qqbot")
+pub async fn post_handler(q: RawQuery, RawBody(body): RawBody) {
+    let q = q.0.unwrap();
+    let k = q.split_once('=').unwrap().1;
+    let v = read_body(body).await;
+    db_cfg_set(k, v);
 }
 
 pub async fn get_handler() -> Html<String> {
@@ -91,25 +88,39 @@ static CLIENT: Lazy<Arc<Client>> = Lazy::new(|| {
         Some(v) => serde_json::from_str(&v).unwrap(),
         None => {
             let device = Device::random();
-            db_cfg_set(K_DEVICE, serde_json::to_string(&device).unwrap().as_bytes());
+            db_cfg_set(
+                K_DEVICE,
+                serde_json::to_string(&device).unwrap().into_bytes(),
+            );
             device
         }
     };
-    let (tx, rx) = tokio::sync::mpsc::channel(1);
-    let client = Arc::new(ricq::Client::new(device, Protocol::AndroidWatch.into(), tx));
+    struct MyHandler;
+    impl ricq::handler::Handler for MyHandler {
+        fn handle<'a, 'b>(&'a self, e: QEvent) -> Pin<Box<dyn Future<Output = ()> + Send + 'b>>
+        where
+            'a: 'b,
+            Self: 'b,
+        {
+            Box::pin(async {
+                care!(on_event(e).await).ok();
+            })
+        }
+    }
+    let client = Arc::new(ricq::Client::new(device, Protocol::IPad.into(), MyHandler));
     tokio::spawn(async {
         tokio::join!(
             async {
                 let stream = DefaultConnector.connect(&CLIENT).await.unwrap();
                 CLIENT.start(stream).await;
             },
-            launch(rx)
+            launch()
         )
     });
     client
 });
 
-async fn launch(mut rx: Receiver<QEvent>) -> Result<()> {
+async fn launch() -> Result<()> {
     // waiting for connected
     while CLIENT.get_status() == 0 {
         tokio::time::sleep(Duration::from_millis(200)).await;
@@ -124,7 +135,7 @@ async fn launch(mut rx: Receiver<QEvent>) -> Result<()> {
     if let Some(v) = db_cfg_get_text(K_TOKEN) {
         let token = serde_json::from_str(&v)?;
         CLIENT.token_login(token).await?;
-        push_log!("login by token succeed");
+        push_log!("login by token succeeded");
     } else {
         let mut qr_resp = CLIENT.fetch_qrcode().await?;
         let mut img_sig = Vec::new();
@@ -148,9 +159,9 @@ async fn launch(mut rx: Receiver<QEvent>) -> Result<()> {
                     if let LoginResponse::DeviceLockLogin { .. } = login_resp {
                         CLIENT.device_lock_login().await?;
                     }
-                    push_log!("login by qrcode succeed");
+                    push_log!("login by qrcode succeeded");
                     let token = serde_json::to_string(&CLIENT.gen_token().await)?;
-                    db_cfg_set(K_TOKEN, token.as_bytes());
+                    db_cfg_set(K_TOKEN, token.into_bytes());
                     break;
                 }
                 QRCodeState::WaitingForScan => push_log!("qrcode waiting for scan"),
@@ -168,20 +179,10 @@ async fn launch(mut rx: Receiver<QEvent>) -> Result<()> {
 
     QR.lock().unwrap().clear();
 
-    tokio::join!(
-        async {
-            loop {
-                CLIENT.do_heartbeat().await;
-                tokio::time::sleep(Duration::from_secs(60)).await;
-            }
-        },
-        async {
-            loop {
-                care!(on_event(rx.recv().await.unwrap()).await).ok();
-            }
-        }
-    );
-    Ok(())
+    loop {
+        CLIENT.do_heartbeat().await;
+        tokio::time::sleep(Duration::from_secs(60)).await;
+    }
 }
 
 fn text_msg(content: String) -> MessageChain {
@@ -189,49 +190,43 @@ fn text_msg(content: String) -> MessageChain {
 }
 
 async fn on_event(event: QEvent) -> Result<()> {
-    static RECENT: Mutex<Option<Vec<GroupMessage>>> = Mutex::new(Some(Vec::new()));
+    static RECENT: Mutex<Vec<GroupMessage>> = Mutex::new(Vec::new());
     match event {
         QEvent::GroupMessage(e) => {
-            match e.inner.elements.0.get(0).map(|v| RQElem::from(v.clone())) {
-                Some(RQElem::At(v)) if v.target == CLIENT.uin().await => {}
-                _ => return Ok(()), // it's not my business!
+            if matches!(
+                e.inner.elements.0.get(0).map(|v| RQElem::from(v.clone())),
+                Some(RQElem::At(v)) if v.target == CLIENT.uin().await
+            ) {
+                let msg = e.inner.elements.to_string();
+                let msg_parts = msg.split_whitespace().skip(1).collect();
+                // add timeout here
+                let reply = care!(gen_reply(msg_parts).await)?;
+                CLIENT
+                    .send_group_message(e.inner.group_code, text_msg(reply))
+                    .await?;
             }
-            let msg = e.inner.elements.to_string();
-            let msg_parts = msg.split_whitespace().skip(1).collect();
-            let reply = care!(gen_reply(msg_parts).await)?;
-            CLIENT
-                .send_group_message(e.inner.group_code, text_msg(reply))
-                .await?;
             let time = e.inner.time;
             let mut recent = RECENT.lock().unwrap();
-            recent.as_mut().unwrap().push(e.inner);
-            if recent.as_ref().unwrap().len() >= 64 {
-                let v: Vec<_> = recent
-                    .take()
-                    .unwrap()
-                    .into_iter()
-                    .filter(|v| time - v.time > 125)
-                    .collect();
-                push_log!("cleared {} messages from recent list", v.len());
-                *recent = Some(v);
+            recent.push(e.inner);
+            let len = recent.len();
+            if len >= 64 {
+                let buf = std::mem::take(&mut *recent);
+                // messages sent 2 minutes ago cannot be recalled
+                *recent = buf.into_iter().filter(|v| time - v.time <= 120).collect();
+                push_log!("cleaned {} expired messages", recent.len() - len);
             }
         }
         QEvent::GroupMessageRecall(e) => {
-            // dbg!("QEvent::GroupMessageRecall");
-            if let Some(v) = RECENT
-                .lock()
-                .unwrap()
-                .as_ref()
-                .unwrap()
-                .iter()
-                .find(|v| v.seqs.contains(&e.inner.msg_seq))
-            {
-                push_log!("recalled message = {:?}", v);
+            let recent = RECENT.lock().unwrap();
+            if let Some(v) = recent.iter().find(|v| v.seqs.contains(&e.inner.msg_seq)) {
+                push_log!(
+                    r#"recalled message : {{ group: "{}", user: "{}", content: "{}" }}"#,
+                    v.group_name,
+                    v.group_card,
+                    v.elements.to_string()
+                );
             }
         }
-        // QEvent::FriendMessageRecall(_) => {
-        //     dbg!("QEvent::FriendMessageRecall");
-        // }
         QEvent::Login(e) => push_log!("login {}", e),
         _ => {}
     }

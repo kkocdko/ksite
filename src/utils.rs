@@ -1,5 +1,5 @@
 use anyhow::Result;
-use hyper::body::to_bytes;
+use hyper::body::HttpBody;
 use hyper::client::HttpConnector;
 use hyper::{Body, Client, Request};
 use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
@@ -58,6 +58,17 @@ pub fn encode_uri(i: &str) -> String {
     unsafe { String::from_utf8_unchecked(o) }
 }
 
+/// Read `hyper::Body` into `Vec<u8>` with limited size.
+///
+/// Simpler than `hyper::body::to_bytes`.
+pub async fn read_body(mut body: Body) -> Vec<u8> {
+    let mut v = Vec::new();
+    while let Some(Ok(bytes)) = body.data().await {
+        v.append(&mut bytes.to_vec());
+    }
+    v
+}
+
 static CLIENT: Lazy<Client<HttpsConnector<HttpConnector>>> = Lazy::new(|| {
     // https://github.com/seanmonstar/reqwest/blob/v0.11.11/src/async_impl/client.rs#L340
     let trust_anchors = webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|trust_anchor| {
@@ -94,8 +105,8 @@ static CLIENT: Lazy<Client<HttpsConnector<HttpConnector>>> = Lazy::new(|| {
 /// Unlike `reqwest` crate, this function dose not follow redirect.
 pub async fn fetch(request: Request<Body>) -> Result<Vec<u8>> {
     let response = CLIENT.request(request).await?;
-    let bytes = to_bytes(response.into_body()).await?;
-    Ok(bytes.into())
+    let body = read_body(response.into_body()).await;
+    Ok(body)
 }
 
 /// Fetch a URI, returns as text.
