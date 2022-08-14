@@ -1,7 +1,6 @@
 //! Provide login, token storage and other base functions.
 use super::gen_reply;
-use crate::utils::read_body;
-use crate::utils::slot;
+use crate::utils::{read_body, slot};
 use crate::{care, db};
 use anyhow::Result;
 use axum::extract::{RawBody, RawQuery};
@@ -95,18 +94,6 @@ static CLIENT: Lazy<Arc<Client>> = Lazy::new(|| {
             device
         }
     };
-    struct MyHandler;
-    impl ricq::handler::Handler for MyHandler {
-        fn handle<'a, 'b>(&'a self, e: QEvent) -> Pin<Box<dyn Future<Output = ()> + Send + 'b>>
-        where
-            'a: 'b,
-            Self: 'b,
-        {
-            Box::pin(async {
-                care!(on_event(e).await).ok();
-            })
-        }
-    }
     let client = Arc::new(ricq::Client::new(device, Protocol::IPad.into(), MyHandler));
     tokio::spawn(async {
         tokio::join!(
@@ -125,7 +112,7 @@ async fn launch() -> Result<()> {
     while CLIENT.get_status() == 0 {
         tokio::time::sleep(Duration::from_millis(200)).await;
     }
-    tokio::task::yield_now().await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
     push_log!("server connected");
 
     // # Tips about Login
@@ -220,7 +207,7 @@ async fn on_event(event: QEvent) -> Result<()> {
             let recent = RECENT.lock().unwrap();
             if let Some(v) = recent.iter().find(|v| v.seqs.contains(&e.inner.msg_seq)) {
                 push_log!(
-                    r#"recalled message : {{ group: "{}", user: "{}", content: "{}" }}"#,
+                    r#"recalled message = {{ group: "{}", user: "{}", content: "{}" }}"#,
                     v.group_name,
                     v.group_card,
                     v.elements.to_string()
@@ -231,6 +218,18 @@ async fn on_event(event: QEvent) -> Result<()> {
         _ => {}
     }
     Ok(())
+}
+struct MyHandler;
+impl ricq::handler::Handler for MyHandler {
+    fn handle<'a, 'b>(&'a self, e: QEvent) -> Pin<Box<dyn Future<Output = ()> + Send + 'b>>
+    where
+        'a: 'b,
+        Self: 'b,
+    {
+        Box::pin(async {
+            care!(on_event(e).await).ok();
+        })
+    }
 }
 
 pub async fn notify(msg: String) -> Result<()> {

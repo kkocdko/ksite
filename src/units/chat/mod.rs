@@ -19,6 +19,27 @@ struct Room {
     channel: Sender<String>,
 }
 
+async fn post_handler(Path(id): Path<u32>, body: RawBody) -> impl IntoResponse {
+    let body = read_body(body.0).await;
+    // limited to 512 KB
+    if body.len() > 512 * 1024 {
+        return "message too long";
+    }
+    let msg = match String::from_utf8(body) {
+        Ok(v) => v,
+        Err(_) => return "message is not valid utf8",
+    };
+    let rooms = ROOMS.lock().unwrap();
+    let room = match rooms.get(&id) {
+        Some(v) => v,
+        None => return "room not exist",
+    };
+    match room.channel.send(msg) {
+        Ok(_) => "", // empty response body means succeeded
+        Err(_) => "no receivers exist",
+    }
+}
+
 async fn sse_handler(Path(id): Path<u32>) -> impl IntoResponse {
     let mut ch_rx = {
         let mut rooms = ROOMS.lock().unwrap();
@@ -51,27 +72,6 @@ async fn sse_handler(Path(id): Path<u32>) -> impl IntoResponse {
         // the `o2c` will be canceled
     });
     Sse::new(tokio_stream::wrappers::ReceiverStream::new(rx))
-}
-
-async fn post_handler(Path(id): Path<u32>, body: RawBody) -> impl IntoResponse {
-    let body = read_body(body.0).await;
-    // limited to 512 KB
-    if body.len() > 512 * 1024 {
-        return "message too long";
-    }
-    let msg = match String::from_utf8(body) {
-        Ok(v) => v,
-        Err(_) => return "message is not valid utf8",
-    };
-    let rooms = ROOMS.lock().unwrap();
-    let room = match rooms.get(&id) {
-        Some(v) => v,
-        None => return "room not exist",
-    };
-    match room.channel.send(msg) {
-        Ok(_) => "", // empty response body means succeeded
-        Err(_) => "no receivers exist",
-    }
 }
 
 pub fn service() -> Router {

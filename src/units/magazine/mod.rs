@@ -93,7 +93,9 @@ async fn refresh() -> Result<()> {
         (3, "https://rss.itggg.cn/1point3acres/post/hot3"),
     ];
     o.push(PAGE[1]);
-    let o = miniz_oxide::deflate::compress_to_vec(o.join("").as_bytes(), 10);
+    let o = o.join("");
+    let f = move || miniz_oxide::deflate::compress_to_vec(o.as_bytes(), 10);
+    let o = tokio::task::spawn_blocking(f).await?;
     let expires = httpdate::fmt_http_date(SystemTime::now() + Duration::from_secs(3600));
     *CACHE.lock().unwrap() = (
         [(EXPIRES, expires), (CONTENT_ENCODING, "deflate".into())],

@@ -79,7 +79,6 @@
       a2b(await crypto.subtle.encrypt(algo, pubKey, textEnc.encode(i)));
   };
   for (const friend of cfg.friends) await loadFriend(friend);
-  const protocol = location.protocol.replace("http", "ws");
   const room = location.hash.slice(1);
   if (!room) {
     location.hash = prompt("Room ID", Math.round(Math.random() * 1e5));
@@ -88,23 +87,18 @@
   const sse = new EventSource(`/chat/sse/${room}`);
   await new Promise((r) => (sse.onopen = r));
   $send.placeholder += `, ROOM ${room}`;
-  const sendData = async (data) => {
+  const post = async (data) => {
     const body = JSON.stringify(data);
-    let error;
-    try {
-      const r = await fetch(`/chat/post/${room}`, { method: "POST", body });
-      error = await r.text();
-    } catch (e) {
-      error = e;
-    }
-    if (error) alert(`send data failed, error = ${e}`);
+    const e = await fetch(`/chat/post/${room}`, { method: "POST", body })
+      .then((r) => r.text())
+      .catch((e) => e);
+    if (e) alert(`send data failed, error = ${e}`);
   };
-  const joinRoom = () =>
-    sendData({ op: "join", id: cfg.id, pubKey: cfg.pubKey });
+  const joinRoom = () => post({ op: "join", id: cfg.id, pubKey: cfg.pubKey });
   const sendMsg = (msg) => {
     cfg.friends.forEach(async (friend) => {
       const value = await friend.encrypt(msg);
-      sendData({ op: "msg", id: cfg.id, target: friend.id, value });
+      post({ op: "msg", id: cfg.id, target: friend.id, value });
     });
   };
   sse.onmessage = async (e) => {
@@ -115,7 +109,7 @@
       $send.parentNode.insertBefore(el, $send).scrollIntoView();
     } else if (data.op === "join") {
       if (cfg.friends.find((v) => v.id === data.id)) return;
-      else if (confirm(`[${data.id}] want to join room`)) {
+      else if (confirm(`[${data.id}] want to join the room`)) {
         const friend = { id: data.id, pubKey: data.pubKey };
         cfg.friends.push(friend);
         loadFriend(friend);

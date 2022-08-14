@@ -64,7 +64,7 @@ pub fn encode_uri(i: &str) -> String {
 pub async fn read_body(mut body: Body) -> Vec<u8> {
     let mut v = Vec::new();
     while let Some(Ok(bytes)) = body.data().await {
-        v.append(&mut bytes.to_vec());
+        v.append(&mut bytes.into());
     }
     v
 }
