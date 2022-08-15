@@ -1,19 +1,19 @@
 use std::iter::Iterator;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::UNIX_EPOCH;
 
-const ANY: u64 = 99; // must >= 60, terser logic?
+const ANY: i64 = 99; // must >= 60, terser logic?
 
 /// convert time stamp to (hours, minutes, seconds)
-fn hms(v: u64) -> (u64, u64, u64) {
+fn hms(v: i64) -> (i64, i64, i64) {
     (v / 60 / 60 % 24, v / 60 % 60, v % 60)
 }
 
-fn floor_by(v: u64, r: u64) -> u64 {
+fn floor_by(v: i64, r: i64) -> i64 {
     v - v % r
 }
 
-fn gen_next(mut now: u64, cfg: (u64, u64, u64)) -> u64 {
+fn gen_next(mut now: i64, cfg: (i64, i64, i64)) -> i64 {
     now += 1;
     let (ch, cm, cs) = cfg;
     loop {
@@ -58,14 +58,16 @@ fn gen_next(mut now: u64, cfg: (u64, u64, u64)) -> u64 {
 /// }
 /// ```
 pub struct Ticker {
-    next: AtomicU64,
-    cfgs: Vec<(u64, u64, u64)>,
+    next: AtomicI64,
+    cfgs: Vec<(i64, i64, i64)>,
 }
 
 impl Ticker {
     /// Returns `true` if the next instant has been reached.
     pub fn tick(&self) -> bool {
-        let now = UNIX_EPOCH.elapsed().unwrap().as_secs();
+        // https://doc.rust-lang.org/stable/reference/expressions/operator-expr.html#semantics
+        // "Casting between two integers of the same size (e.g. i32 -> u32) is a no-op"
+        let now = UNIX_EPOCH.elapsed().unwrap().as_secs() as _;
         if now >= self.next.load(Ordering::SeqCst) {
             let nexts = self.cfgs.iter().map(|&cfg| gen_next(now, cfg));
             self.next.store(nexts.min().unwrap(), Ordering::SeqCst);
@@ -80,13 +82,13 @@ impl Ticker {
         let mut cfgs = Vec::new();
         for &(h, m, s) in patterns {
             assert!(matches!((h, m, s), (-1..=23, -1..=59, -1..=59)));
-            let h = if h == -1 { ANY } else { (h + 24 - zone) as _ } % 24;
+            let h = if h == -1 { ANY } else { (h + 24 - zone) % 24 };
             let m = if m == -1 { ANY } else { m as _ };
             let s = if s == -1 { ANY } else { s as _ };
             cfgs.push((h, m, s));
         }
         let ret = Ticker {
-            next: AtomicU64::new(0),
+            next: AtomicI64::new(0),
             cfgs,
         };
         ret.tick();

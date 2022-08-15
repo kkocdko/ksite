@@ -78,6 +78,7 @@ static CACHE: Lazy<Mutex<Res>> = Lazy::new(|| {
 });
 
 async fn refresh() -> Result<()> {
+    let expires = httpdate::fmt_http_date(SystemTime::now() + Duration::from_secs(3600));
     let mut o = vec![PAGE[0]];
     macro_rules! load {
         ( $( ($idx:tt, $url:expr) ),* $(,)? ) => {
@@ -96,7 +97,6 @@ async fn refresh() -> Result<()> {
     let o = o.join("");
     let f = move || miniz_oxide::deflate::compress_to_vec(o.as_bytes(), 10);
     let o = tokio::task::spawn_blocking(f).await?;
-    let expires = httpdate::fmt_http_date(SystemTime::now() + Duration::from_secs(3600));
     *CACHE.lock().unwrap() = (
         [(EXPIRES, expires), (CONTENT_ENCODING, "deflate".into())],
         Html(o),

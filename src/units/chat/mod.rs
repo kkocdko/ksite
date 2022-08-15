@@ -51,7 +51,6 @@ async fn sse_handler(Path(id): Path<u32>) -> impl IntoResponse {
     });
     room.user_count += 1;
     let ch_rx = room.channel.subscribe();
-    drop(rooms);
     Sse::new(SseStream::new(id, ch_rx))
 }
 
@@ -79,8 +78,9 @@ impl SseStream {
 
 impl Stream for SseStream {
     type Item = Result<Event>;
+
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
-        let (value, rx) = unsafe { ready!(Pin::new_unchecked(&mut self.fut).poll(cx)) };
+        let (value, rx) = ready!(Pin::new(&mut self.fut).poll(cx));
         self.fut = make_future(rx);
         Poll::Ready(value.map(|v| Ok(Event::default().data(v))))
     }

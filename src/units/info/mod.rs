@@ -3,27 +3,27 @@ use crate::utils::{fetch_text, slot};
 use axum::http::header::{CACHE_CONTROL, REFRESH};
 use axum::response::{Html, IntoResponse};
 use axum::routing::{MethodRouter, Router};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
-static START_TIME: AtomicU64 = AtomicU64::new(0);
-static LAST_REFRESH: AtomicU64 = AtomicU64::new(0);
-static LATENCY_BAIDU: AtomicU64 = AtomicU64::new(0);
-static LATENCY_ALIYUN: AtomicU64 = AtomicU64::new(0);
+static START_TIME: AtomicI64 = AtomicI64::new(0);
+static LAST_REFRESH: AtomicI64 = AtomicI64::new(0);
+static LATENCY_BAIDU: AtomicI64 = AtomicI64::new(0);
+static LATENCY_ALIYUN: AtomicI64 = AtomicI64::new(0);
 
-async fn refresh(uri: &str, data: &AtomicU64) {
+async fn refresh(uri: &str, data: &AtomicI64) {
     let instant = Instant::now();
     match tokio::time::timeout(Duration::from_secs(3), fetch_text(uri)).await {
         Ok(Ok(_)) => data.store(instant.elapsed().as_millis() as _, Ordering::SeqCst),
-        Ok(Err(_)) => data.store(9000, Ordering::SeqCst), // network error
-        Err(_) => data.store(7000, Ordering::SeqCst),     // timeout
+        Ok(Err(_)) => data.store(-9, Ordering::SeqCst), // network error
+        Err(_) => data.store(-7, Ordering::SeqCst),     // timeout
     };
 }
 
 async fn get_handler() -> impl IntoResponse {
     const PAGE: [&str; 2] = slot(include_str!("page.html"));
 
-    let now = UNIX_EPOCH.elapsed().unwrap().as_secs();
+    let now = UNIX_EPOCH.elapsed().unwrap().as_secs() as i64;
 
     let mut o = PAGE[0].to_string();
 
@@ -31,7 +31,7 @@ async fn get_handler() -> impl IntoResponse {
     o += "\n\n";
 
     o += "Uptime : ";
-    o += &(now - START_TIME.load(Ordering::Relaxed)).to_string();
+    o += &(now - START_TIME.load(Ordering::SeqCst)).to_string();
     o += " s\n";
 
     if now - LAST_REFRESH.load(Ordering::SeqCst) > 5 {
@@ -47,8 +47,8 @@ async fn get_handler() -> impl IntoResponse {
 
     o += "Server <-> Baidu : ";
     match LATENCY_BAIDU.load(Ordering::SeqCst) {
-        9000 => o += "network error\n",
-        7000 => o += "timeout\n",
+        -9 => o += "network error\n",
+        -7 => o += "timeout\n",
         v => {
             o += &v.to_string();
             o += " ms\n";
@@ -57,8 +57,8 @@ async fn get_handler() -> impl IntoResponse {
 
     o += "Server <-> Aliyun : ";
     match LATENCY_ALIYUN.load(Ordering::SeqCst) {
-        9000 => o += "network error\n",
-        7000 => o += "timeout\n",
+        -9 => o += "network error\n",
+        -7 => o += "timeout\n",
         v => {
             o += &v.to_string();
             o += " ms\n";
@@ -71,8 +71,11 @@ async fn get_handler() -> impl IntoResponse {
 }
 
 pub fn service() -> Router {
-    START_TIME.store(UNIX_EPOCH.elapsed().unwrap().as_secs(), Ordering::Relaxed);
+    START_TIME.store(
+        UNIX_EPOCH.elapsed().unwrap().as_secs() as _,
+        Ordering::SeqCst,
+    );
     Router::new()
         .route("/info", MethodRouter::new().get(get_handler))
-        .route("/info/p", MethodRouter::new().get(|| async { "pong" }))
+        .route("/info/p", MethodRouter::new().get(|| async { "pong" })) // the "/ping" cause error?
 }

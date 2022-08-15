@@ -206,6 +206,7 @@ pub const fn slot<const N: usize>(raw: &str) -> [&str; N] {
             (idxs[i - 1] + MARK.len(), raw.len())
         };
 
+        // ret_b[i] = &raw[begin..end]; // is unusable in const fn
         ret_b[i] = unsafe { std::slice::from_raw_parts(raw.as_ptr().add(begin), end - begin) };
         i += 1;
     }
