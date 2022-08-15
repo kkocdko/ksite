@@ -26,7 +26,7 @@ pub struct Instrumented<T>(T);
 impl<T: Future> Future for Instrumented<T> {
     type Output = T::Output;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         unsafe { Pin::new_unchecked(&mut self.get_unchecked_mut().0).poll(cx) }
     }
 }

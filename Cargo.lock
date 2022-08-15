@@ -551,11 +551,12 @@ dependencies = [
 
 [[package]]
 name = "ksite"
-version = "0.5.9"
+version = "0.5.10"
 dependencies = [
  "anyhow",
  "askama_escape",
  "axum",
+ "futures-core",
  "httpdate",
  "hyper",
  "hyper-rustls",
@@ -568,7 +569,6 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-rustls",
- "tokio-stream",
  "tower",
  "tower-http",
  "webpki-roots",
@@ -1080,17 +1080,6 @@ dependencies = [
  "rustls",
  "tokio",
  "webpki",
-]
-
-[[package]]
-name = "tokio-stream"
-version = "0.1.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df54d54117d6fdc4e4fea40fe1e4e566b3505700e148a6827e59b34b0d2600d9"
-dependencies = [
- "futures-core",
- "pin-project-lite",
- "tokio",
 ]
 
 [[package]]

@@ -6,7 +6,7 @@ use axum::http::header::CACHE_CONTROL;
 use axum::response::sse::{Event, Sse};
 use axum::response::{Html, IntoResponse};
 use axum::routing::{MethodRouter, Router};
-use futures_core::Stream;
+use futures_core::{ready, Stream};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::future::Future;
@@ -52,28 +52,37 @@ async fn sse_handler(Path(id): Path<u32>) -> impl IntoResponse {
     room.user_count += 1;
     let ch_rx = room.channel.subscribe();
     drop(rooms);
-    Sse::new(SseStream { id, ch_rx })
+    Sse::new(SseStream::new(id, ch_rx))
+}
+
+// https://docs.rs/tokio-stream/0.1.9/tokio_stream/wrappers/struct.BroadcastStream.html
+
+type SseStreamFuture = Pin<Box<dyn Future<Output = (Option<String>, Receiver<String>)> + Send>>;
+
+fn make_future(mut rx: Receiver<String>) -> SseStreamFuture {
+    Box::pin(async { (rx.recv().await.ok(), rx) })
 }
 
 struct SseStream {
     id: u32,
-    ch_rx: Receiver<String>,
+    fut: SseStreamFuture,
+}
+
+impl SseStream {
+    fn new(id: u32, rx: Receiver<String>) -> Self {
+        Self {
+            id,
+            fut: make_future(rx),
+        }
+    }
 }
 
 impl Stream for SseStream {
     type Item = Result<Event>;
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let p = Pin::new(&mut Box::pin(self.ch_rx.recv())).poll(cx);
-        if p.is_pending() {
-            // println!("> {}", std::time::UNIX_EPOCH.elapsed().unwrap().as_secs());
-            let mut re_rx = self.ch_rx.resubscribe();
-            let waker = cx.waker().clone();
-            tokio::spawn(async move {
-                re_rx.recv().await.ok();
-                waker.wake();
-            });
-        }
-        p.map(|r| r.ok().map(|s| Ok(Event::default().data(s))))
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
+        let (value, rx) = unsafe { ready!(Pin::new_unchecked(&mut self.fut).poll(cx)) };
+        self.fut = make_future(rx);
+        Poll::Ready(value.map(|v| Ok(Event::default().data(v))))
     }
 }
 
