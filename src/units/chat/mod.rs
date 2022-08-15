@@ -6,11 +6,14 @@ use axum::http::header::CACHE_CONTROL;
 use axum::response::sse::{Event, Sse};
 use axum::response::{Html, IntoResponse};
 use axum::routing::{MethodRouter, Router};
+use futures_core::Stream;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Mutex;
-use tokio::sync::broadcast::{self, Sender};
-use tokio::sync::mpsc;
+use std::task::{Context, Poll};
+use tokio::sync::broadcast::{self, Receiver, Sender};
 
 static ROOMS: Lazy<Mutex<HashMap<u32, Room>>> = Lazy::new(Default::default);
 
@@ -41,37 +44,49 @@ async fn post_handler(Path(id): Path<u32>, body: RawBody) -> impl IntoResponse {
 }
 
 async fn sse_handler(Path(id): Path<u32>) -> impl IntoResponse {
-    let mut ch_rx = {
+    let mut rooms = ROOMS.lock().unwrap();
+    let room = rooms.entry(id).or_insert_with(|| Room {
+        user_count: 0,
+        channel: broadcast::channel(16).0,
+    });
+    room.user_count += 1;
+    let ch_rx = room.channel.subscribe();
+    drop(rooms);
+    Sse::new(SseStream { id, ch_rx })
+}
+
+struct SseStream {
+    id: u32,
+    ch_rx: Receiver<String>,
+}
+
+impl Stream for SseStream {
+    type Item = Result<Event>;
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let p = Pin::new(&mut Box::pin(self.ch_rx.recv())).poll(cx);
+        if p.is_pending() {
+            // println!("> {}", std::time::UNIX_EPOCH.elapsed().unwrap().as_secs());
+            let mut re_rx = self.ch_rx.resubscribe();
+            let waker = cx.waker().clone();
+            tokio::spawn(async move {
+                re_rx.recv().await.ok();
+                waker.wake();
+            });
+        }
+        p.map(|r| r.ok().map(|s| Ok(Event::default().data(s))))
+    }
+}
+
+impl Drop for SseStream {
+    fn drop(&mut self) {
         let mut rooms = ROOMS.lock().unwrap();
-        let room = rooms.entry(id).or_insert_with(|| Room {
-            user_count: 0,
-            channel: broadcast::channel(16).0,
-        });
-        room.user_count += 1;
-        room.channel.subscribe()
-    };
-    let (tx, rx) = mpsc::channel::<Result<Event>>(4);
-    tokio::spawn(async move {
-        let o2c = async {
-            while let Ok(v) = ch_rx.recv().await {
-                if tx.send(Ok(Event::default().data(v))).await.is_err() {
-                    break;
-                }
-            }
-        };
-        tokio::select! {
-            _ = o2c => {},
-            _ = tx.closed() => {} // all receivers droped
-        };
-        let mut rooms = ROOMS.lock().unwrap();
-        let room = rooms.get_mut(&id).unwrap();
+        let room = rooms.get_mut(&self.id).unwrap();
         room.user_count -= 1;
         if room.user_count == 0 {
-            rooms.remove(&id);
+            rooms.remove(&self.id);
+            // println!("> rooms.remove({})", self.id);
         }
-        // the `o2c` will be canceled
-    });
-    Sse::new(tokio_stream::wrappers::ReceiverStream::new(rx))
+    }
 }
 
 pub fn service() -> Router {

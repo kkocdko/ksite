@@ -22,7 +22,7 @@ async fn main() {
     thread::spawn(|| loop {
         let buf = &mut String::new();
         if io::stdin().read_line(buf).is_ok() && buf.trim() == ":q" {
-            println!("quit ksite");
+            println!("quit");
             process::exit(0);
         }
         thread::sleep(Duration::from_secs(1));
