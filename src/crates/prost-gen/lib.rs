@@ -333,35 +333,31 @@ fn to_any_case(s: &[u8]) -> Vec<&[u8]> {
     // return vec![s];
     let mut parts = Vec::<&[u8]>::with_capacity(8);
     let mut range = (0, 0);
-    let kind_of = |c| match c {
+    let kindof = |c| match c {
         b'A'..=b'Z' => 1i8, //  1 = uppercase
         b'0'..=b'9' => 0i8, //  0 = digit
         _ => -1i8,          // -1 = lowercase
     };
-    'label: while let Some(&f) = s.get(range.1) {
+    'label: while let Some(&first) = s.get(range.1) {
         range.1 += 1;
-        let mut r_k = kind_of(f); // TODO: prefix with '_' ?
-        while let Some(&c) = s.get(range.1) {
-            let c_k = kind_of(c);
-            match (r_k, c_k) {
-                _ if c == b'_' => {
+        let mut kind_recent = kindof(first); // TODO: prefix with '_' ?
+        while let Some(&current) = s.get(range.1) {
+            let kind_current = kindof(current);
+            match (kind_recent, kind_current) {
+                _ if current == b'_' => {
                     parts.push(&s[range.0..range.1]);
                     range.1 += 1; // skip current char
                     range.0 = range.1;
                     continue 'label;
                 }
                 (-1, 1) => break,
-                (1, 1) if matches!(s.get(range.1 + 1), Some(b'a'..=b'z')) => {
-                    break;
-                }
-                (_, 0 | -1) | (0 | 1, 1) => {
-                    range.1 += 1;
-                }
+                (1, 1) if matches!(s.get(range.1 + 1), Some(b'a'..=b'z')) => break,
+                (_, 0 | -1) | (1 | 0, 1) => range.1 += 1,
                 _ => unreachable!(),
                 // v => panic!("illegal state {:?}", v),
             }
-            if c_k != 0 {
-                r_k = c_k;
+            if kind_current != 0 {
+                kind_recent = kind_current;
             }
         }
         parts.push(&s[range.0..range.1]);
@@ -413,7 +409,7 @@ fn test_to_any_case() {
 }
 
 #[rustfmt::skip]
-fn is_rust_key_word(i: &[u8]) -> bool { matches!(i,
+fn is_rust_keyword(i: &[u8]) -> bool { matches!(i,
     // https://doc.rust-lang.org/std/index.html#keywords
     b"Self"|b"as"|b"async"|b"await"|b"break"|b"const"|b"continue"|b"crate"|b"dyn"|
     b"else"|b"enum"|b"extern"|b"false"|b"fn"|b"for"|b"if"|b"impl"|b"in"|b"let"|b"loop"|
@@ -425,7 +421,7 @@ fn is_rust_key_word(i: &[u8]) -> bool { matches!(i,
 fn push_big_camel(i: &[u8], o: &mut Vec<u8>) {
     let parts = to_any_case(i);
     let parts_len = parts.len();
-    if parts_len == 1 && is_rust_key_word(parts[0]) {
+    if parts_len == 1 && is_rust_keyword(parts[0]) {
         o.extend(b"r#");
     }
     for part in parts {
@@ -440,7 +436,7 @@ fn push_big_camel(i: &[u8], o: &mut Vec<u8>) {
 fn push_snake(i: &[u8], o: &mut Vec<u8>) {
     let parts = to_any_case(i);
     let parts_len = parts.len();
-    if parts_len == 1 && is_rust_key_word(parts[0]) {
+    if parts_len == 1 && is_rust_keyword(parts[0]) {
         o.extend(b"r#");
     }
     for part in parts {

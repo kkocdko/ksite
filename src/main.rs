@@ -62,5 +62,17 @@ async fn main() {
         }
     };
 
+    // TODO: benchmark with tls enabled always failed on linux (but it's normal on windows)
+    // seems a problem of rustls. any idea to fix this?
+    // tokio::spawn(async {
+    //     let interval = Duration::from_millis(1000);
+    //     let mut interval = tokio::time::interval(interval);
+    //     loop {
+    //         interval.tick().await;
+    //         let a = utils::fetch_text("https://127.0.0.1:9304/info").await;
+    //         dbg!(a).ok();
+    //     }
+    // });
+
     tokio::join!(server, oscillator);
 }

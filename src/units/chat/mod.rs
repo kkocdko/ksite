@@ -19,7 +19,7 @@ static ROOMS: Lazy<Mutex<HashMap<u32, Room>>> = Lazy::new(Default::default);
 
 struct Room {
     user_count: u32,
-    channel: Sender<String>,
+    tx: Sender<String>,
 }
 
 async fn post_handler(Path(id): Path<u32>, body: RawBody) -> impl IntoResponse {
@@ -37,7 +37,7 @@ async fn post_handler(Path(id): Path<u32>, body: RawBody) -> impl IntoResponse {
         Some(v) => v,
         None => return "room not exist",
     };
-    match room.channel.send(msg) {
+    match room.tx.send(msg) {
         Ok(_) => "", // empty response body means succeeded
         Err(_) => "no receivers exist",
     }
@@ -47,20 +47,16 @@ async fn sse_handler(Path(id): Path<u32>) -> impl IntoResponse {
     let mut rooms = ROOMS.lock().unwrap();
     let room = rooms.entry(id).or_insert_with(|| Room {
         user_count: 0,
-        channel: broadcast::channel(16).0,
+        tx: broadcast::channel(16).0,
     });
     room.user_count += 1;
-    let ch_rx = room.channel.subscribe();
-    Sse::new(SseStream::new(id, ch_rx))
+    let rx = room.tx.subscribe();
+    Sse::new(SseStream::new(id, rx))
 }
 
 // https://docs.rs/tokio-stream/0.1.9/tokio_stream/wrappers/struct.BroadcastStream.html
 
 type SseStreamFuture = Pin<Box<dyn Future<Output = (Option<String>, Receiver<String>)> + Send>>;
-
-fn make_future(mut rx: Receiver<String>) -> SseStreamFuture {
-    Box::pin(async { (rx.recv().await.ok(), rx) })
-}
 
 struct SseStream {
     id: u32,
@@ -68,10 +64,14 @@ struct SseStream {
 }
 
 impl SseStream {
+    fn make_future(mut rx: Receiver<String>) -> SseStreamFuture {
+        Box::pin(async { (rx.recv().await.ok(), rx) })
+    }
+
     fn new(id: u32, rx: Receiver<String>) -> Self {
         Self {
             id,
-            fut: make_future(rx),
+            fut: Self::make_future(rx),
         }
     }
 }
@@ -80,8 +80,8 @@ impl Stream for SseStream {
     type Item = Result<Event>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
-        let (value, rx) = ready!(Pin::new(&mut self.fut).poll(cx));
-        self.fut = make_future(rx);
+        let (value, rx) = ready!(self.fut.as_mut().poll(cx));
+        self.fut = Self::make_future(rx);
         Poll::Ready(value.map(|v| Ok(Event::default().data(v))))
     }
 }

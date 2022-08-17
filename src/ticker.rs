@@ -4,7 +4,7 @@ use std::time::UNIX_EPOCH;
 
 const ANY: i64 = 99; // must >= 60, terser logic?
 
-/// convert time stamp to (hours, minutes, seconds)
+/// Convert time stamp to (hours, minutes, seconds).
 fn hms(v: i64) -> (i64, i64, i64) {
     (v / 60 / 60 % 24, v / 60 % 60, v % 60)
 }
@@ -83,8 +83,8 @@ impl Ticker {
         for &(h, m, s) in patterns {
             assert!(matches!((h, m, s), (-1..=23, -1..=59, -1..=59)));
             let h = if h == -1 { ANY } else { (h + 24 - zone) % 24 };
-            let m = if m == -1 { ANY } else { m as _ };
-            let s = if s == -1 { ANY } else { s as _ };
+            let m = if m == -1 { ANY } else { m };
+            let s = if s == -1 { ANY } else { s };
             cfgs.push((h, m, s));
         }
         let ret = Ticker {

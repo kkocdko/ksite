@@ -14,6 +14,8 @@ All in one solution for my server.
 
 - Sqlite `WAL` mode sync config?
 
+- A proc-macro, to compress html files.
+
 ## Build with MUSL
 
 Use [messense/cargo-zigbuild](https://github.com/messense/cargo-zigbuild) please.

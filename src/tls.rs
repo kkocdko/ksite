@@ -68,7 +68,7 @@ pub async fn serve(addr: &SocketAddr, mut app: IntoMakeService<Router>) {
             PrivateKey(db_get("ssl_key")),
         )
         .unwrap();
-    // enable http2, needs hyper / axum feature "http2"
+    // enable http2, needs hyper feature "http2"
     tls_cfg.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
 
     // safety: this fn called only once, so we don't need once_cell::sync::Lazy.
@@ -99,9 +99,9 @@ pub async fn serve(addr: &SocketAddr, mut app: IntoMakeService<Router>) {
                 return;
             }
 
-            if let Ok(tls_stream) = TLS_ACCEPTOR.accept(stream).await {
+            if let (Ok(tls_stream), Ok(svc)) = (TLS_ACCEPTOR.accept(stream).await, svc.await) {
                 PROTOCOL
-                    .serve_connection(tls_stream, svc.await.unwrap())
+                    .serve_connection(tls_stream, svc)
                     // .with_upgrades() // allow WebSocket
                     .await
                     .ok();
