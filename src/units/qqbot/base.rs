@@ -200,7 +200,7 @@ async fn on_event(event: QEvent) -> Result<()> {
                 let buf = std::mem::take(&mut *recent);
                 // messages sent 2 minutes ago cannot be recalled
                 *recent = buf.into_iter().filter(|v| time - v.time <= 120).collect();
-                push_log!("cleaned {} expired messages", recent.len() - len);
+                // push_log!("cleaned {} expired messages", len - recent.len());
             }
         }
         QEvent::GroupMessageRecall(e) => {
