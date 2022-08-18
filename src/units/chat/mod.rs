@@ -8,6 +8,7 @@ use axum::response::{Html, IntoResponse};
 use axum::routing::{MethodRouter, Router};
 use futures_core::{ready, Stream};
 use once_cell::sync::Lazy;
+use pin_project_lite::pin_project;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -51,49 +52,52 @@ async fn sse_handler(Path(id): Path<u32>) -> impl IntoResponse {
     });
     room.user_count += 1;
     let rx = room.tx.subscribe();
-    Sse::new(SseStream::new(id, rx))
+    Sse::new(SseStream {
+        id,
+        factory: make_future,
+        fut: make_future(rx),
+    })
 }
 
-// https://docs.rs/tokio-stream/0.1.9/tokio_stream/wrappers/struct.BroadcastStream.html
-
-type SseStreamFuture = Pin<Box<dyn Future<Output = (Option<String>, Receiver<String>)> + Send>>;
-
-struct SseStream {
+// pin_project! {
+struct SseStream<F, T> {
     id: u32,
-    fut: SseStreamFuture,
+    factory: F,
+    fut: T,
+}
+// }
+
+fn make_future(
+    mut rx: Receiver<String>,
+) -> impl Future<Output = (Option<String>, Receiver<String>)> + Send {
+    async { (rx.recv().await.ok(), rx) }
 }
 
-impl SseStream {
-    fn make_future(mut rx: Receiver<String>) -> SseStreamFuture {
-        Box::pin(async { (rx.recv().await.ok(), rx) })
-    }
+impl<
+        T: Future<Output = (Option<String>, Receiver<String>)> + Send,
+        F: Fn(Receiver<String>) -> T,
+    > Stream for SseStream<F, T>
+{
+    type Item = Result<Event>;
 
-    fn new(id: u32, rx: Receiver<String>) -> Self {
-        Self {
-            id,
-            fut: Self::make_future(rx),
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
+        unsafe {
+            let this = self.get_unchecked_mut();
+            let (value, rx) = ready!(Pin::new_unchecked(&mut this.fut).poll(cx));
+            this.fut = (this.factory)(rx);
+            Poll::Ready(value.map(|v| Ok(Event::default().data(v))))
         }
     }
 }
 
-impl Stream for SseStream {
-    type Item = Result<Event>;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
-        let (value, rx) = ready!(self.fut.as_mut().poll(cx));
-        self.fut = Self::make_future(rx);
-        Poll::Ready(value.map(|v| Ok(Event::default().data(v))))
-    }
-}
-
-impl Drop for SseStream {
+impl<F, T> Drop for SseStream<F, T> {
     fn drop(&mut self) {
         let mut rooms = ROOMS.lock().unwrap();
         let room = rooms.get_mut(&self.id).unwrap();
         room.user_count -= 1;
         if room.user_count == 0 {
             rooms.remove(&self.id);
-            // println!("> rooms.remove({})", self.id);
+            println!("> rooms.remove({})", self.id);
         }
     }
 }
