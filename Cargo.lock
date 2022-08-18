@@ -562,7 +562,6 @@ dependencies = [
  "hyper-rustls",
  "miniz_oxide",
  "once_cell",
- "pin-project-lite",
  "rand",
  "ricq",
  "rusqlite",

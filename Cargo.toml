@@ -29,6 +29,7 @@ opt-level = "z"
 [features]
 default = ["qqbot"]
 qqbot = []
+sse-unsafe = []
 
 [dependencies]
 anyhow = "1"
@@ -50,8 +51,6 @@ tokio-rustls = "0.23"
 tower = "0.4"
 tower-http = { version = "0.3", features = ["auth"] }
 webpki-roots = "0.22"
-
-pin-project-lite = "0.2"
 
 [patch.crates-io]
 ricq = { rev = "d687c19", git = "https://github.com/lz1998/ricq" }
