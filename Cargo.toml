@@ -38,7 +38,7 @@ axum = "0.5"
 futures-core = "0.3"
 httpdate = "1"
 hyper = { version = "0.14", features = ["http2"] }
-hyper-rustls = { version = "0.23", default-features = false, features = ["http1"] }
+hyper-rustls = { version = "0.23", default-features = false, features = ["http1", "webpki-tokio"] }
 miniz_oxide = "0.5"
 once_cell = "1"
 rand = "0.8"
@@ -50,7 +50,6 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"
 tokio-rustls = "0.23"
 tower = "0.4"
 tower-http = { version = "0.3", features = ["auth"] }
-webpki-roots = "0.22"
 
 [patch.crates-io]
 ricq = { rev = "d687c19", git = "https://github.com/lz1998/ricq" }

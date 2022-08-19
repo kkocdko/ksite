@@ -64,8 +64,8 @@ struct SseStream<T, F> {
     factory: F,
 }
 
-// Currently, Rust marks async block and async fn to `!Unpin`. However it may be safe, see:
-// https://github.com/rust-lang/rust/issues/82187
+// Currently, Rust always marks async block and async fn to `!Unpin`. However, such restriction
+// is likely to be too strict, see: https://github.com/rust-lang/rust/issues/82187
 
 #[cfg(feature = "sse-unsafe")]
 async fn make_future(mut rx: Receiver<String>) -> (Option<String>, Receiver<String>) {
@@ -111,7 +111,7 @@ where
     }
 }
 
-impl<F, T> Drop for SseStream<F, T> {
+impl<T, F> Drop for SseStream<T, F> {
     fn drop(&mut self) {
         let mut rooms = ROOMS.lock().unwrap();
         let room = rooms.get_mut(&self.id).unwrap();

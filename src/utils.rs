@@ -5,7 +5,6 @@ use hyper::{Body, Client, Request};
 use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
 use once_cell::sync::Lazy;
 use std::time::UNIX_EPOCH;
-use tokio_rustls::rustls::{ClientConfig, OwnedTrustAnchor, RootCertStore};
 
 pub trait OptionResult<T> {
     fn e(self) -> Result<T>;
@@ -23,8 +22,8 @@ impl<T> OptionResult<T> for Option<T> {
 
 /// Same as JavaScript's `encodeURI`.
 pub fn encode_uri(i: &str) -> String {
-    const fn valid_table() -> [bool; VALIDS_LEN] {
-        let mut table = [false; VALIDS_LEN];
+    const fn valids_table() -> [bool; TABLE_LEN] {
+        let mut table = [false; TABLE_LEN];
         let valid_chars =
             b"!#$&'()*+,-./0123456789:;=?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]_abcdefghijklmnopqrstuvwxyz~";
         let mut i = 0;
@@ -35,8 +34,8 @@ pub fn encode_uri(i: &str) -> String {
         table
     }
 
-    const VALIDS_LEN: usize = u8::MAX as usize + 1;
-    const VALIDS: [bool; VALIDS_LEN] = valid_table();
+    const TABLE_LEN: usize = u8::MAX as usize + 1;
+    const TABLE: [bool; TABLE_LEN] = valids_table();
 
     fn hex(d: u8) -> u8 {
         match d {
@@ -47,7 +46,7 @@ pub fn encode_uri(i: &str) -> String {
 
     let mut o = Vec::with_capacity(i.len());
     for b in i.as_bytes() {
-        if VALIDS[*b as usize] {
+        if TABLE[*b as usize] {
             o.push(*b);
         } else {
             o.push(b'%');
@@ -70,33 +69,11 @@ pub async fn read_body(mut body: Body) -> Vec<u8> {
 }
 
 static CLIENT: Lazy<Client<HttpsConnector<HttpConnector>>> = Lazy::new(|| {
-    // https://github.com/seanmonstar/reqwest/blob/v0.11.11/src/async_impl/client.rs#L340
-    let trust_anchors = webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|trust_anchor| {
-        OwnedTrustAnchor::from_subject_spki_name_constraints(
-            trust_anchor.subject,
-            trust_anchor.spki,
-            trust_anchor.name_constraints,
-        )
-    });
-    let mut root_cert_store = RootCertStore::empty();
-    root_cert_store.add_server_trust_anchors(trust_anchors);
-
-    let tls_cfg = ClientConfig::builder()
-        .with_safe_default_cipher_suites()
-        .with_safe_default_kx_groups()
-        .with_safe_default_protocol_versions()
-        .unwrap()
-        .with_root_certificates(root_cert_store)
-        .with_no_client_auth();
-
-    let mut http_connector = HttpConnector::new();
-    http_connector.enforce_http(false); // allow HTTPS
     let connector = HttpsConnectorBuilder::new()
-        .with_tls_config(tls_cfg)
+        .with_webpki_roots()
         .https_or_http() // allow both HTTPS and HTTP
         .enable_http1() // for a client, HTTP 1.1 is enough
-        .wrap_connector(http_connector);
-
+        .build();
     Client::builder().build(connector)
 });
 

@@ -1,1 +1,1 @@
-pub use futures_util::*;
+pub use futures_core::*;

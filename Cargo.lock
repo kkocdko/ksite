@@ -276,7 +276,7 @@ dependencies = [
 name = "futures"
 version = "0.3.901"
 dependencies = [
- "futures-util",
+ "futures-core",
 ]
 
 [[package]]
@@ -492,6 +492,7 @@ dependencies = [
  "rustls",
  "tokio",
  "tokio-rustls",
+ "webpki-roots",
 ]
 
 [[package]]
@@ -571,7 +572,6 @@ dependencies = [
  "tokio-rustls",
  "tower",
  "tower-http",
- "webpki-roots",
 ]
 
 [[package]]
