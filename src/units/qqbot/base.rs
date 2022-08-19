@@ -196,12 +196,12 @@ async fn on_event(event: QEvent) -> Result<()> {
             let mut recent = RECENT.lock().unwrap();
             recent.push(e.inner);
             let len = recent.len();
-            if len >= 64 {
-                // TODO: recent.retain() ?
-                // TODO: avoid clean up frequently
-                let buf = std::mem::take(&mut *recent);
+            // filter out the expired messages if these conditions are all true:
+            // 1. message storage size is reached the limit
+            // 2. size % 8 == 0, throttling while extreme scene
+            if len >= 64 && len % 8 == 0 {
                 // messages sent 2 minutes ago cannot be recalled
-                *recent = buf.into_iter().filter(|v| time - v.time <= 120).collect();
+                recent.retain(|v| time - v.time <= 120);
                 // push_log!("cleaned {} expired messages", len - recent.len());
             }
         }
