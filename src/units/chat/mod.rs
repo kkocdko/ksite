@@ -58,9 +58,12 @@ async fn sse_handler(Path(id): Path<u32>) -> impl IntoResponse {
     })
 }
 
+#[pin_project::pin_project(PinnedDrop)]
 struct SseStream<T, F> {
     id: u32,
+    #[pin]
     fut: T,
+    #[pin]
     factory: F,
 }
 
@@ -78,12 +81,25 @@ where
     F: Fn(Receiver<String>) -> T,
 {
     type Item = Result<Event>;
+    // https://doc.rust-lang.org/std/pin/index.html#projections-and-structural-pinning
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
-        unsafe {
-            let this = self.get_unchecked_mut();
-            let (value, rx) = ready!(Pin::new_unchecked(&mut this.fut).poll(cx));
-            this.fut = (this.factory)(rx);
-            Poll::Ready(value.map(|v| Ok(Event::default().data(v))))
+        let mut this = self.project();
+        let (value, rx) = ready!(this.fut.as_mut().poll(cx));
+        this.fut.set((this.factory)(rx));
+        Poll::Ready(value.map(|v| Ok(Event::default().data(v))))
+    }
+}
+#[cfg(feature = "sse-unsafe")]
+#[pin_project::pinned_drop]
+impl<T, F> PinnedDrop for SseStream<T, F> {
+    // https://docs.rs/pin-project/latest/pin_project/attr.pin_project.html#pinned_drop
+    fn drop(self: Pin<&mut Self>) {
+        let mut rooms = ROOMS.lock().unwrap();
+        let room = rooms.get_mut(&self.id).unwrap();
+        room.user_count -= 1;
+        if room.user_count == 0 {
+            rooms.remove(&self.id);
+            // println!("> rooms.remove({})", self.id);
         }
     }
 }
@@ -110,7 +126,7 @@ where
         Poll::Ready(value.map(|v| Ok(Event::default().data(v))))
     }
 }
-
+#[cfg(not(feature = "sse-unsafe"))]
 impl<T, F> Drop for SseStream<T, F> {
     fn drop(&mut self) {
         let mut rooms = ROOMS.lock().unwrap();

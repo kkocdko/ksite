@@ -197,6 +197,8 @@ async fn on_event(event: QEvent) -> Result<()> {
             recent.push(e.inner);
             let len = recent.len();
             if len >= 64 {
+                // TODO: recent.retain() ?
+                // TODO: avoid clean up frequently
                 let buf = std::mem::take(&mut *recent);
                 // messages sent 2 minutes ago cannot be recalled
                 *recent = buf.into_iter().filter(|v| time - v.time <= 120).collect();

@@ -4,6 +4,8 @@ All in one solution for my server.
 
 ## TODO
 
+- `units::admin`: db backup, db shrink, get token, admin login...
+
 - `units::record`: record evidence picture, audio and video in real-time.
 
 - `units::chat`: webrtc?
@@ -14,7 +16,7 @@ All in one solution for my server.
 
 - Sqlite `WAL` mode sync config?
 
-- A proc-macro, to compress html files.
+- Compress html files. Use proc-macro?
 
 ## Build with MUSL
 

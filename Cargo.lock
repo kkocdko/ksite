@@ -552,7 +552,7 @@ dependencies = [
 
 [[package]]
 name = "ksite"
-version = "0.5.12"
+version = "0.5.13"
 dependencies = [
  "anyhow",
  "askama_escape",
@@ -563,6 +563,7 @@ dependencies = [
  "hyper-rustls",
  "miniz_oxide",
  "once_cell",
+ "pin-project",
  "rand",
  "ricq",
  "rusqlite",

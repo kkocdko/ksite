@@ -1,6 +1,6 @@
 [package]
 name = "ksite"
-version = "0.5.12"
+version = "0.5.13"
 edition = "2021"
 
 [profile.release]
@@ -27,11 +27,12 @@ strip = true
 opt-level = "z"
 
 [features]
-default = ["qqbot"]
+default = ["qqbot", "sse-unsafe"]
 qqbot = []
 sse-unsafe = []
 
 [dependencies]
+pin-project = "*"
 anyhow = "1"
 askama_escape = "0.10"
 axum = "0.5"
