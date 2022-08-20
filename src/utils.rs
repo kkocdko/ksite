@@ -2,9 +2,10 @@ use anyhow::Result;
 use hyper::body::HttpBody;
 use hyper::client::HttpConnector;
 use hyper::{Body, Client, Request};
-use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
+use hyper_rustls::HttpsConnector;
 use once_cell::sync::Lazy;
 use std::time::UNIX_EPOCH;
+use tokio_rustls::rustls::{ClientConfig, OwnedTrustAnchor, RootCertStore};
 
 pub trait OptionResult<T> {
     fn e(self) -> Result<T>;
@@ -69,11 +70,25 @@ pub async fn read_body(mut body: Body) -> Vec<u8> {
 }
 
 static CLIENT: Lazy<Client<HttpsConnector<HttpConnector>>> = Lazy::new(|| {
-    let connector = HttpsConnectorBuilder::new()
-        .with_webpki_roots()
-        .https_or_http() // allow both HTTPS and HTTP
-        .enable_http1() // for a client, HTTP 1.1 is enough
-        .build();
+    // https://github.com/seanmonstar/reqwest/blob/v0.11.11/src/async_impl/client.rs#L340
+    let trust_anchors = webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|trust_anchor| {
+        OwnedTrustAnchor::from_subject_spki_name_constraints(
+            trust_anchor.subject,
+            trust_anchor.spki,
+            trust_anchor.name_constraints,
+        )
+    });
+    let mut root_cert_store = RootCertStore::empty();
+    root_cert_store.add_server_trust_anchors(trust_anchors);
+
+    let tls_cfg = ClientConfig::builder() // set alpn to reject http2?
+        .with_safe_defaults()
+        .with_root_certificates(root_cert_store)
+        .with_no_client_auth();
+
+    let mut http_conn = HttpConnector::new();
+    http_conn.enforce_http(false); // allow HTTPS
+    let connector = HttpsConnector::from((http_conn, tls_cfg));
     Client::builder().build(connector)
 });
 

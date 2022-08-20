@@ -492,7 +492,6 @@ dependencies = [
  "rustls",
  "tokio",
  "tokio-rustls",
- "webpki-roots",
 ]
 
 [[package]]
@@ -552,7 +551,7 @@ dependencies = [
 
 [[package]]
 name = "ksite"
-version = "0.5.13"
+version = "0.5.14"
 dependencies = [
  "anyhow",
  "askama_escape",
@@ -563,7 +562,6 @@ dependencies = [
  "hyper-rustls",
  "miniz_oxide",
  "once_cell",
- "pin-project",
  "rand",
  "ricq",
  "rusqlite",
@@ -573,6 +571,7 @@ dependencies = [
  "tokio-rustls",
  "tower",
  "tower-http",
+ "webpki-roots",
 ]
 
 [[package]]
