@@ -15,12 +15,46 @@ use std::sync::Mutex;
 use std::task::{Context, Poll};
 use tokio::sync::broadcast::{self, Receiver, Sender};
 
-static ROOMS: Lazy<Mutex<HashMap<u32, Room>>> = Lazy::new(Default::default);
-
 struct Room {
     user_count: u32,
     tx: Sender<String>,
 }
+
+type SseStreamFuture = Pin<Box<dyn Future<Output = (Option<String>, Receiver<String>)> + Send>>;
+
+fn make_future(mut rx: Receiver<String>) -> SseStreamFuture {
+    Box::pin(async { (rx.recv().await.ok(), rx) })
+}
+
+struct SseStream {
+    id: u32,
+    fut: SseStreamFuture,
+}
+
+impl Stream for SseStream {
+    type Item = Result<Event>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
+        let this = self.get_mut();
+        let (value, rx) = ready!(Pin::new(&mut this.fut).poll(cx));
+        this.fut = make_future(rx);
+        Poll::Ready(value.map(|v| Ok(Event::default().data(v))))
+    }
+}
+
+impl Drop for SseStream {
+    fn drop(&mut self) {
+        let mut rooms = ROOMS.lock().unwrap();
+        let room = rooms.get_mut(&self.id).unwrap();
+        room.user_count -= 1;
+        if room.user_count == 0 {
+            rooms.remove(&self.id);
+            // println!("> rooms.remove({})", self.id);
+        }
+    }
+}
+
+static ROOMS: Lazy<Mutex<HashMap<u32, Room>>> = Lazy::new(Default::default);
 
 async fn post_handler(Path(id): Path<u32>, body: RawBody) -> impl IntoResponse {
     let body = read_body(body.0).await;
@@ -54,78 +88,7 @@ async fn sse_handler(Path(id): Path<u32>) -> impl IntoResponse {
     Sse::new(SseStream {
         id,
         fut: make_future(rx),
-        factory: make_future,
     })
-}
-
-struct SseStream<T, F> {
-    id: u32,
-    fut: T,
-    factory: F,
-}
-
-// Currently, Rust always marks async block and async fn to `!Unpin`. However, such restriction
-// is likely to be too strict, see: https://github.com/rust-lang/rust/issues/82187
-
-#[cfg(feature = "sse-unsafe")]
-async fn make_future(mut rx: Receiver<String>) -> (Option<String>, Receiver<String>) {
-    (rx.recv().await.ok(), rx)
-}
-#[cfg(feature = "sse-unsafe")]
-impl<T, F> Stream for SseStream<T, F>
-where
-    T: Future<Output = (Option<String>, Receiver<String>)>,
-    F: Fn(Receiver<String>) -> T,
-{
-    type Item = Result<Event>;
-    // https://doc.rust-lang.org/std/pin/index.html#projections-and-structural-pinning
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
-        // and I don't sure is this safe or not while T and F are Unpin
-        let (mut fut, factory) = unsafe {
-            let Self { fut, factory, .. } = self.get_unchecked_mut();
-            (Pin::new_unchecked(fut), Pin::new_unchecked(factory))
-        };
-        let (value, rx) = ready!(fut.as_mut().poll(cx));
-        fut.set((factory)(rx));
-        Poll::Ready(value.map(|v| Ok(Event::default().data(v))))
-    }
-}
-
-// But I still provide a version without unsafe:
-
-#[cfg(not(feature = "sse-unsafe"))]
-fn make_future(
-    mut rx: Receiver<String>,
-) -> impl Future<Output = (Option<String>, Receiver<String>)> + Send + Unpin {
-    Box::pin(async { (rx.recv().await.ok(), rx) })
-}
-#[cfg(not(feature = "sse-unsafe"))]
-impl<T, F> Stream for SseStream<T, F>
-where
-    T: Future<Output = (Option<String>, Receiver<String>)> + Unpin,
-    F: Fn(Receiver<String>) -> T + Unpin,
-{
-    type Item = Result<Event>;
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
-        let this = self.get_mut();
-        let (value, rx) = ready!(Pin::new(&mut this.fut).poll(cx));
-        this.fut = (this.factory)(rx);
-        Poll::Ready(value.map(|v| Ok(Event::default().data(v))))
-    }
-}
-
-impl<T, F> Drop for SseStream<T, F> {
-    fn drop(&mut self) {
-        // avoid use mut self. see https://doc.rust-lang.org/std/pin/index.html#drop-guarantee
-        // let this: &Self = self;
-        let mut rooms = ROOMS.lock().unwrap();
-        let room = rooms.get_mut(&self.id).unwrap();
-        room.user_count -= 1;
-        if room.user_count == 0 {
-            rooms.remove(&self.id);
-            // println!("> rooms.remove({})", self.id);
-        }
-    }
 }
 
 pub fn service() -> Router {

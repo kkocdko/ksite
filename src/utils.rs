@@ -23,7 +23,7 @@ impl<T> OptionResult<T> for Option<T> {
 
 /// Same as JavaScript's `encodeURI`.
 pub fn encode_uri(i: &str) -> String {
-    const fn valids_table() -> [bool; TABLE_LEN] {
+    const fn gen_table() -> [bool; TABLE_LEN] {
         let mut table = [false; TABLE_LEN];
         let valid_chars =
             b"!#$&'()*+,-./0123456789:;=?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]_abcdefghijklmnopqrstuvwxyz~";
@@ -36,7 +36,7 @@ pub fn encode_uri(i: &str) -> String {
     }
 
     const TABLE_LEN: usize = u8::MAX as usize + 1;
-    const TABLE: [bool; TABLE_LEN] = valids_table();
+    const IS_VALID: [bool; TABLE_LEN] = gen_table();
 
     fn hex(d: u8) -> u8 {
         match d {
@@ -47,7 +47,7 @@ pub fn encode_uri(i: &str) -> String {
 
     let mut o = Vec::with_capacity(i.len());
     for b in i.as_bytes() {
-        if TABLE[*b as usize] {
+        if IS_VALID[*b as usize] {
             o.push(*b);
         } else {
             o.push(b'%');
@@ -71,21 +71,21 @@ pub async fn read_body(mut body: Body) -> Vec<u8> {
 
 static CLIENT: Lazy<Client<HttpsConnector<HttpConnector>>> = Lazy::new(|| {
     // https://github.com/seanmonstar/reqwest/blob/v0.11.11/src/async_impl/client.rs#L340
-    let trust_anchors = webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|trust_anchor| {
-        OwnedTrustAnchor::from_subject_spki_name_constraints(
-            trust_anchor.subject,
-            trust_anchor.spki,
-            trust_anchor.name_constraints,
-        )
-    });
-    let mut root_cert_store = RootCertStore::empty();
-    root_cert_store.add_server_trust_anchors(trust_anchors);
-
+    let root_cert_store = RootCertStore {
+        roots: { webpki_roots::TLS_SERVER_ROOTS.0.iter() }
+            .map(|trust_anchor| {
+                OwnedTrustAnchor::from_subject_spki_name_constraints(
+                    trust_anchor.subject,
+                    trust_anchor.spki,
+                    trust_anchor.name_constraints,
+                )
+            })
+            .collect(),
+    };
     let tls_cfg = ClientConfig::builder() // set alpn to reject http2?
         .with_safe_defaults()
         .with_root_certificates(root_cert_store)
         .with_no_client_auth();
-
     let mut http_conn = HttpConnector::new();
     http_conn.enforce_http(false); // allow HTTPS
     let connector = HttpsConnector::from((http_conn, tls_cfg));

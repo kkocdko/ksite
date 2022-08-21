@@ -8,11 +8,7 @@ All in one solution for my server.
 
 - `units::record`: record evidence picture, audio and video in real-time.
 
-- `units::chat`: webrtc?
-
-- `units::paste`: crypto.
-
-- `units::disk`: web disk.
+- `units::paste`: account, file storage, crypto, with crui.
 
 - Sqlite `WAL` mode sync config?
 

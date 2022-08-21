@@ -100,6 +100,7 @@ static CLIENT: Lazy<Arc<Client>> = Lazy::new(|| {
             async {
                 let stream = DefaultConnector.connect(&CLIENT).await.unwrap();
                 CLIENT.start(stream).await;
+                push_log!("client offline");
             },
             launch()
         )
@@ -186,7 +187,6 @@ async fn on_event(event: QEvent) -> Result<()> {
             ) {
                 let msg = e.inner.elements.to_string();
                 let msg_parts = msg.split_whitespace().skip(1).collect();
-                // add timeout here
                 let reply = care!(gen_reply(msg_parts).await)?;
                 CLIENT
                     .send_group_message(e.inner.group_code, text_msg(reply))
@@ -223,12 +223,9 @@ async fn on_event(event: QEvent) -> Result<()> {
 }
 struct MyHandler;
 impl ricq::handler::Handler for MyHandler {
-    fn handle<'a, 'b>(&'a self, e: QEvent) -> Pin<Box<dyn Future<Output = ()> + Send + 'b>>
-    where
-        'a: 'b,
-        Self: 'b,
-    {
+    fn handle<'a: 'b, 'b>(&'a self, e: QEvent) -> Pin<Box<dyn Future<Output = ()> + Send + 'b>> {
         Box::pin(async {
+            // add timeout here?
             care!(on_event(e).await).ok();
         })
     }

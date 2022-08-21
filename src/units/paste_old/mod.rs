@@ -1,12 +1,4 @@
-/*
-账户登录
-文件存储
-加密
-CRUI 轻量的界面
-在用户之间分享
-尽量优化性能
-有限制的自增和其他结合的 ID
-*/
+//! Online clipboard.
 use crate::db;
 use crate::utils::slot;
 use axum::extract::{Form, Path};
@@ -16,14 +8,7 @@ use axum::Router;
 use serde::Deserialize;
 
 fn db_init() {
-    db!("CREATE TABLE paste_users (uid TEXT PRIMARY KEY, password BLOB)").ok();
-    db!("CREATE TABLE paste_data (id TEXT PRIMARY KEY, uid TEXT)").ok();
-}
-fn db_users_reg(id: &str, password: &[u8]) -> bool {
-    todo!()
-}
-fn db_users_match(id: &str, password: &[u8]) -> bool {
-    todo!()
+    db!("CREATE TABLE paste (id INTEGER PRIMARY KEY AUTOINCREMENT, data BLOB)").ok();
 }
 fn db_insert(data: &str) -> u64 {
     db!("INSERT INTO paste VALUES (NULL, ?)", [data]).unwrap();
@@ -58,10 +43,22 @@ async fn insert(form: Form<Data>) -> Redirect {
     Redirect::to(&format!("/paste/{id}"))
 }
 
+async fn update((Path(id), form): (Path<u64>, Form<Data>)) -> Redirect {
+    db_update(id, &escape(&form.value));
+    Redirect::to(&format!("/paste/{id}"))
+}
+
 pub fn service() -> Router {
     db_init();
-    Router::new().route(
-        "/paste",
-        MethodRouter::new().get(|| read(None)).post(insert),
-    )
+    Router::new()
+        .route(
+            "/paste",
+            MethodRouter::new().get(|| read(None)).post(insert),
+        )
+        .route(
+            "/paste/:id",
+            MethodRouter::new()
+                .get(|Path(id): Path<u64>| read(Some(id)))
+                .post(update),
+        )
 }
