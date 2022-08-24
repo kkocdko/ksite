@@ -9,6 +9,16 @@ pub struct Entered;
 
 pub struct Event;
 
+impl Span {
+    pub fn enter(&self) -> Entered {
+        Entered
+    }
+
+    pub fn in_scope<F: FnOnce() -> T, T>(&self, f: F) -> T {
+        f()
+    }
+}
+
 pub trait Instrument: Sized {
     fn instrument(self, _: Span) -> Instrumented<Self> {
         Instrumented(self)
@@ -28,16 +38,6 @@ impl<T: Future> Future for Instrumented<T> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         unsafe { Pin::new_unchecked(&mut self.get_unchecked_mut().0).poll(cx) }
-    }
-}
-
-impl Span {
-    pub fn enter(&self) -> Entered {
-        Entered
-    }
-
-    pub fn in_scope<F: FnOnce() -> T, T>(&self, f: F) -> T {
-        f()
     }
 }
 

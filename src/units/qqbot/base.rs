@@ -6,7 +6,7 @@ use anyhow::Result;
 use axum::extract::{RawBody, RawQuery};
 use axum::response::Html;
 use once_cell::sync::Lazy;
-use ricq::client::{Connector as _, DefaultConnector};
+use ricq::client::{Connector as _, DefaultConnector, NetworkStatus};
 use ricq::handler::QEvent;
 use ricq::msg::elem::RQElem;
 use ricq::msg::MessageChain;
@@ -94,16 +94,34 @@ static CLIENT: Lazy<Arc<Client>> = Lazy::new(|| {
             device
         }
     };
-    let client = Arc::new(ricq::Client::new(device, Protocol::IPad.into(), MyHandler));
+    let client = Arc::new(Client::new(device, Protocol::IPad.into(), MyHandler));
     tokio::spawn(async {
-        tokio::join!(
-            async {
-                let stream = DefaultConnector.connect(&CLIENT).await.unwrap();
-                CLIENT.start(stream).await;
-                push_log!("client offline");
-            },
-            launch()
-        )
+        let mut last = UNIX_EPOCH.elapsed().unwrap().as_secs();
+        loop {
+            tokio::select! {
+                _ = async {
+                    push_log!("try to connect");
+                    let stream = DefaultConnector.connect(&CLIENT).await?;
+                    CLIENT.start(stream).await;
+                    push_log!("offline, fn start returned");
+                    anyhow::Ok(())
+                } => {}
+                _ = async {
+                    launch().await?;
+                    CLIENT.do_heartbeat().await;
+                    push_log!("offline, fn do_heartbeat returned");
+                    anyhow::Ok(())
+                } => {}
+            };
+            CLIENT.stop(NetworkStatus::NetworkOffline);
+            let now = UNIX_EPOCH.elapsed().unwrap().as_secs();
+            if now - last < 60 {
+                push_log!("reconnection was stopped, overfrequency");
+                return;
+            }
+            last = now;
+            tokio::time::sleep(Duration::from_secs(10)).await;
+        }
     });
     client
 });
@@ -166,11 +184,7 @@ async fn launch() -> Result<()> {
     CLIENT.refresh_status().await?;
 
     QR.lock().unwrap().clear();
-
-    loop {
-        CLIENT.do_heartbeat().await;
-        tokio::time::sleep(Duration::from_secs(60)).await;
-    }
+    Ok(())
 }
 
 fn text_msg(content: String) -> MessageChain {

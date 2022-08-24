@@ -7,6 +7,7 @@ edition = "2021"
 # panic = "abort" # DO NOT USE THIS! cause tokio worker abort
 strip = true
 lto = true
+codegen-units = 1
 
 # Best check speed, `cargo check --profile=ci`.
 [profile.ci]

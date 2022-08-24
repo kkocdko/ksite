@@ -8,7 +8,7 @@ A pure-rust, zero-dependency alternative to [prost-build](https://crates.io/crat
 
 ## Why
 
-The prost-build is troubled by compilation issues [for a long time](https://github.com/tokio-rs/prost/pull/620), and I don't need all of its features. The goal of this crate is just able to compile [ricq's proto files](https://github.com/lz1998/ricq/tree/master/ricq-core/src/pb).
+The prost-build is troubled by compilation issues [for a long time](https://github.com/tokio-rs/prost/pull/620), and I don't need all of its features. The goal of this crate is just able to compile [ricq's proto files](https://github.com/lz1998/ricq/tree/259493a/ricq-core/src/pb).
 
 Try to compile `ksite v0.5.1` with debug profile:
 
@@ -19,7 +19,7 @@ Try to compile `ksite v0.5.1` with debug profile:
 
 ## Usage
 
-Override the `prost-build` dependence in `Cargo.toml`:
+Override the `prost-build` dependency in `Cargo.toml`:
 
 ```toml
 [patch.crates-io]

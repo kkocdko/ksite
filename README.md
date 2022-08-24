@@ -10,6 +10,8 @@ All in one solution for my server.
 
 - `units::paste`: account, file storage, crypto, with crui.
 
+- `units::qqbot`: reconnect.
+
 - Sqlite `WAL` mode sync config?
 
 - Compress html files. Use proc-macro?

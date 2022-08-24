@@ -6,6 +6,61 @@
   <title>Paste - ksite</title>
 </head>
 
-<style></style>
+<style>
+  * {
+    margin: 0;
+    font: 14px / 1.4 sans-serif;
+  }
+  form {
+    display: grid;
+    grid: auto 1fr / none;
+    height: 100vh;
+  }
+  header > *,
+  header ~ * {
+    padding: 8px 10px;
+    background: none;
+    border: 0 solid #777;
+    outline: none;
+  }
+  header > * {
+    float: left;
+    border-right-width: 1px;
+  }
+  header > :active {
+    background: #8887;
+  }
+  header ~ * {
+    font-family: monospace;
+    white-space: pre;
+    border-top-width: 1px;
+  }
+  @media (prefers-color-scheme: dark) {
+    * {
+      color: #fff;
+      background: #000;
+    }
+  }
+</style>
 
-<form method="post"></form>
+<form method="post">
+  <header>
+    <input type="submit" value="Save" />
+    <input
+      type="button"
+      value="Copy"
+      onclick="$v.select();document.execCommand('copy')"
+    />
+    <input
+      type="button"
+      value="Zen mode"
+      onclick="$v.style.border=0,$v.requestFullscreen()"
+    />
+    <input
+      type="button"
+      value="Encrypt"
+      onclick="alert('crypto function is still in developing...')"
+    />
+  </header>
+  <textarea name="value" id="$v" spellcheck="false">/*{slot}*/</textarea>
+</form>
