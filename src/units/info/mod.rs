@@ -1,5 +1,6 @@
 //! Provide server info.
-use crate::utils::{fetch_text, slot};
+use crate::include_page;
+use crate::utils::fetch_text;
 use axum::http::header::{CACHE_CONTROL, REFRESH};
 use axum::response::{Html, IntoResponse};
 use axum::routing::{MethodRouter, Router};
@@ -21,7 +22,7 @@ async fn refresh(uri: &str, data: &AtomicI64) {
 }
 
 async fn get_handler() -> impl IntoResponse {
-    const PAGE: [&str; 2] = slot(include_str!("page.html"));
+    const PAGE: [&str; 2] = include_page!("page.html");
 
     let now = UNIX_EPOCH.elapsed().unwrap().as_secs() as i64;
 

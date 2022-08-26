@@ -4,17 +4,15 @@ All in one solution for my server.
 
 ## TODO
 
+- `crate::auth`: admin auth from database.
+
 - `units::admin`: db backup, db shrink, get token, admin login...
 
 - `units::record`: record evidence picture, audio and video in real-time.
 
-- `units::paste`: account, file storage, crypto, with crui.
-
-- `units::qqbot`: reconnect.
+- `units::paste_next`: (see the comments in its code).
 
 - Sqlite `WAL` mode sync config?
-
-- Compress html files. Use proc-macro?
 
 ## Build with MUSL
 

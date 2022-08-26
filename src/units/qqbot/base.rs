@@ -1,7 +1,7 @@
 //! Provide login, token storage and other base functions.
 use super::gen_reply;
-use crate::utils::{read_body, slot};
-use crate::{care, db};
+use crate::utils::read_body;
+use crate::{care, db, include_page};
 use anyhow::Result;
 use axum::extract::{RawBody, RawQuery};
 use axum::response::Html;
@@ -63,7 +63,7 @@ pub async fn post_handler(q: RawQuery, RawBody(body): RawBody) {
 }
 
 pub async fn get_handler() -> Html<String> {
-    const PAGE: [&str; 2] = slot(include_str!("page.html"));
+    const PAGE: [&str; 2] = include_page!("page.html");
     let mut body = PAGE[0].to_string();
     for line in LOG.lock().unwrap().iter().rev() {
         body += line;
@@ -96,6 +96,7 @@ static CLIENT: Lazy<Arc<Client>> = Lazy::new(|| {
     };
     let client = Arc::new(Client::new(device, Protocol::IPad.into(), MyHandler));
     tokio::spawn(async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
         let mut last = UNIX_EPOCH.elapsed().unwrap().as_secs();
         loop {
             tokio::select! {

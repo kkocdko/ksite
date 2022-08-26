@@ -151,109 +151,170 @@ macro_rules! care {
     }};
 }
 
-// #[test]
-// fn test_include_page() {
-//     const RAW: &str = "\
+/// # Use macros instead of call inner functions directly!
+///
+/// Operations about const string.
+///
+pub mod str_const_ops_ {
+    const fn kmp<const A: usize, const B: usize>(s: &[u8], p: [u8; A]) -> [usize; B] {
+        let mut next = [0; A];
+        let mut i = 1;
+        let mut j = 0;
+        while i < A {
+            while j != 0 && p[i] != p[j] {
+                j = next[j - 1];
+            }
+            if p[i] == p[j] {
+                j += 1;
+            }
+            next[i] = j;
+            i += 1;
+        }
+
+        let mut ret = [usize::MAX; B];
+        let mut i = 0;
+        let mut j = 0;
+        let mut k = 0;
+        while i < s.len() {
+            while j != 0 && s[i] != p[j] {
+                j = next[j - 1];
+            }
+            if s[i] == p[j] {
+                j += 1;
+            }
+            if j == A {
+                ret[k] = i - A + 1;
+                k += 1;
+                j = next[j - 1];
+            }
+            i += 1;
+        }
+
+        // TODO: add err info here
+        // if k != B {
+        //     panic!();
+        // }
+
+        ret
+    }
+
+    /// Split template page by slot marks `/*{slot}*/`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// const RAW: &str = "<h1>/*{slot}*/</h1><p>/*{slot}*/</p>";
+    /// // 2 slots split page into 3 parts
+    /// const PAGE: [&str; 3] = slot(RAW);
+    /// assert_eq!(PAGE, ["<h1>", "</h1><p>", "</p>"]);
+    /// ```
+    pub const fn slot<const N: usize>(raw: &str) -> [&str; N] {
+        const MARK: [u8; 10] = *b"/*{slot}*/";
+        let raw = raw.as_bytes();
+        let idxs: [usize; N] = kmp(raw, MARK);
+        // let idxs = unwrap_o(idxs.as_slice().split_last()).1; // real len is n-1;
+
+        let mut ret_b = [b"".as_slice(); N];
+        let mut i = 0;
+        while i < N {
+            let (begin, end) = if i == 0 {
+                (0, idxs[i])
+            } else if i != N - 1 {
+                (idxs[i - 1] + MARK.len(), idxs[i])
+            } else {
+                (idxs[i - 1] + MARK.len(), raw.len())
+            };
+
+            // ret_b[i] = &raw[begin..end]; // is unusable in const fn
+            ret_b[i] = unsafe { std::slice::from_raw_parts(raw.as_ptr().add(begin), end - begin) };
+            i += 1;
+        }
+
+        let mut ret = [""; N];
+        let mut i = 0;
+        while i < N {
+            ret[i] = unsafe {
+                // this's safe certainly, we don't touch any part of str, and the
+                // split edge is `MARK` which only includes ASCII chars
+                core::str::from_utf8_unchecked(ret_b[i])
+            };
+            i += 1;
+        }
+        ret
+    }
+
+    #[allow(unused)]
+    pub const fn strip_get_len(s: &[u8]) -> usize {
+        let mut len = 0;
+        let mut idx = 0;
+        while idx < s.len() {
+            if s[idx] == b'\n' {
+                idx += 1;
+                len += 1;
+                while idx < s.len() && s[idx] == b' ' {
+                    idx += 1;
+                }
+            } else {
+                idx += 1;
+                len += 1;
+            }
+        }
+        len
+    }
+
+    #[allow(unused)]
+    pub const fn strip_do<const LEN: usize>(src: &[u8]) -> [u8; LEN] {
+        let mut buf: [u8; LEN] = [0; LEN];
+        let mut buf_i = 0;
+        let mut src_i = 0;
+        while src_i < src.len() {
+            buf[buf_i] = src[src_i];
+            buf_i += 1;
+            src_i += 1;
+            if src[src_i - 1] == b'\n' {
+                while src_i < src.len() && src[src_i] == b' ' {
+                    src_i += 1;
+                }
+            }
+        }
+        buf
+    }
+}
+
+#[macro_export]
+macro_rules! strip_str {
+    ($s:expr) => {{
+        #[cfg(debug_assertions)]
+        {
+            $s
+        }
+        #[cfg(not(debug_assertions))]
+        {
+            use $crate::utils::str_const_ops_::*;
+            // thanks: https://docs.rs/const-str/0.4.3/const_str/macro.replace.html
+            const S: &[u8] = $s.as_bytes();
+            const BUF: [u8; strip_get_len(S)] = strip_do(S);
+            unsafe { std::str::from_utf8_unchecked(&BUF) }
+        }
+    }};
+}
+
+#[macro_export]
+macro_rules! include_page {
+    ($s:expr) => {{
+        use $crate::utils::str_const_ops_::*;
+        const S: &str = $crate::strip_str!(include_str!($s));
+        slot(S)
+    }};
+}
+
+// pub fn _test_include_page() {
+//     const RAW: &str = "
 //         <div>
 //             /*{slot}*/
 //             <p>Hi, /*{slot}*/</p>
 //         </div>
 //     ";
 //     const PAGE: [&str; 3] = include_page!(:RAW);
-//     assert_eq!(PAGE, ["<div>\n", "\n<p>Hi, ", "</p>\n</div>\n"]);
+//     assert_eq!(PAGE, ["\n<div>\n", "\n<p>Hi, ", "</p>\n</div>\n"]);
 // }
-
-#[test]
-fn test_slot() {
-    const RAW: &str = "<h1>/*{slot}*/</h1><p>/*{slot}*/</p>";
-    // 2 slots split page into 3 parts
-    const PAGE: [&str; 3] = slot(RAW);
-    assert_eq!(PAGE, ["<h1>", "</h1><p>", "</p>"]);
-}
-
-/// Split template page by slot marks `/*{slot}*/`.
-///
-/// # Example
-///
-/// ```
-/// const RAW: &str = "<h1>/*{slot}*/</h1><p>/*{slot}*/</p>";
-/// // 2 slots split page into 3 parts
-/// const PAGE: [&str; 3] = slot(RAW);
-/// assert_eq!(PAGE, ["<h1>", "</h1><p>", "</p>"]);
-/// ```
-pub const fn slot<const N: usize>(raw: &str) -> [&str; N] {
-    const MARK: [u8; 10] = *b"/*{slot}*/";
-    let raw = raw.as_bytes();
-    let idxs: [usize; N] = kmp(raw, MARK);
-    // let idxs = unwrap_o(idxs.as_slice().split_last()).1; // real len is n-1;
-
-    let mut ret_b = [b"".as_slice(); N];
-    let mut i = 0;
-    while i < N {
-        let (begin, end) = if i == 0 {
-            (0, idxs[i])
-        } else if i != N - 1 {
-            (idxs[i - 1] + MARK.len(), idxs[i])
-        } else {
-            (idxs[i - 1] + MARK.len(), raw.len())
-        };
-
-        // ret_b[i] = &raw[begin..end]; // is unusable in const fn
-        ret_b[i] = unsafe { std::slice::from_raw_parts(raw.as_ptr().add(begin), end - begin) };
-        i += 1;
-    }
-
-    let mut ret = [""; N];
-    let mut i = 0;
-    while i < N {
-        ret[i] = unsafe {
-            // this's safe certainly, we don't touch any part of str, and the
-            // split edge is `MARK` which only includes ASCII chars
-            core::str::from_utf8_unchecked(ret_b[i])
-        };
-        i += 1;
-    }
-    ret
-}
-
-const fn kmp<const A: usize, const B: usize>(s: &[u8], p: [u8; A]) -> [usize; B] {
-    let mut next = [0; A];
-    let mut i = 1;
-    let mut j = 0;
-    while i < A {
-        while j != 0 && p[i] != p[j] {
-            j = next[j - 1];
-        }
-        if p[i] == p[j] {
-            j += 1;
-        }
-        next[i] = j;
-        i += 1;
-    }
-
-    let mut ret = [usize::MAX; B];
-    let mut i = 0;
-    let mut j = 0;
-    let mut k = 0;
-    while i < s.len() {
-        while j != 0 && s[i] != p[j] {
-            j = next[j - 1];
-        }
-        if s[i] == p[j] {
-            j += 1;
-        }
-        if j == A {
-            ret[k] = i - A + 1;
-            k += 1;
-            j = next[j - 1];
-        }
-        i += 1;
-    }
-
-    // TODO: add err info here
-    // if k != B {
-    //     panic!();
-    // }
-
-    ret
-}

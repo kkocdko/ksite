@@ -1,6 +1,5 @@
 //! Online clipboard.
-use crate::db;
-use crate::utils::slot;
+use crate::{db, include_page};
 use axum::extract::{Form, Path};
 use axum::response::{Html, Redirect};
 use axum::routing::MethodRouter;
@@ -29,7 +28,7 @@ fn escape(v: &str) -> String {
 async fn read(id: Option<u64>) -> Html<String> {
     let value = id.and_then(db_get);
     let value = value.unwrap_or_else(|| "New entry".to_string());
-    const PAGE: [&str; 2] = slot(include_str!("page.html"));
+    const PAGE: [&str; 2] = include_page!("page.html");
     Html([PAGE[0], &value, PAGE[1]].join(""))
 }
 

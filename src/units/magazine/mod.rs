@@ -1,7 +1,7 @@
 //! Collections of my favorite news source.
-use crate::care;
 use crate::ticker::Ticker;
-use crate::utils::{fetch_text, slot, OptionResult};
+use crate::utils::{fetch_text, OptionResult};
+use crate::{care, include_page};
 use anyhow::Result;
 use axum::http::header::{HeaderName, CACHE_CONTROL, CONTENT_ENCODING, EXPIRES, REFRESH};
 use axum::response::Html;
@@ -67,7 +67,7 @@ fn generate<'a>(mut i: &'a str, o: &mut Vec<&'a str>, mut limit: usize) -> Resul
 
 type Res = ([(HeaderName, String); 2], Html<Vec<u8>>);
 
-const PAGE: [&str; 2] = slot(include_str!("page.html"));
+const PAGE: [&str; 2] = include_page!("page.html");
 
 static CACHE: Lazy<Mutex<Res>> = Lazy::new(|| {
     let body = format!("{}<h2>Magazine is generating ...</h2>{}", PAGE[0], PAGE[1]);

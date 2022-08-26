@@ -1,7 +1,7 @@
 //! Auto submit JUST's health check-in form.
 use crate::ticker::Ticker;
-use crate::utils::{fetch, slot};
-use crate::{care, db};
+use crate::utils::fetch;
+use crate::{care, db, include_page, strip_str};
 use anyhow::Result;
 use axum::extract::Form;
 use axum::response::{Html, IntoResponse, Redirect};
@@ -31,18 +31,18 @@ fn db_log_insert(id: u64, ret: &str) {
     db!(sql, [id, ret]).unwrap();
 }
 fn db_log_get() -> Vec<(u64, u64, String)> {
-    let sql = "
+    let sql = strip_str! {"
         SELECT time, id, ret FROM health_log
         WHERE strftime('%s','now') - time <= 3600 * 24 * 5
         ORDER BY time DESC
-    ";
+    "};
     db!(sql, [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).unwrap()
 }
 fn db_log_clean() {
-    let sql = "
+    let sql = strip_str! {"
         DELETE FROM health_log
         WHERE strftime('%s','now') - time > 3600 * 24 * 7
-    ";
+    "};
     db!(sql).unwrap();
 }
 
@@ -59,7 +59,7 @@ async fn get_handler() -> impl IntoResponse {
         writeln!(&mut log, "{time} | {id} | {ret}").unwrap();
     }
     log = askama_escape::escape(&log, askama_escape::Html).to_string();
-    const PAGE: [&str; 2] = slot(include_str!("page.html"));
+    const PAGE: [&str; 2] = include_page!("page.html");
     const SUFFIX: &str = concat!("<script>", include_str!("crypto-js.min.js"), "</script>");
     Html(PAGE[0].to_string() + &log + PAGE[1] + SUFFIX)
 }
