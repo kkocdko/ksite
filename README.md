@@ -14,8 +14,6 @@ All in one solution for my server.
 
 - No out-of-service updates.
 
-- SQLite database smooth upgrades.
-
 - SQLite `WAL` mode sync config?
 
 ## Build with MUSL

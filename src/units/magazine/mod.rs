@@ -10,23 +10,23 @@ use once_cell::sync::Lazy;
 use std::sync::Mutex; // with small data, Mutex seems faster than RwLock
 use std::time::{Duration, SystemTime};
 
-fn generate<'a>(mut i: &'a str, o: &mut Vec<&'a str>, mut limit: usize) -> Result<()> {
+fn generate(mut i: &str, o: &mut String, mut limit: usize) -> Result<()> {
     while let Some(mut p) = i.split_once("<item>") {
         limit -= 1;
 
-        o.push("\n<details>\n");
+        *o += "\n<details>\n";
 
         // title
         i = p.1.split_once("<![CDATA[").e()?.1;
         p = i.split_once("]]>").e()?;
-        o.push("<summary>");
-        o.push(p.0);
-        o.push("</summary>\n");
+        *o += "<summary>";
+        *o += p.0;
+        *o += "</summary>\n";
 
         // content
         i = p.1.split_once("<![CDATA[").e()?.1;
         p = i.split_once("]]>").e()?;
-        o.push("<section>");
+        *o += "<section>";
         let break_marks = [
             "br>", "p>", "p ", "/p>", "div>", "div ", "/div>", "li>", "li ", "/li>",
         ];
@@ -34,34 +34,34 @@ fn generate<'a>(mut i: &'a str, o: &mut Vec<&'a str>, mut limit: usize) -> Resul
             p.0 = v.1.split_once('>').e()?.1;
             let c = v.0.trim();
             if !c.is_empty() {
-                o.push(c);
+                *o += c;
             }
-            if *o.last().e()? != "<br>" {
+            if !o.ends_with("<br>") {
                 for mark in break_marks {
                     if v.1.starts_with(mark) {
-                        o.push("<br>");
+                        *o += "<br>";
                         break;
                     }
                 }
             }
         }
-        o.push("</section>\n");
+        *o += "</section>\n";
 
         // link
         i = p.1.split_once("<link>").e()?.1;
         p = i.split_once("</link>").e()?;
-        o.push("<a href=\"");
-        o.push(p.0);
-        o.push("\">[ Original Link ]</a>\n");
+        *o += "<a href=\"";
+        *o += p.0;
+        *o += "\">[ Original Link ]</a>\n";
 
-        o.push("</details>\n");
+        *o += "</details>\n";
         i = p.1;
 
         if limit == 0 {
             break;
         }
     }
-    o.push("\n<br>\n");
+    *o += "\n<br>\n";
     Ok(())
 }
 
@@ -79,24 +79,22 @@ static CACHE: Lazy<Mutex<Res>> = Lazy::new(|| {
 
 async fn refresh() -> Result<()> {
     let expires = httpdate::fmt_http_date(SystemTime::now() + Duration::from_secs(3600));
-    let mut o = vec![PAGE[0]];
-    macro_rules! load {
-        ( $( ($idx:tt, $url:expr) ),* $(,)? ) => {
-            let r = tokio::join!( $( fetch_text($url), )* );
-            let r = ($( r.$idx?, )*);
-            $( generate(&r.$idx, &mut o, 20)?; )*
-        };
-    }
-    load![
-        (0, "https://rss.itggg.cn/zhihu/daily"),
-        (1, "https://rss.itggg.cn/cnbeta"),
-        (2, "https://rss.itggg.cn/oschina/news/industry"),
-        (3, "https://rss.itggg.cn/1point3acres/post/hot3"),
-    ];
-    o.push(PAGE[1]);
-    let o = o.join("");
-    let f = move || miniz_oxide::deflate::compress_to_vec(o.as_bytes(), 10);
-    let o = tokio::task::spawn_blocking(f).await?;
+    let r = tokio::join!(
+        fetch_text("https://rss.itggg.cn/zhihu/daily"),
+        fetch_text("https://rss.itggg.cn/cnbeta"),
+        fetch_text("https://rss.itggg.cn/oschina/news/industry"),
+        fetch_text("https://rss.itggg.cn/1point3acres/post/hot3")
+    );
+    let o = tokio::task::spawn_blocking(move || {
+        let mut o = PAGE[0].to_string();
+        r.0.map(|v| generate(&v, &mut o, 20)).ok();
+        r.1.map(|v| generate(&v, &mut o, 20)).ok();
+        r.2.map(|v| generate(&v, &mut o, 20)).ok();
+        r.3.map(|v| generate(&v, &mut o, 20)).ok();
+        o += PAGE[1];
+        miniz_oxide::deflate::compress_to_vec(o.as_bytes(), 10)
+    })
+    .await?;
     *CACHE.lock().unwrap() = (
         [(EXPIRES, expires), (CONTENT_ENCODING, "deflate".into())],
         Html(o),

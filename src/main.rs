@@ -19,7 +19,7 @@ async fn main() {
     println!("enter :q to quit");
     println!("authorization token = {}", *auth::TOKEN);
 
-    db_upgrade(); // TODO: remove this
+    // db_upgrade(); // uncomment this if we need to upgrade database
 
     thread::spawn(|| loop {
         let buf = &mut String::new();
@@ -46,8 +46,8 @@ async fn main() {
             .into_make_service();
         // .into_make_service_with_connect_info::<SocketAddr>();
 
-        // axum::Server::bind(&addr).serve(app).await.unwrap();
-        tls::serve(&addr, app).await;
+        axum::Server::bind(&addr).serve(app).await.unwrap();
+        // tls::serve(&addr, app).await;
     };
 
     let oscillator = async {
@@ -80,9 +80,12 @@ async fn main() {
 }
 
 /// Deal with database upgrade.
+#[cfg(feature = "db_upgrade")]
 fn db_upgrade() {
     let a = db!("SELECT * FROM admin WHERE k = ?", ["version"], |_| Ok(()));
     if matches!(a, Ok(v) if v.is_empty()) {
+        println!(">>> upgrade database");
+
         db!(
             "REPLACE INTO admin VALUES (?1, ?2)",
             ["version", env!("CARGO_PKG_VERSION").as_bytes()]
