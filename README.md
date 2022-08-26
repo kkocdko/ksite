@@ -6,13 +6,17 @@ All in one solution for my server.
 
 - `crate::auth`: admin auth from database.
 
-- `units::admin`: db backup, db shrink, get token, admin login...
+- `units::admin`: db shrink, get token, admin login...
 
 - `units::record`: record evidence picture, audio and video in real-time.
 
 - `units::paste_next`: (see the comments in its code).
 
-- Sqlite `WAL` mode sync config?
+- No out-of-service updates.
+
+- SQLite database smooth upgrades.
+
+- SQLite `WAL` mode sync config?
 
 ## Build with MUSL
 

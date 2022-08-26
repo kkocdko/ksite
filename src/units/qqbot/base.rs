@@ -35,11 +35,11 @@ const K_DEVICE: &str = "device_json";
 const K_TOKEN: &str = "token_json";
 
 fn db_init() {
-    db!("CREATE TABLE qqbot_cfg (k TEXT UNIQUE, v BLOB)").ok();
-    db!("CREATE TABLE qqbot_groups (group_id INTEGER UNIQUE)").ok();
+    db!("CREATE TABLE qqbot_cfg (k TEXT PRIMARY KEY, v BLOB)").ok();
+    db!("CREATE TABLE qqbot_groups (group_id INTEGER PRIMARY KEY)").ok();
 }
 fn db_cfg_set(k: &str, v: Vec<u8>) {
-    db!("INSERT OR REPLACE INTO qqbot_cfg VALUES (?1, ?2)", [k, v]).unwrap();
+    db!("REPLACE INTO qqbot_cfg VALUES (?1, ?2)", [k, v]).unwrap();
 }
 fn db_cfg_get(k: &str) -> Option<Vec<u8>> {
     let r = db!("SELECT v FROM qqbot_cfg WHERE k = ?", [k], |r| r.get(0));
@@ -52,7 +52,10 @@ fn db_groups_get() -> Vec<i64> {
     db!("SELECT * FROM qqbot_groups", [], |r| r.get(0)).unwrap()
 }
 pub fn db_groups_insert(group_id: i64) {
-    db!("INSERT INTO qqbot_groups VALUES (?)", [group_id]).unwrap();
+    db!("REPLACE INTO qqbot_groups VALUES (?)", [group_id]).unwrap();
+}
+pub fn _db_groups_delete(group_id: i64) -> bool {
+    db!("DELETE FROM qqbot_groups WHERE group_id = ?", [group_id]).is_ok()
 }
 
 pub async fn post_handler(q: RawQuery, RawBody(body): RawBody) {

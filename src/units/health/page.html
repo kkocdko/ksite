@@ -35,6 +35,9 @@
     white-space: pre;
     border-top-width: 1px;
   }
+  #\$v:focus {
+    height: calc(70vh - 60px);
+  }
   @media (prefers-color-scheme: dark) {
     * {
       color: #fff;
@@ -47,9 +50,10 @@
   <header>
     <input type="submit" value="Submit" />
   </header>
-  <input name="id" id="$id" placeholder="ID" spellcheck="false" />
   <input name="token" placeholder="TOKEN" spellcheck="false" />
-  <input name="body" id="$body" style="display: none" spellcheck="false" />
+  <input name="body" id="$body" type="hidden" />
+  <input name="id" id="$id" type="hidden" />
+  <textarea id="$v" placeholder="BODY" spellcheck="false" rows="1"></textarea>
   <textarea id="$log" readonly spellcheck="false">/*{slot}*/</textarea>
 </form>
 
@@ -63,34 +67,35 @@
     const cfg = { mode: CryptoJS.mode.ECB, padding: CryptoJS.pad.Pkcs7 };
     return btoa(CryptoJS.AES.encrypt(words, key, cfg).toString());
   };
+  $v.onfocus = () => {
+    if ($v.value) return;
+    $v.value = `{ dataMap: {
+      INPUT_L11NMC9H: "212345678901", // 学号
+      INPUT_L11NMCAM: "36",
+      INPUT_L11NMCAO: "36",
+      LOCATION_L1OELUCJ: "江苏省镇江市京口区",
+      RADIO_L1MVAKG2: "是",
+      RADIO_L1RTT90Y: "正常",
+      RADIO_L1WY3PV5: "承诺",
+      RADIO_L3JT1W1T: "加强针",
+      RADIO_L3O2U7WJ: "否",
+      RADIO_L11NMCA8: "梦溪", // 校区
+      RADIO_L11NMCAA: "正常",
+      RADIO_L11NMCAC: "绿码",
+      RADIO_L11NMCAF: "绿码",
+      RADIO_L11NMCAJ: "否",
+      RADIO_L11NMCAK: "是",
+      RADIO_L15XZ9SA: "否",
+    }, formWid: "a5e94ae0b0e04193bae67c86cfd6e223" }`.replace(/\n\s+/g, "\n");
+  };
   const onSubmit = (event) => {
     event.preventDefault();
-    const data = {
-      formWid: "a5e94ae0b0e04193bae67c86cfd6e223",
-      dataMap: {
-        INPUT_L11NMC9H: $id.value,
-        INPUT_L11NMCAM: "36",
-        INPUT_L11NMCAO: "36",
-        LOCATION_L1OELUCJ: "江苏省镇江市丹徒区",
-        RADIO_L1MVAKG2: "是",
-        RADIO_L1RTT90Y: "正常",
-        RADIO_L1WY3PV5: "承诺",
-        RADIO_L3JT1W1T: "加强针",
-        RADIO_L3O2U7WJ: "否",
-        RADIO_L11NMCA8: "长山",
-        RADIO_L11NMCAA: "正常",
-        RADIO_L11NMCAC: "绿码",
-        RADIO_L11NMCAF: "绿码",
-        RADIO_L11NMCAJ: "否",
-        RADIO_L11NMCAK: "是",
-        RADIO_L15XZ9SA: "否",
-      },
-    };
+    const data = eval(`(${$v.value})`);
+    $id.value = data.dataMap.INPUT_L11NMC9H;
     $body.value = encrypt(JSON.stringify(data));
     event.target.submit();
   };
   // token = `sessionStorage.jwToken` on http://dc.just.edu.cn
   // search `formData/saveFormSubmitDataEncryption` in `umi.js`, dump data
 </script>
-<!-- cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.js -->
 <!-- <script src="crypto-js.min.js"></script> -->

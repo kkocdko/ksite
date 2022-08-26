@@ -11,11 +11,11 @@ use serde::Deserialize;
 use std::fmt::Write as _;
 
 fn db_init() {
-    db!("CREATE TABLE health_list (id INTEGER, token TEXT, body TEXT)").ok();
+    db!("CREATE TABLE health_list (id INTEGER PRIMARY KEY, token TEXT, body TEXT)").ok();
     db!("CREATE TABLE health_log (time INTEGER, id INTEGER, ret TEXT)").ok();
 }
-fn db_list_insert(Member { id, token, body }: &Member) {
-    let sql = "INSERT INTO health_list VALUES (?1, ?2, ?3)";
+fn db_list_set(Member { id, token, body }: Member) {
+    let sql = "REPLACE INTO health_list VALUES (?1, ?2, ?3)";
     db!(sql, [id, token, body]).unwrap();
 }
 fn db_list_get() -> Vec<Member> {
@@ -26,7 +26,7 @@ fn db_list_get() -> Vec<Member> {
     }))
     .unwrap()
 }
-fn db_log_insert(id: u64, ret: &str) {
+fn db_log_insert(id: u64, ret: String) {
     let sql = "INSERT INTO health_log VALUES (strftime('%s','now'), ?1, ?2)";
     db!(sql, [id, ret]).unwrap();
 }
@@ -54,18 +54,21 @@ struct Member {
 }
 
 async fn get_handler() -> impl IntoResponse {
-    let mut log = String::new();
-    for (time, id, ret) in db_log_get() {
-        writeln!(&mut log, "{time} | {id} | {ret}").unwrap();
-    }
-    log = askama_escape::escape(&log, askama_escape::Html).to_string();
-    const PAGE: [&str; 2] = include_page!("page.html");
+    // https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.js
     const SUFFIX: &str = concat!("<script>", include_str!("crypto-js.min.js"), "</script>");
-    Html(PAGE[0].to_string() + &log + PAGE[1] + SUFFIX)
+    const PAGE: [&str; 2] = include_page!("page.html");
+
+    let mut body = PAGE[0].to_string();
+    for (time, id, ret) in db_log_get() {
+        writeln!(&mut body, "{time} | {id} | {ret}").unwrap();
+    }
+    body += PAGE[1];
+    body += SUFFIX;
+    Html(body)
 }
 
 async fn post_handler(Form(member): Form<Member>) -> impl IntoResponse {
-    db_list_insert(&member);
+    db_list_set(member);
     Redirect::to("/health")
 }
 
@@ -88,7 +91,8 @@ async fn check_in() -> Result<()> {
             .header("authentication", member.token)
             .body(member.body.into())?;
         let ret = String::from_utf8(fetch(request).await?)?;
-        db_log_insert(member.id, &ret);
+        let ret = askama_escape::escape(&ret, askama_escape::Html).to_string(); // XSS
+        db_log_insert(member.id, ret);
     }
     Ok(())
 }

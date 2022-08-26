@@ -73,6 +73,11 @@ async fn gen_reply(msg_parts: Vec<&str>) -> Result<String> {
             db_groups_insert(v.parse()?);
             format!("已为群 {v} 订阅通知")
         }
+        ["取消订阅通知", _v] => {
+            "鉴权还没弄好呢".into()
+            // db_groups_insert(v.parse()?);
+            // format!("已为群 {v} 取消订阅通知")
+        }
         ["设置回复", k, v] => {
             REPLIES.lock().unwrap().insert(k.into(), v.into());
             "记住啦".into()

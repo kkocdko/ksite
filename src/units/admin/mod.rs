@@ -6,10 +6,14 @@ use axum::response::Html;
 use axum::routing::{MethodRouter, Router};
 
 fn db_init() {
-    db!("CREATE TABLE admin (k TEXT UNIQUE, v BLOB)").ok();
+    db!("CREATE TABLE admin (k TEXT PRIMARY KEY, v BLOB)").ok();
 }
 fn db_set(k: &str, v: Vec<u8>) {
-    db!("INSERT OR REPLACE INTO admin VALUES (?1, ?2)", [k, v]).unwrap();
+    db!("REPLACE INTO admin VALUES (?1, ?2)", [k, v]).unwrap();
+}
+fn _db_get(k: &str) -> Vec<u8> {
+    let r = db!("SELECT v FROM admin WHERE k = ?", [k], |r| r.get(0));
+    r.unwrap().pop().unwrap()
 }
 
 async fn post_handler(q: RawQuery, RawBody(body): RawBody) {
