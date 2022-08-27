@@ -1,6 +1,6 @@
 [package]
 name = "ksite"
-version = "0.6.0-alpha-4"
+version = "0.6.0-alpha-5"
 edition = "2021"
 
 [profile.release]
@@ -8,6 +8,7 @@ edition = "2021"
 strip = true
 lto = true
 codegen-units = 1
+# opt-level = "z"
 
 # Best check speed, `cargo check --profile=ci`.
 [profile.ci]

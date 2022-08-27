@@ -46,8 +46,8 @@ async fn main() {
             .into_make_service();
         // .into_make_service_with_connect_info::<SocketAddr>();
 
-        axum::Server::bind(&addr).serve(app).await.unwrap();
-        // tls::serve(&addr, app).await;
+        // axum::Server::bind(&addr).serve(app).await.unwrap();
+        tls::serve(&addr, app).await;
     };
 
     let oscillator = async {

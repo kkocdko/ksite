@@ -70,22 +70,23 @@
   $v.onfocus = () => {
     if ($v.value) return;
     $v.value = `{ dataMap: {
-      INPUT_L11NMC9H: "212345678901", // 学号
-      INPUT_L11NMCAM: "36",
-      INPUT_L11NMCAO: "36",
-      LOCATION_L1OELUCJ: "江苏省镇江市京口区",
-      RADIO_L1MVAKG2: "是",
-      RADIO_L1RTT90Y: "正常",
-      RADIO_L1WY3PV5: "承诺",
-      RADIO_L3JT1W1T: "加强针",
-      RADIO_L3O2U7WJ: "否",
-      RADIO_L11NMCA8: "梦溪", // 校区
+      INPUT_L11NMC9H: "212345678901", // 学工号
+      LOCATION_L1OELUCJ: "江苏省镇江市京口区", // 位置(定位)
+      RADIO_L11NMCA8: "梦溪", // 学习工作地域:长山|梦溪|张家港|校外
       RADIO_L11NMCAA: "正常",
-      RADIO_L11NMCAC: "绿码",
-      RADIO_L11NMCAF: "绿码",
+      RADIO_L1RTT90Y: "正常",
+      RADIO_L11NMCAC: "绿码", // 健康码状态:绿码|黄码|红码
+      RADIO_L11NMCAF: "绿码", // 行程码状态:绿码|黄码|橙码|红码
+      RADIO_L3O2U7WJ: "否",
       RADIO_L11NMCAJ: "否",
-      RADIO_L11NMCAK: "是",
-      RADIO_L15XZ9SA: "否",
+      INPUT_L11NMCAO: "36",
+      INPUT_L11NMCAM: "36",
+      RADIO_L11NMCAK: "是", // 是否居住校内:是|否
+      RADIO_L15XZ9SA: "否", // 是否从外地返回:是|否
+      INPUT_L1BG7AIY: "", // 从外地返回路径
+      RADIO_L1MVAKG2: "是", // 48小时核酸检测:是|否
+      RADIO_L3JT1W1T: "加强针", // 疫苗接种情况:未接种|未完成|完成|加强针
+      RADIO_L1WY3PV5: "承诺",
     }, formWid: "a5e94ae0b0e04193bae67c86cfd6e223" }`.replace(/\n\s+/g, "\n");
   };
   const onSubmit = (event) => {
