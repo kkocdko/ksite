@@ -84,6 +84,9 @@ pub fn service() -> Router {
 }
 
 async fn check_in() -> Result<()> {
+    // token = `sessionStorage.jwToken` on http://dc.just.edu.cn
+    // search `formData/saveFormSubmitDataEncryption` in `umi.js`, dump post data
+    // view result: http://dc.just.edu.cn/#/v2/formReportDetail/zGO2n4p7
     let list = db_list_get();
     for member in list {
         let uri = "http://dc.just.edu.cn/dfi/formData/saveFormSubmitDataEncryption";

@@ -42,8 +42,7 @@ fn db_cfg_set(k: &str, v: Vec<u8>) {
     db!("REPLACE INTO qqbot_cfg VALUES (?1, ?2)", [k, v]).unwrap();
 }
 fn db_cfg_get(k: &str) -> Option<Vec<u8>> {
-    let r = db!("SELECT v FROM qqbot_cfg WHERE k = ?", [k], |r| r.get(0));
-    r.unwrap().pop()
+    db!("SELECT v FROM qqbot_cfg WHERE k = ?", [k], ^|r| r.get(0)).ok()
 }
 fn db_cfg_get_text(k: &str) -> Option<String> {
     Some(String::from_utf8(db_cfg_get(k)?).unwrap())

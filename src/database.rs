@@ -1,10 +1,11 @@
 use once_cell::sync::Lazy;
+use rusqlite::Connection;
 use std::sync::Mutex;
 
 /// # Use `db!()` macro instead of access directly!
-pub static DB_: Lazy<Mutex<rusqlite::Connection>> = Lazy::new(|| {
+pub static DB_: Lazy<Mutex<Connection>> = Lazy::new(|| {
     let path = std::env::current_exe().unwrap().with_extension("db");
-    let db = rusqlite::Connection::open(path).unwrap();
+    let db = Connection::open(path).unwrap();
 
     // Optimize for Performance
     // https://www.sqlite.org/speed.html
@@ -40,4 +41,10 @@ macro_rules! db {
         }
         std::result::Result::<_, rusqlite::Error>::Ok(ret)
     })()};
+    // the symbol '^' means "match first" in regexp
+    ( $sql:expr, [ $($param:tt)* ], ^$f:expr ) => {{
+        { $crate::database::DB_.lock().unwrap() }
+            .prepare_cached($sql)
+            .and_then(|mut s| s.query_row(rusqlite::params![$($param)*], $f))
+    }};
 }

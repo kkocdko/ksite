@@ -17,8 +17,7 @@ fn db_update(id: u64, data: &str) {
     db!("UPDATE paste SET data = ?1 WHERE id = ?2;", [data, id]).unwrap();
 }
 fn db_get(id: u64) -> Option<String> {
-    let r = db!("SELECT data FROM paste WHERE id = ?", [id], |r| r.get(0));
-    r.unwrap().pop()
+    db!("SELECT data FROM paste WHERE id = ?", [id], ^|r| r.get(0)).ok()
 }
 
 fn escape(v: &str) -> String {

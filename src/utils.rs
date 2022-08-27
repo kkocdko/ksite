@@ -82,17 +82,18 @@ static CLIENT: Lazy<Client<HttpsConnector<HttpConnector>>> = Lazy::new(|| {
             })
             .collect(),
     };
-    let tls_cfg = ClientConfig::builder() // set alpn to reject http2?
+    let tls_cfg = ClientConfig::builder()
         .with_safe_defaults()
         .with_root_certificates(root_cert_store)
         .with_no_client_auth();
+    // tls_cfg.alpn_protocols = vec![b"http/1.1".to_vec()]; // http2 is not supported
     let mut http_conn = HttpConnector::new();
     http_conn.enforce_http(false); // allow HTTPS
     let connector = HttpsConnector::from((http_conn, tls_cfg));
     Client::builder().build(connector)
 });
 
-/// Send the `Request` and returns response. Allow both HTTPS and HTTP.
+/// Send a `Request` and return the response. Allow both HTTPS and HTTP.
 ///
 /// Unlike `reqwest` crate, this function dose not follow redirect.
 pub async fn fetch(request: Request<Body>) -> Result<Vec<u8>> {
@@ -243,7 +244,6 @@ pub mod str_const_ops_ {
         ret
     }
 
-    #[allow(unused)]
     pub const fn strip_get_len(s: &[u8]) -> usize {
         let mut len = 0;
         let mut idx = 0;
@@ -262,7 +262,6 @@ pub mod str_const_ops_ {
         len
     }
 
-    #[allow(unused)]
     pub const fn strip_do<const LEN: usize>(src: &[u8]) -> [u8; LEN] {
         let mut buf: [u8; LEN] = [0; LEN];
         let mut buf_i = 0;
@@ -308,13 +307,19 @@ macro_rules! include_page {
     }};
 }
 
-// pub fn _test_include_page() {
-//     const RAW: &str = "
-//         <div>
-//             /*{slot}*/
-//             <p>Hi, /*{slot}*/</p>
-//         </div>
-//     ";
-//     const PAGE: [&str; 3] = include_page!(:RAW);
-//     assert_eq!(PAGE, ["\n<div>\n", "\n<p>Hi, ", "</p>\n</div>\n"]);
-// }
+#[allow(unused)]
+pub fn _test_include_page() {
+    use str_const_ops_::*;
+    const RAW: &str = "
+        <div>
+            /*{slot}*/
+            <p>Hi, /*{slot}*/</p>
+        </div>
+    ";
+    const PAGE: [&str; 3] = {
+        const S: &[u8] = RAW.as_bytes();
+        const BUF: [u8; strip_get_len(S)] = strip_do(S);
+        slot(unsafe { std::str::from_utf8_unchecked(&BUF) })
+    };
+    assert_eq!(PAGE, ["\n<div>\n", "\n<p>Hi, ", "</p>\n</div>\n"]);
+}

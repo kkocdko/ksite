@@ -56,8 +56,7 @@ pub async fn serve(addr: &SocketAddr, mut app: IntoMakeService<Router>) {
     IS_FIRST_CALL.store(false, Ordering::SeqCst);
 
     fn db_get(k: &str) -> Vec<u8> {
-        let r = db!("SELECT v FROM admin WHERE k = ?", [k], |r| r.get(0));
-        r.unwrap().pop().unwrap()
+        db!("SELECT v FROM admin WHERE k = ?", [k], ^|r| r.get(0)).unwrap()
     }
 
     let mut tls_cfg = ServerConfig::builder()

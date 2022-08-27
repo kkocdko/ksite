@@ -11,9 +11,8 @@ fn db_init() {
 fn db_set(k: &str, v: Vec<u8>) {
     db!("REPLACE INTO admin VALUES (?1, ?2)", [k, v]).unwrap();
 }
-fn _db_get(k: &str) -> Vec<u8> {
-    let r = db!("SELECT v FROM admin WHERE k = ?", [k], |r| r.get(0));
-    r.unwrap().pop().unwrap()
+fn _db_get(k: &str) -> Option<Vec<u8>> {
+    db!("SELECT v FROM admin WHERE k = ?", [k], ^|r| r.get(0)).ok()
 }
 
 async fn post_handler(q: RawQuery, RawBody(body): RawBody) {

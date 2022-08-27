@@ -11,10 +11,14 @@ CRUI 轻量的界面
 尽量优化性能
 有限制的自增和其他结合的 ID
 
+区分创建与插入？评估性能影响
 密码用hash，用户名和密码都固定宽度？优化性能？
 页面缓存，LRU？
 
 https://www.runoob.com/sqlite/sqlite-intro.html
+
+写入原始内容，前段自行处理转义
+/paste/raw/:id
 
 */
 use crate::db;
