@@ -323,3 +323,23 @@ pub fn _test_include_page() {
     };
     assert_eq!(PAGE, ["\n<div>\n", "\n<p>Hi, ", "</p>\n</div>\n"]);
 }
+
+/// Detect the `strip_str` works or not.
+pub fn _detect_str_in_binary() {
+    let s = std::fs::read("ksite").unwrap();
+    let p = b"DELETE FROM health_log";
+    for i in 0..s.len() {
+        let mut m = true;
+        for j in 0..p.len() {
+            if i + j >= s.len() || s[i + j] != p[j] {
+                m = false;
+                break;
+            }
+        }
+        if m {
+            let i1 = (i - 8).clamp(0, s.len() - 1);
+            let i2 = (i + 64).clamp(0, s.len() - 1);
+            println!(">>> {:?}", String::from_utf8_lossy(&s[i1..=i2]));
+        }
+    }
+}
