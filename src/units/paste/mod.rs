@@ -10,8 +10,7 @@ fn db_init() {
     db!("CREATE TABLE paste (id INTEGER PRIMARY KEY AUTOINCREMENT, data BLOB)").ok();
 }
 fn db_insert(data: &str) -> u64 {
-    db!("INSERT INTO paste VALUES (NULL, ?)", [data]).unwrap();
-    db!("SELECT last_insert_rowid() FROM paste", [], |r| r.get(0)).unwrap()[0]
+    db!("INSERT INTO paste VALUES (NULL, ?)", [data], &).unwrap() as _
 }
 fn db_update(id: u64, data: &str) {
     db!("UPDATE paste SET data = ?1 WHERE id = ?2;", [data, id]).unwrap();

@@ -41,7 +41,7 @@ async fn main() {
             .merge(units::info::service())
             .merge(units::magazine::service())
             .merge(units::paste::service())
-            // .merge(units::paste_next::service())
+            .merge(units::paste_next::service())
             .merge(units::qqbot::service())
             .into_make_service();
         // .into_make_service_with_connect_info::<SocketAddr>();
