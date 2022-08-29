@@ -6,6 +6,7 @@ use axum::response::Html;
 use axum::routing::{MethodRouter, Router};
 
 fn db_init() {
+    // db!("VACUUM");
     db!("CREATE TABLE admin (k TEXT PRIMARY KEY, v BLOB)").ok();
 }
 fn db_set(k: &str, v: Vec<u8>) {

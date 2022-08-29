@@ -28,10 +28,16 @@ async fn get_handler() -> impl IntoResponse {
 
     let mut o = PAGE[0].to_string();
 
-    o += concat!(env!("CARGO_PKG_NAME"), " v", env!("CARGO_PKG_VERSION"));
-    o += "\n\n";
+    o += concat!(
+        env!("CARGO_PKG_NAME"),
+        " version: ",
+        env!("CARGO_PKG_VERSION"),
+        "\nsqlite version: ",
+    );
+    o += rusqlite::version();
+    o += "\n";
 
-    o += "Uptime : ";
+    o += "uptime : ";
     o += &(now - START_TIME.load(Ordering::SeqCst)).to_string();
     o += " s\n";
 
@@ -46,7 +52,7 @@ async fn get_handler() -> impl IntoResponse {
         return ([(REFRESH, "1")], Html(o + PAGE[1]));
     }
 
-    o += "Server <-> Baidu : ";
+    o += "server <-> baidu : ";
     match LATENCY_BAIDU.load(Ordering::SeqCst) {
         -9 => o += "network error\n",
         -7 => o += "timeout\n",
@@ -56,7 +62,7 @@ async fn get_handler() -> impl IntoResponse {
         }
     }
 
-    o += "Server <-> Aliyun : ";
+    o += "server <-> aliyun : ";
     match LATENCY_ALIYUN.load(Ordering::SeqCst) {
         -9 => o += "network error\n",
         -7 => o += "timeout\n",
