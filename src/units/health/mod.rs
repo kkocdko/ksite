@@ -14,17 +14,12 @@ fn db_init() {
     db!("CREATE TABLE health_list (id INTEGER PRIMARY KEY, token TEXT, body TEXT)").ok();
     db!("CREATE TABLE health_log (time INTEGER, id INTEGER, ret TEXT)").ok();
 }
-fn db_list_set(Member { id, token, body }: Member) {
+fn db_list_set(id: u64, token: String, body: String) {
     let sql = "REPLACE INTO health_list VALUES (?1, ?2, ?3)";
     db!(sql, [id, token, body]).unwrap();
 }
-fn db_list_get() -> Vec<Member> {
-    db!("SELECT * FROM health_list", [], |r| Ok(Member {
-        id: r.get(0)?,
-        token: r.get(1)?,
-        body: r.get(2)?,
-    }))
-    .unwrap()
+fn db_list_get() -> Vec<(u64, String, String)> {
+    db!("SELECT * FROM health_list", [], (0, 1, 2)).unwrap()
 }
 fn db_log_insert(id: u64, ret: String) {
     let sql = "INSERT INTO health_log VALUES (strftime('%s','now'), ?1, ?2)";
@@ -32,11 +27,11 @@ fn db_log_insert(id: u64, ret: String) {
 }
 fn db_log_get() -> Vec<(u64, u64, String)> {
     let sql = strip_str! {"
-        SELECT time, id, ret FROM health_log
+        SELECT * FROM health_log
         WHERE strftime('%s','now') - time <= 3600 * 24 * 5
         ORDER BY time DESC
     "};
-    db!(sql, [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).unwrap()
+    db!(sql, [], (0, 1, 2)).unwrap()
 }
 fn db_log_clean() {
     let sql = strip_str! {"
@@ -67,8 +62,8 @@ async fn get_handler() -> impl IntoResponse {
     Html(body)
 }
 
-async fn post_handler(Form(member): Form<Member>) -> impl IntoResponse {
-    db_list_set(member);
+async fn post_handler(Form(Member { id, token, body }): Form<Member>) -> Redirect {
+    db_list_set(id, token, body);
     Redirect::to("/health")
 }
 
@@ -88,14 +83,14 @@ async fn check_in() -> Result<()> {
     // search `formData/saveFormSubmitDataEncryption` in `umi.js`, dump post data
     // view result: http://dc.just.edu.cn/#/v2/formReportDetail/zGO2n4p7
     let list = db_list_get();
-    for member in list {
+    for (id, token, body) in list {
         let uri = "http://dc.just.edu.cn/dfi/formData/saveFormSubmitDataEncryption";
         let request = hyper::Request::post(uri)
-            .header("authentication", member.token)
-            .body(member.body.into())?;
+            .header("authentication", token)
+            .body(body.into())?;
         let ret = String::from_utf8(fetch(request).await?)?;
         let ret = askama_escape::escape(&ret, askama_escape::Html).to_string(); // XSS
-        db_log_insert(member.id, ret);
+        db_log_insert(id, ret);
     }
     Ok(())
 }

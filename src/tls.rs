@@ -55,16 +55,16 @@ pub async fn serve(addr: &SocketAddr, mut app: IntoMakeService<Router>) {
     assert!(IS_FIRST_CALL.load(Ordering::SeqCst), "called twice");
     IS_FIRST_CALL.store(false, Ordering::SeqCst);
 
-    fn db_get(k: &str) -> Vec<u8> {
-        db!("SELECT v FROM admin WHERE k = ?", [k], ^|r| r.get(0)).unwrap()
+    fn db_get(k: &str) -> (Vec<u8>,) {
+        db!("SELECT v FROM admin WHERE k = ?", [k], ^(0)).unwrap()
     }
 
     let mut tls_cfg = ServerConfig::builder()
         .with_safe_defaults()
         .with_no_client_auth()
         .with_single_cert(
-            vec![Certificate(db_get("ssl_cert"))],
-            PrivateKey(db_get("ssl_key")),
+            vec![Certificate(db_get("ssl_cert").0)],
+            PrivateKey(db_get("ssl_key").0),
         )
         .unwrap();
     // enable http2, needs hyper feature "http2"

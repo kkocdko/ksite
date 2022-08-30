@@ -29,30 +29,36 @@ macro_rules! db {
     // simplest usage
     ( $sql:expr ) => {{ $crate::db!($sql, []) }};
     // execute a statement with params
-    ( $sql:expr, [ $($param:tt)* ] ) => {{
+    ( $sql:expr, [ $($param:expr),* ] ) => {{
+        let params = rusqlite::params![$($param),*];
         let db = $crate::database::DB_.lock().unwrap();
-        let mut stmd = db.prepare_cached($sql).unwrap();
-        stmd.execute(rusqlite::params![$($param)*])
+        db.prepare_cached($sql)
+            .and_then(|mut s| s.execute(params))
     }};
     // execute a statement then returns `last_insert_rowid()`
-    ( $sql:expr, [ $($param:tt)* ], & ) => {{
+    ( $sql:expr, [ $($param:expr),* ], & ) => {{
+        let params = rusqlite::params![$($param),*];
         let db = $crate::database::DB_.lock().unwrap();
-        let mut stmd = db.prepare_cached($sql).unwrap();
-        stmd.execute(rusqlite::params![$($param)*]).map(|_| db.last_insert_rowid())
+        db.prepare_cached($sql)
+            .and_then(|mut s| s.execute(params))
+            .map(|_| db.last_insert_rowid())
     }};
-    // query one row, the symbol '^' means "match first" in regexp
-    ( $sql:expr, [ $($param:tt)* ], ^$f:expr ) => {{
+    // query and return the first matched row, the symbol '^' means "first" in regexp
+    ( $sql:expr, [ $($param:expr),* ], ^( $($idx:expr),* ) ) => {{
+        let params = rusqlite::params![$($param),*];
         let db = $crate::database::DB_.lock().unwrap();
-        let mut stmd = db.prepare_cached($sql).unwrap();
-        stmd.query_row(rusqlite::params![$($param)*], $f)
+        db.prepare_cached($sql)
+            .and_then(|mut s| s.query_row(params, |r| Ok(( $( r.get($idx)?, )* ))))
     }};
-    // query and save all the results into a `Vec<T>`
-    ( $sql:expr, [ $($param:tt)* ], $f:expr ) => {(||{
+    // query and return all rows as `Vec<T>`
+    ( $sql:expr, [ $($param:expr),* ], ( $($idx:expr),* ) ) => {(||{
+        let params = rusqlite::params![$($param),*];
         let mut ret = Vec::new();
         let db = $crate::database::DB_.lock().unwrap();
-        let mut stmd = db.prepare_cached($sql).unwrap();
-        for v in stmd.query_map(rusqlite::params![$($param)*], $f).unwrap() {
-            ret.push(v?);
+        let mut stmd = db.prepare_cached($sql)?;
+        let mut rows = stmd.query(params)?;
+        while let Ok(Some(r)) = rows.next() {
+            ret.push(( $( r.get($idx)?, )* ));
         }
         std::result::Result::<_, rusqlite::Error>::Ok(ret)
     })()};

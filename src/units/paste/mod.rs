@@ -15,8 +15,8 @@ fn db_insert(data: &str) -> u64 {
 fn db_update(id: u64, data: &str) {
     db!("UPDATE paste SET data = ?1 WHERE id = ?2;", [data, id]).unwrap();
 }
-fn db_get(id: u64) -> Option<String> {
-    db!("SELECT data FROM paste WHERE id = ?", [id], ^|r| r.get(0)).ok()
+fn db_get(id: u64) -> Option<(String,)> {
+    db!("SELECT data FROM paste WHERE id = ?", [id], ^(0)).ok()
 }
 
 fn escape(v: &str) -> String {
@@ -25,9 +25,9 @@ fn escape(v: &str) -> String {
 
 async fn read(id: Option<u64>) -> Html<String> {
     let value = id.and_then(db_get);
-    let value = value.unwrap_or_else(|| "New entry".to_string());
+    let value = value.unwrap_or_else(|| ("New entry".to_string(),));
     const PAGE: [&str; 2] = include_page!("page.html");
-    Html([PAGE[0], &value, PAGE[1]].join(""))
+    Html([PAGE[0], &value.0, PAGE[1]].join(""))
 }
 
 #[derive(Deserialize)]

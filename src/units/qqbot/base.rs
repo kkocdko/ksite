@@ -41,14 +41,14 @@ fn db_init() {
 fn db_cfg_set(k: &str, v: Vec<u8>) {
     db!("REPLACE INTO qqbot_cfg VALUES (?1, ?2)", [k, v]).unwrap();
 }
-fn db_cfg_get(k: &str) -> Option<Vec<u8>> {
-    db!("SELECT v FROM qqbot_cfg WHERE k = ?", [k], ^|r| r.get(0)).ok()
+fn db_cfg_get(k: &str) -> Option<(Vec<u8>,)> {
+    db!("SELECT v FROM qqbot_cfg WHERE k = ?", [k], ^(0)).ok()
 }
 fn db_cfg_get_text(k: &str) -> Option<String> {
-    Some(String::from_utf8(db_cfg_get(k)?).unwrap())
+    Some(String::from_utf8(db_cfg_get(k)?.0).unwrap())
 }
-fn db_groups_get() -> Vec<i64> {
-    db!("SELECT * FROM qqbot_groups", [], |r| r.get(0)).unwrap()
+fn db_groups_get() -> Vec<(i64,)> {
+    db!("SELECT * FROM qqbot_groups", [], (0)).unwrap()
 }
 pub fn db_groups_insert(group_id: i64) {
     db!("REPLACE INTO qqbot_groups VALUES (?)", [group_id]).unwrap();
@@ -250,7 +250,7 @@ impl ricq::handler::Handler for MyHandler {
 
 pub async fn notify(msg: String) -> Result<()> {
     let msg_chain = text_msg(msg);
-    for group in db_groups_get() {
+    for (group,) in db_groups_get() {
         CLIENT.send_group_message(group, msg_chain.clone()).await?;
     }
     Ok(())
