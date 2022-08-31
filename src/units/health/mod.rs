@@ -67,7 +67,9 @@ async fn post_handler(Form(Member { id, token, body }): Form<Member>) -> Redirec
     Redirect::to("/health")
 }
 
+#[allow(unreachable_code)]
 pub fn service() -> Router {
+    return Router::new();
     db_init();
     Router::new().route(
         "/health",
@@ -88,7 +90,7 @@ async fn check_in() -> Result<()> {
         let request = hyper::Request::post(uri)
             .header("authentication", token)
             .body(body.into())?;
-        let ret = String::from_utf8(fetch(request).await?)?;
+        let ret = String::from_utf8(fetch(request).await?)?.replace('\n', "");
         let ret = askama_escape::escape(&ret, askama_escape::Html).to_string(); // XSS
         db_log_insert(id, ret);
     }
@@ -96,7 +98,9 @@ async fn check_in() -> Result<()> {
 }
 
 static TICKER: Lazy<Ticker> = Lazy::new(|| Ticker::new_p8(&[(3, 10, 0), (5, 10, 0)]));
+#[allow(unreachable_code)]
 pub async fn tick() {
+    return;
     if !TICKER.tick() {
         return;
     }
