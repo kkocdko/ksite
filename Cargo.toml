@@ -6,15 +6,14 @@ edition = "2021"
 [profile.release]
 # panic = "abort" # DO NOT USE THIS! cause tokio worker abort
 strip = true
-lto = true
+lto = "fat"
 codegen-units = 1
-# opt-level = "z"
 
 # Best check speed, `cargo check --profile=ci`.
 [profile.ci]
 inherits = "release"
 opt-level = 0
-lto = false
+lto = "off"
 panic = "abort"
 incremental = false
 codegen-units = 256
@@ -31,7 +30,6 @@ opt-level = "z"
 [features]
 default = ["qqbot"]
 qqbot = []
-sse-unsafe = []
 
 [dependencies]
 anyhow = "1"

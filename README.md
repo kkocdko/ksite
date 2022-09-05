@@ -6,11 +6,15 @@ All in one solution for my server.
 
 - `crate::auth`: admin auth from database.
 
+- `units::throw`: tiny 2D game, with webrtc, ai.
+
 - `units::admin`: db shrink, get token, admin login...
 
 - `units::record`: record evidence picture, audio and video in real-time.
 
 - `units::paste_next`: (see the comments in its code).
+
+- `units::health`: fix function.
 
 - No out-of-service updates.
 

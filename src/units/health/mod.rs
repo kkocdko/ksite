@@ -9,14 +9,15 @@ use axum::routing::{MethodRouter, Router};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use std::fmt::Write as _;
+mod cryptojs;
 
 fn db_init() {
-    db!("CREATE TABLE health_list (id INTEGER PRIMARY KEY, token TEXT, body TEXT)").ok();
+    db!("CREATE TABLE health_list (id INTEGER PRIMARY KEY, pw TEXT, data TEXT)").ok();
     db!("CREATE TABLE health_log (time INTEGER, id INTEGER, ret TEXT)").ok();
 }
-fn db_list_set(id: u64, token: String, body: String) {
+fn db_list_set(id: u64, pw: String, data: String) {
     let sql = "REPLACE INTO health_list VALUES (?1, ?2, ?3)";
-    db!(sql, [id, token, body]).unwrap();
+    db!(sql, [id, pw, data]).unwrap();
 }
 fn db_list_get() -> Vec<(u64, String, String)> {
     db!("SELECT * FROM health_list", [], (0, 1, 2)).unwrap()
@@ -44,26 +45,22 @@ fn db_log_clean() {
 #[derive(Deserialize)]
 struct Member {
     id: u64,
-    token: String,
+    pw: String,
     body: String,
 }
 
 async fn get_handler() -> impl IntoResponse {
-    // https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.js
-    const SUFFIX: &str = concat!("<script>", include_str!("crypto-js.min.js"), "</script>");
     const PAGE: [&str; 2] = include_page!("page.html");
-
     let mut body = PAGE[0].to_string();
     for (time, id, ret) in db_log_get() {
         writeln!(&mut body, "{time} | {id} | {ret}").unwrap();
     }
     body += PAGE[1];
-    body += SUFFIX;
     Html(body)
 }
 
-async fn post_handler(Form(Member { id, token, body }): Form<Member>) -> Redirect {
-    db_list_set(id, token, body);
+async fn post_handler(Form(Member { id, pw, body }): Form<Member>) -> Redirect {
+    db_list_set(id, pw, body);
     Redirect::to("/health")
 }
 
@@ -90,7 +87,7 @@ async fn check_in() -> Result<()> {
         let request = hyper::Request::post(uri)
             .header("authentication", token)
             .body(body.into())?;
-        let ret = String::from_utf8(fetch(request).await?)?.replace('\n', "");
+        let ret = String::from_utf8_lossy(&fetch(request).await?).replace('\n', "");
         let ret = askama_escape::escape(&ret, askama_escape::Html).to_string(); // XSS
         db_log_insert(id, ret);
     }
@@ -104,7 +101,12 @@ pub async fn tick() {
     if !TICKER.tick() {
         return;
     }
-
     care!(check_in().await).ok();
     db_log_clean();
 }
+
+/*
+https://stackoverflow.com/questions/70212075/how-to-make-unsigned-right-shift-in-rust
+https://stackoverflow.com/questions/51571066/what-are-the-exact-semantics-of-rusts-shift-operators
+https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Unsigned_right_shift
+*/
