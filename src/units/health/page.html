@@ -35,7 +35,7 @@
     white-space: pre;
     border-top-width: 1px;
   }
-  #\$v:focus {
+  #\$data:focus {
     height: calc(70vh - 60px);
   }
   @media (prefers-color-scheme: dark) {
@@ -46,23 +46,28 @@
   }
 </style>
 
-<form method="post" onsubmit="onSubmit(event)">
+<form method="post" onsubmit="onSubmit()">
   <header>
     <input type="submit" value="Submit" />
   </header>
-  <input name="pw" placeholder="TOKEN" spellcheck="false" />
-  <input name="body" id="$body" type="hidden" />
+  <input name="password" placeholder="ENCRYPTED PASSWORD" spellcheck="false" />
   <input name="id" id="$id" type="hidden" />
-  <textarea id="$v" placeholder="BODY" spellcheck="false" rows="1"></textarea>
+  <textarea
+    name="data"
+    id="$data"
+    placeholder="DATA"
+    spellcheck="false"
+    rows="1"
+  ></textarea>
   <textarea id="$log" readonly spellcheck="false">/*{slot}*/</textarea>
 </form>
 
 <script>
   const stamp2str = (v) => new Date(v * 1e3).toLocaleString();
   $log.value = $log.value.replace(/(?<=\n|^)\d+/g, stamp2str);
-  $v.onfocus = () => {
-    if ($v.value) return;
-    $v.value = `{
+  $data.onfocus = () => {
+    if ($data.value) return;
+    $data.value = `\
       INPUT_L11NMC9H: "212345678901", // 学工号
       LOCATION_L1OELUCJ: "江苏省镇江市丹徒区", // 位置(定位)
       RADIO_L11NMCA8: "长山", // 学习工作地域:长山|梦溪|张家港|校外
@@ -80,6 +85,11 @@
       RADIO_L1MVAKG2: "是", // 48小时核酸检测:是|否
       RADIO_L3JT1W1T: "加强针", // 疫苗接种情况:未接种|未完成|完成|加强针
       RADIO_L1WY3PV5: "承诺",
-    }`.replace(/\n\s+/g, "\n");
+    `.replace(/\n\s+/g, "\n");
+  };
+  const onSubmit = () => {
+    const v = eval(`({${$data.value}})`);
+    $id.value = v.INPUT_L11NMC9H;
+    $data.value = JSON.stringify(v);
   };
 </script>

@@ -1,7 +1,7 @@
 use anyhow::Result;
 use hyper::body::HttpBody;
 use hyper::client::HttpConnector;
-use hyper::{Body, Client, Request};
+use hyper::{Body, Client, Request, Response};
 use hyper_rustls::HttpsConnector;
 use once_cell::sync::Lazy;
 use std::time::UNIX_EPOCH;
@@ -93,20 +93,38 @@ static CLIENT: Lazy<Client<HttpsConnector<HttpConnector>>> = Lazy::new(|| {
     Client::builder().build(connector)
 });
 
+pub trait IntoRequest {
+    fn into_request(self) -> Request<Body>;
+}
+impl IntoRequest for Request<Body> {
+    fn into_request(self) -> Request<Body> {
+        self
+    }
+}
+impl IntoRequest for &str {
+    fn into_request(self) -> Request<Body> {
+        Request::get(encode_uri(self)).body(Body::empty()).unwrap()
+    }
+}
+// TODO: simplify?
+impl IntoRequest for &String {
+    fn into_request(self) -> Request<Body> {
+        self.as_str().into_request()
+    }
+}
+
 /// Send a `Request` and return the response. Allow both HTTPS and HTTP.
 ///
 /// Unlike `reqwest` crate, this function dose not follow redirect.
-pub async fn fetch(request: Request<Body>) -> Result<Vec<u8>> {
-    let response = CLIENT.request(request).await?;
-    let body = read_body(response.into_body()).await;
-    Ok(body)
+pub async fn fetch(request: impl IntoRequest) -> Result<Response<Body>> {
+    Ok(CLIENT.request(request.into_request()).await?)
 }
 
 /// Fetch a URI, returns as text.
-pub async fn fetch_text(uri: &str) -> Result<String> {
-    let uri = encode_uri(uri);
-    let request = Request::get(uri).body(Body::empty())?;
-    Ok(String::from_utf8(fetch(request).await?)?)
+pub async fn fetch_text(request: impl IntoRequest) -> Result<String> {
+    let response = fetch(request).await?;
+    let body = read_body(response.into_body()).await;
+    Ok(String::from_utf8(body)?)
 }
 
 /// Fetch a URI which response json, get field by pointer.
@@ -120,8 +138,8 @@ pub async fn fetch_text(uri: &str) -> Result<String> {
 /// // or this? { "data": { "size": 1024 } }
 /// assert_eq!(v, Ok("1024".to_string())); // the same result!
 /// ```
-pub async fn fetch_json(uri: &str, pointer: &str) -> Result<String> {
-    let text = fetch_text(uri).await?;
+pub async fn fetch_json(request: impl IntoRequest, pointer: &str) -> Result<String> {
+    let text = fetch_text(request).await?;
     let v = serde_json::from_str::<serde_json::Value>(&text)?;
     let v = v.pointer(pointer).e()?.to_string();
     Ok(v.trim_matches('"').to_owned())

@@ -1,3 +1,23 @@
+//! Incomplete reimplement of
+//! [crypto-js](https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.js)
+//! with pure Rust.
+//!
+//! # Why
+//!
+//! According to JavaScript's weakness and dynamic features, the crypto-js allows many unnformal
+//! operations like parsing negative utf-8 code. So I decide to port it for my `health-check-in`
+//! function.
+//!
+//! # Limitation
+//!
+//! Only supports `AES` + `PKCS7` + `ECB`.
+
+/*
+https://stackoverflow.com/questions/70212075/how-to-make-unsigned-right-shift-in-rust
+https://stackoverflow.com/questions/51571066/what-are-the-exact-semantics-of-rusts-shift-operators
+https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Unsigned_right_shift
+*/
+
 const BASE64_CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
 
 fn div_ceil(lhs: i32, rhs: i32) -> i32 {
@@ -9,6 +29,7 @@ fn div_ceil(lhs: i32, rhs: i32) -> i32 {
         d
     }
 }
+
 struct WordArray {
     words: Vec<i32>,
     sig_bytes: i32,
@@ -56,11 +77,11 @@ impl WordArray {
         e.truncate(div_ceil(s, 4) as _);
     }
     fn to_base64(&self) -> String {
-        let sigBytes = self.sig_bytes;
+        let sig_bytes = self.sig_bytes;
         let words = &self.words;
         let mut r = Vec::new();
         let mut i = 0;
-        while i < sigBytes {
+        while i < sig_bytes {
             let mut s = 0;
             if let Some(&w) = words.get((i as u32 >> 2) as usize) {
                 s |= ((w as u32 >> (24 - (i % 4) * 8)) & 255) << 16;
@@ -72,7 +93,7 @@ impl WordArray {
                 s |= (w as u32 >> (24 - ((i + 2) % 4) * 8)) & 255;
             }
             let mut j = 0;
-            while j < 4 && ((i as f64) + 0.75 * (j as f64) < (sigBytes as f64)) {
+            while j < 4 && ((i as f64) + 0.75 * (j as f64) < (sig_bytes as f64)) {
                 r.push(BASE64_CHARS[((s >> (6 * (3 - j))) & 63) as usize]);
                 j += 1;
             }
@@ -203,7 +224,7 @@ fn aes_encrypt(words: WordArray, key: WordArray, _cfg: Option<()>) -> WordArray 
                         | (h[((t2 >> 16) as usize) & 255] << 16)
                         | (h[((t2 >> 8) as usize) & 255] << 8)
                         | h[255 & t2 as usize];
-                    t ^= d[(i / sbm4) | 0] << 24;
+                    t ^= d[i / sbm4] << 24;
                 } else if sbm4 > 6 && i % sbm4 == 4 {
                     let t2 = t as u32;
                     t = (h[(t2 >> 24) as usize] << 24)
@@ -293,7 +314,7 @@ fn aes_encrypt(words: WordArray, key: WordArray, _cfg: Option<()>) -> WordArray 
                 let te1 = te_n!(a, p, f, k);
                 let te2 = te_n!(p, f, k, a);
                 let te3 = te_n!(f, k, a, p);
-                l_twa.words[e + 0] = te0;
+                l_twa.words[e] = te0;
                 l_twa.words[e + 1] = te1;
                 l_twa.words[e + 2] = te2;
                 l_twa.words[e + 3] = te3;
@@ -328,13 +349,14 @@ fn btoa(s: String) -> String {
         }
     } {
         position += 0.75;
-        let charCode = *s.get(position as usize).unwrap_or(&0);
-        block = block << 8 | charCode as usize;
-        r.push(map[(63 & block >> 8 - (position % 1.0 * 8.0) as usize) as usize])
+        let char_code = *s.get(position as usize).unwrap_or(&0);
+        block = block << 8 | char_code as usize;
+        r.push(map[(63 & block >> (8 - (position % 1.0 * 8.0) as usize)) as usize])
     }
     unsafe { String::from_utf8_unchecked(r) }
 }
 
+/// Encrypt the string for JUST's form submit api.
 pub fn encrypt(s: String) -> String {
     let words = utf8_parse(s);
     let key = WordArray {
