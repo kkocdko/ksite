@@ -14,8 +14,6 @@ All in one solution for my server.
 
 - `units::paste_next`: (see the comments in its code).
 
-- `units::health`: fix function.
-
 - No out-of-service updates.
 
 - SQLite `WAL` mode sync config?

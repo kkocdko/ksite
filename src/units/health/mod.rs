@@ -65,7 +65,6 @@ async fn post_handler(Form(Member { id, password, data }): Form<Member>) -> Redi
 }
 
 async fn check_in() -> Result<()> {
-    // token = `sessionStorage.jwToken` on http://dc.just.edu.cn
     // search `formData/saveFormSubmitDataEncryption` in `umi.js`, dump post data
     // view result: http://dc.just.edu.cn/#/v2/formReportDetail/zGO2n4p7
     const LOGIN_EXECUTION_VALUE: &str = include_str!("login_execution_value.txt");
@@ -75,14 +74,15 @@ async fn check_in() -> Result<()> {
         let body = format!("username={id}&password={password}&execution={LOGIN_EXECUTION_VALUE}&_eventId=submit&encrypted=true&loginType=1&submit=%E7%99%BB+%E5%BD%95");
         let request = hyper::Request::post(uri)
             .header("content-type", "application/x-www-form-urlencoded")
+            .header("user-agent", "Chrome")
             .body(body.into())?;
         let r = fetch(request).await?;
-        dbg!(r.status());
         let r = r.headers().get("location").e()?.to_str()?;
         let ticket = r.split_once("ticket=").e()?.1.split_once('#').e()?.0;
 
         let uri = format!("http://dc.just.edu.cn/dfi/validateLogin?ticket={ticket}&service=http%3A%2F%2Fdc.just.edu.cn%2F%23%2F");
-        let authentication = fetch_json(&uri, "/data/token").await?;
+        let request = hyper::Request::get(uri).body(hyper::Body::empty())?;
+        let authentication = fetch_json(request, "/data/token").await?;
 
         let uri = format!("http://dc.just.edu.cn/dfi/formOpen/saveFormView?formWid={form_wid}");
         let request = hyper::Request::post(uri)
@@ -117,11 +117,10 @@ pub fn service() -> Router {
 
 static TICKER: Lazy<Ticker> = Lazy::new(|| Ticker::new_p8(&[(3, 10, 0), (5, 10, 0)]));
 pub async fn tick() {
-    // if !TICKER.tick() {
-    //     return;
-    // }
-    dbg!(1);
-    check_in().await.unwrap();
-    // care!(check_in().await).ok();
+    if !TICKER.tick() {
+        return;
+    }
+
+    care!(check_in().await).ok();
     db_log_clean();
 }

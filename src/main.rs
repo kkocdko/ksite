@@ -15,13 +15,11 @@ use std::time::Duration;
 
 #[tokio::main]
 async fn main() {
-    // println!("{}", b'd');
-    // return;
     println!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
     println!("enter :q to quit");
     println!("authorization token = {}", *auth::TOKEN);
 
-    // db_upgrade(); // uncomment this if we need to upgrade database
+    db_upgrade(); // uncomment this if we need to upgrade database
 
     thread::spawn(|| loop {
         let buf = &mut String::new();
@@ -39,7 +37,7 @@ async fn main() {
         let app = Router::new()
             .merge(units::admin::service())
             .merge(units::chat::service())
-            // .merge(units::health::service())
+            .merge(units::health::service())
             .merge(units::info::service())
             .merge(units::magazine::service())
             .merge(units::paste::service())
@@ -60,7 +58,7 @@ async fn main() {
         loop {
             interval.tick().await;
             let _ = tokio::join!(
-                // units::health::tick(),
+                units::health::tick(),
                 units::magazine::tick(),
                 units::qqbot::tick(),
             );
@@ -82,84 +80,19 @@ async fn main() {
 }
 
 /// Deal with database upgrade.
-#[cfg(feature = "db_upgrade")]
+// #[cfg(feature = "db_upgrade")]
 fn db_upgrade() {
-    let a = db!("SELECT * FROM admin WHERE k = ?", ["version"], |_| Ok(()));
-    if matches!(a, Ok(v) if v.is_empty()) {
-        println!(">>> upgrade database");
-
-        db!(
-            "REPLACE INTO admin VALUES (?1, ?2)",
-            ["version", env!("CARGO_PKG_VERSION").as_bytes()]
-        )
-        .unwrap();
-
-        // admin
-        {
-            db!("ALTER TABLE admin RENAME TO old_admin").unwrap();
-            let rows: Vec<(String, Vec<u8>)> = db!("SELECT * FROM old_admin", [], |r| Ok((
-                r.get(0)?,
-                r.get(1)?,
-            )))
-            .unwrap();
-            db!("CREATE TABLE admin (k TEXT PRIMARY KEY, v BLOB)").unwrap();
-            for (k, v) in rows {
-                fn db_set(k: &str, v: Vec<u8>) {
-                    db!("REPLACE INTO admin VALUES (?1, ?2)", [k, v]).unwrap();
-                }
-                db_set(&k, v);
-            }
-            db!("DROP TABLE old_admin").unwrap();
-        }
-
-        // health
-        {
-            db!("ALTER TABLE health_list RENAME TO old_health_list").unwrap();
-            let rows: Vec<(u64, String, String)> = db!(
-                "SELECT * FROM old_health_list",
-                [],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?,))
-            )
-            .unwrap();
-            db!("CREATE TABLE health_list (id INTEGER PRIMARY KEY, token TEXT, body TEXT)")
-                .unwrap();
-            for (id, token, body) in rows {
-                let sql = "REPLACE INTO health_list VALUES (?1, ?2, ?3)";
-                db!(sql, [id, token, body]).unwrap();
-            }
-            db!("DROP TABLE old_health_list").unwrap();
-        }
-
-        // qqbot
-        {
-            {
-                db!("ALTER TABLE qqbot_cfg RENAME TO old_qqbot_cfg").unwrap();
-                let rows: Vec<(String, Vec<u8>)> = db!("SELECT * FROM old_qqbot_cfg", [], |r| Ok(
-                    (r.get(0)?, r.get(1)?,)
-                ))
-                .unwrap();
-                db!("CREATE TABLE qqbot_cfg (k TEXT PRIMARY KEY, v BLOB)").unwrap();
-                for (k, v) in rows {
-                    fn db_cfg_set(k: &str, v: Vec<u8>) {
-                        db!("REPLACE INTO qqbot_cfg VALUES (?1, ?2)", [k, v]).unwrap();
-                    }
-                    db_cfg_set(&k, v);
-                }
-                db!("DROP TABLE old_qqbot_cfg").unwrap();
-            }
-            {
-                db!("ALTER TABLE qqbot_groups RENAME TO old_qqbot_groups").unwrap();
-                let rows: Vec<(i64)> =
-                    db!("SELECT * FROM old_qqbot_groups", [], |r| Ok((r.get(0)?))).unwrap();
-                db!("CREATE TABLE qqbot_groups (group_id INTEGER PRIMARY KEY)").unwrap();
-                for (v) in rows {
-                    pub fn db_groups_insert(group_id: i64) {
-                        db!("REPLACE INTO qqbot_groups VALUES (?)", [group_id]).unwrap();
-                    }
-                    db_groups_insert(v);
-                }
-                db!("DROP TABLE old_qqbot_groups").unwrap();
-            }
-        }
+    fn db_set(k: &str, v: &[u8]) {
+        db!("REPLACE INTO admin VALUES (?1, ?2)", [k, v]).unwrap();
+    }
+    fn db_get(k: &str) -> Option<(Vec<u8>,)> {
+        db!("SELECT v FROM admin WHERE k = ?", [k], ^(0)).ok()
+    }
+    if !matches!(
+        db_get("version"),
+        Some((v,)) if v == b"0.6.0-alpha-10"
+    ) {
+        db_set("version", b"0.6.0-alpha-10");
+        db!("DROP TABLE health_list").unwrap();
     }
 }

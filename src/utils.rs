@@ -103,7 +103,8 @@ impl IntoRequest for Request<Body> {
 }
 impl IntoRequest for &str {
     fn into_request(self) -> Request<Body> {
-        Request::get(encode_uri(self)).body(Body::empty()).unwrap()
+        let ret = Request::get(encode_uri(self)).body(Body::empty()).unwrap();
+        ret.into_request()
     }
 }
 // TODO: simplify?
@@ -141,7 +142,10 @@ pub async fn fetch_text(request: impl IntoRequest) -> Result<String> {
 pub async fn fetch_json(request: impl IntoRequest, pointer: &str) -> Result<String> {
     let text = fetch_text(request).await?;
     let v = serde_json::from_str::<serde_json::Value>(&text)?;
-    let v = v.pointer(pointer).e()?.to_string();
+    let v = v
+        .pointer(pointer)
+        .ok_or_else(|| anyhow::anyhow!("json field not found"))?
+        .to_string();
     Ok(v.trim_matches('"').to_owned())
 }
 
