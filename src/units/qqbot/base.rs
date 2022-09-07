@@ -222,6 +222,7 @@ async fn on_event(event: QEvent) -> Result<()> {
                 // push_log!("cleaned {} expired messages", len - recent.len());
             }
         }
+        // the AndroidWatch protocol will not receive this event
         QEvent::GroupMessageRecall(e) => {
             let recent = RECENT.lock().unwrap();
             if let Some(v) = recent.iter().find(|v| v.seqs.contains(&e.inner.msg_seq)) {

@@ -8,6 +8,7 @@ edition = "2021"
 strip = true
 lto = "fat"
 codegen-units = 1
+# opt-level = "z"
 
 # Best check speed, `cargo check --profile=ci`.
 [profile.ci]

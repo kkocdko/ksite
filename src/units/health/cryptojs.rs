@@ -20,10 +20,12 @@ https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Unsi
 
 const BASE64_CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
 
-fn div_ceil(lhs: i32, rhs: i32) -> i32 {
+fn div_ceil_posi(lhs: i32, rhs: i32) -> i32 {
+    debug_assert!(lhs >= 0);
+    debug_assert!(rhs >= 0);
     let d = lhs / rhs;
     let r = lhs % rhs;
-    if (r > 0 && rhs > 0) || (r < 0 && rhs < 0) {
+    if r > 0 && rhs > 0 {
         d + 1
     } else {
         d
@@ -47,8 +49,8 @@ impl WordArray {
             while t < h {
                 let h = ((s[(t as u32 >> 2) as usize] as u32 >> (24 - (t % 4) * 8)) & 255) as i32;
                 let idx = ((i + t) as u32 >> 2) as usize;
-                if e.len() <= idx {
-                    e.resize(idx + 1, 0);
+                if e.len() == idx {
+                    e.push(0);
                 }
                 e[idx] |= h << (24 - ((i + t) % 4) * 8);
                 t += 1;
@@ -57,8 +59,8 @@ impl WordArray {
             let mut t = 0;
             while t < h {
                 let idx = ((i + t) as u32 >> 2) as usize;
-                if e.len() <= idx {
-                    e.resize(idx + 1, 0);
+                if e.len() == idx {
+                    e.push(0);
                 }
                 e[idx] = s[(t as u32 >> 2) as usize];
                 t += 4;
@@ -70,11 +72,11 @@ impl WordArray {
         let e = &mut self.words;
         let s = self.sig_bytes;
         let idx = (s as u32 >> 2) as usize;
-        if e.len() <= idx {
-            e.resize(idx + 1, 0);
+        if e.len() == idx {
+            e.push(0);
         }
         e[idx] &= (4294967295u32 << ((32 - (s % 4) * 8) % 32)) as i32;
-        e.truncate(div_ceil(s, 4) as _);
+        e.truncate(div_ceil_posi(s, 4) as _);
     }
     fn to_base64(&self) -> String {
         let sig_bytes = self.sig_bytes;
@@ -86,14 +88,14 @@ impl WordArray {
             if let Some(&w) = words.get((i as u32 >> 2) as usize) {
                 s |= ((w as u32 >> (24 - (i % 4) * 8)) & 255) << 16;
             }
-            if let Some(&w) = words.get(((i + 1) as u32 >> 2) as usize) {
+            if let Some(&w) = words.get(((i as u32 + 1) >> 2) as usize) {
                 s |= ((w as u32 >> (24 - ((i + 1) % 4) * 8)) & 255) << 8;
             }
-            if let Some(&w) = words.get(((i + 2) as u32 >> 2) as usize) {
+            if let Some(&w) = words.get(((i as u32 + 2) >> 2) as usize) {
                 s |= (w as u32 >> (24 - ((i + 2) % 4) * 8)) & 255;
             }
             let mut j = 0;
-            while j < 4 && ((i as f64) + 0.75 * (j as f64) < (sig_bytes as f64)) {
+            while j < 4 && 4 * i + 3 * j < 4 * sig_bytes {
                 r.push(BASE64_CHARS[((s >> (6 * (3 - j))) & 63) as usize]);
                 j += 1;
             }
@@ -109,10 +111,7 @@ impl WordArray {
 fn utf8_parse(t: String) -> WordArray {
     let t = t.into_bytes();
     let e = t.len();
-    let mut the_max = 0;
-    for i in 0..e {
-        the_max = the_max.max(i >> 2); // opti?
-    }
+    let the_max = (e - 1) >> 2;
     let mut s = vec![0i32; the_max + 1];
     for i in 0..e {
         s[i >> 2] |= (255 & t[i] as i32) << (24 - (i % 4) * 8);
@@ -141,17 +140,12 @@ fn pkcs7_pad(t: &mut WordArray, e: i32) {
 }
 
 fn aes_encrypt(words: WordArray, key: WordArray, _cfg: Option<()>) -> WordArray {
-    const fn gen_consts() -> [[i32; 256]; 10] {
+    const fn gen_consts() -> [[i32; 256]; 5] {
         let mut h = [0; 256];
-        let mut r = [0; 256];
         let mut n = [0; 256];
         let mut c = [0; 256];
         let mut l = [0; 256];
         let mut o = [0; 256];
-        let mut a = [0; 256];
-        let mut p = [0; 256];
-        let mut f = [0; 256];
-        let mut g = [0; 256];
         let mut t = [0usize; 256];
         let mut e = 0;
         while e < 256 {
@@ -165,20 +159,14 @@ fn aes_encrypt(words: WordArray, key: WordArray, _cfg: Option<()>) -> WordArray 
             let mut j = s ^ (s << 1) ^ (s << 2) ^ (s << 3) ^ (s << 4);
             j = (j >> 8) ^ (255 & j) ^ 99;
             h[e] = j as _;
-            r[j] = e as _;
             let d = t[e];
             let z = t[d];
             let u = t[z];
-            let mut y = (257 * t[j]) ^ (16843008 * j);
+            let y = (257 * t[j]) ^ (16843008 * j);
             n[e] = ((y << 24) | (y >> 8)) as _;
             c[e] = ((y << 16) | (y >> 16)) as _;
             l[e] = ((y << 8) | (y >> 24)) as _;
             o[e] = y as _;
-            y = (16843009 * u) ^ (65537 * z) ^ (257 * d) ^ (16843008 * e);
-            a[j] = ((y << 24) | (y >> 8)) as _;
-            p[j] = ((y << 16) | (y >> 16)) as _;
-            f[j] = ((y << 8) | (y >> 24)) as _;
-            g[j] = y as _;
             if e != 0 {
                 e = d ^ t[t[t[u ^ d]]];
                 s ^= t[t[s]];
@@ -188,29 +176,23 @@ fn aes_encrypt(words: WordArray, key: WordArray, _cfg: Option<()>) -> WordArray 
             }
             i += 1;
         }
-        [h, r, n, c, l, o, a, p, f, g]
+        [h, n, c, l, o]
     }
-    const RR_: [[i32; 256]; 10] = gen_consts();
-    let [h, _r, n, c, l, o, a, p, f, g] = RR_;
+    const RR_: [[i32; 256]; 5] = gen_consts();
+    let [h, n, c, l, o] = RR_;
     let d = [0, 1, 2, 4, 8, 16, 32, 64, 128, 27, 54];
 
-    let l_kk = key;
-    let mut l_twa = WordArray {
-        words: Vec::new(),
-        sig_bytes: 0,
-    };
+    let mut l_twa = words;
     let l_nr9;
     let l_be = 4;
     let mut l_k4 = Vec::new();
-    let mut l_i1 = [0; 44];
     {
         // _doReset()
-        let words = l_kk.words;
-        let sbm4 = (l_kk.sig_bytes / 4) as usize;
+        let words = key.words;
+        let sbm4 = (key.sig_bytes / 4) as usize;
         l_nr9 = sbm4 + 6;
         let n = 4 * (l_nr9 + 1) as usize;
-        let mut t = 0;
-        let mut e;
+        let mut t;
         let mut i = 0;
         while i < n {
             if i < sbm4 {
@@ -221,47 +203,30 @@ fn aes_encrypt(words: WordArray, key: WordArray, _cfg: Option<()>) -> WordArray 
                     t = (t << 8) | ((t as u32 >> 24) as i32);
                     let t2 = t as u32;
                     t = (h[(t2 >> 24) as usize] << 24)
-                        | (h[((t2 >> 16) as usize) & 255] << 16)
-                        | (h[((t2 >> 8) as usize) & 255] << 8)
+                        | (h[(t2 >> 16 & 255) as usize] << 16)
+                        | (h[(t2 >> 8 & 255) as usize] << 8)
                         | h[255 & t2 as usize];
                     t ^= d[i / sbm4] << 24;
                 } else if sbm4 > 6 && i % sbm4 == 4 {
                     let t2 = t as u32;
                     t = (h[(t2 >> 24) as usize] << 24)
-                        | (h[((t2 >> 16) as usize) & 255] << 16)
-                        | (h[((t2 >> 8) as usize) & 255] << 8)
+                        | (h[(t2 >> 16 & 255) as usize] << 16)
+                        | (h[(t2 >> 8 & 255) as usize] << 8)
                         | h[255 & t2 as usize];
                 }
                 l_k4.push(l_k4[i - sbm4] ^ t);
             }
             i += 1;
         }
-        let mut i = 0;
-        while i < n {
-            e = n - i;
-
-            l_i1[i] = if i < 4 || e <= 4 {
-                t
-            } else {
-                let t2 = t as u32;
-                a[h[(t2 >> 24) as usize] as usize]
-                    ^ p[h[(t2 >> 16) as usize & 255] as usize]
-                    ^ f[h[(t2 >> 8) as usize & 255] as usize]
-                    ^ g[h[255 & t2 as usize] as usize]
-            };
-
-            i += 1;
-        }
     }
     {
         // f5()
-        l_twa.concat(words);
         pkcs7_pad(&mut l_twa, l_be);
     }
     {
         // p8()
         let mut s = Vec::new();
-        let lout = div_ceil(l_twa.sig_bytes, 4 * l_be);
+        let lout = div_ceil_posi(l_twa.sig_bytes, 4 * l_be);
         let lxlbe = lout * l_be;
         let a = l_twa.sig_bytes.min(4 * lxlbe);
         if lxlbe != 0 {
@@ -277,9 +242,9 @@ fn aes_encrypt(words: WordArray, key: WordArray, _cfg: Option<()>) -> WordArray 
                 while j < l_nr9 {
                     macro_rules! vs_n {
                         ($k0:expr, $k1:expr, $k2:expr, $k3:expr) => {{
-                            let vs_n_v = n[($k0 as u32) as usize >> 24]
-                                ^ c[($k1 as u32 >> 16) as usize & 255]
-                                ^ l[($k2 as u32 >> 8) as usize & 255]
+                            let vs_n_v = n[($k0 as u32 >> 24) as usize]
+                                ^ c[($k1 as u32 >> 16 & 255) as usize]
+                                ^ l[($k2 as u32 >> 8 & 255) as usize]
                                 ^ o[255 & $k3 as usize]
                                 ^ l_k4[g];
                             g += 1;
@@ -300,9 +265,9 @@ fn aes_encrypt(words: WordArray, key: WordArray, _cfg: Option<()>) -> WordArray 
                     ($k0:expr, $k1:expr, $k2:expr, $k3:expr) => {{
                         #[allow(unused_assignments)]
                         {
-                            let te_n_v = ((h[$k0 as u32 as usize >> 24] << 24)
-                                | (h[($k1 as u32 >> 16) as usize & 255] << 16)
-                                | (h[($k2 as u32 >> 8) as usize & 255] << 8)
+                            let te_n_v = ((h[($k0 as u32 >> 24) as usize] << 24)
+                                | (h[($k1 as u32 >> 16 & 255) as usize] << 16)
+                                | (h[($k2 as u32 >> 8 & 255) as usize] << 8)
                                 | h[255 & $k3 as usize])
                                 ^ l_k4[g];
                             g += 1;
@@ -332,26 +297,26 @@ fn aes_encrypt(words: WordArray, key: WordArray, _cfg: Option<()>) -> WordArray 
     l_twa
 }
 
-fn btoa(s: String) -> String {
+fn btoa(s: &str) -> String {
     // https://github.com/zloirock/core-js/blob/master/packages/core-js/modules/web.btoa.js
-    let s = s.into_bytes();
+    let s = s.as_bytes();
     let mut r = Vec::new();
     let mut map = BASE64_CHARS;
     let mut block = 0usize;
-    let mut position = 0.0;
-    let len = s.len() as f64;
+    let mut position = 0;
+    let len = s.len();
     while {
-        if position < len {
+        if position < len * 4 {
             true
         } else {
             map = b"=";
-            position % 1.0 != 0.0
+            position % 4 != 0
         }
     } {
-        position += 0.75;
-        let char_code = *s.get(position as usize).unwrap_or(&0);
-        block = block << 8 | char_code as usize;
-        r.push(map[(63 & block >> (8 - (position % 1.0 * 8.0) as usize)) as usize])
+        position += 3;
+        let char_code = *s.get(position / 4).unwrap_or(&0) as usize;
+        block = block << 8 | char_code;
+        r.push(map[63 & block >> (8 - (position % 4 * 2))])
     }
     unsafe { String::from_utf8_unchecked(r) }
 }
@@ -363,5 +328,5 @@ pub fn encrypt(s: String) -> String {
         words: vec![1947217763, 1550666530, -1301273701, -1041739952],
         sig_bytes: 16,
     };
-    btoa(aes_encrypt(words, key, None).to_base64())
+    btoa(&aes_encrypt(words, key, None).to_base64())
 }

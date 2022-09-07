@@ -90,9 +90,9 @@ async fn check_in() -> Result<()> {
             .body(hyper::Body::empty())?;
         let submit_token = fetch_json(request, "/data/submitToken").await?;
 
+        let uri = "http://dc.just.edu.cn/dfi/formData/saveFormSubmitDataEncryption";
         let body = format! {r#"{{"dataMap":{data},"formWid":"{form_wid}","submitToken":"{submit_token}"}}"#};
         let body = cryptojs::encrypt(body);
-        let uri = "http://dc.just.edu.cn/dfi/formData/saveFormSubmitDataEncryption";
         let request = hyper::Request::post(uri)
             .header("authentication", &authentication)
             .body(body.into())?;
