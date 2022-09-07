@@ -19,7 +19,7 @@ async fn main() {
     println!("enter :q to quit");
     println!("authorization token = {}", *auth::TOKEN);
 
-    db_upgrade(); // uncomment this if we need to upgrade database
+    // db_upgrade(); // uncomment this if we need to upgrade database
 
     thread::spawn(|| loop {
         let buf = &mut String::new();
@@ -80,8 +80,9 @@ async fn main() {
 }
 
 /// Deal with database upgrade.
-// #[cfg(feature = "db_upgrade")]
+#[cfg(feature = "db_upgrade")]
 fn db_upgrade() {
+    const CURRENT_VER: &str = env!("CARGO_PKG_VERSION");
     fn db_set(k: &str, v: &[u8]) {
         db!("REPLACE INTO admin VALUES (?1, ?2)", [k, v]).unwrap();
     }
@@ -90,9 +91,10 @@ fn db_upgrade() {
     }
     if !matches!(
         db_get("version"),
-        Some((v,)) if v == b"0.6.0-alpha-10"
+        Some((v,)) if v == CURRENT_VER.as_bytes()
     ) {
-        db_set("version", b"0.6.0-alpha-10");
+        println!("upgrade database structure to v{CURRENT_VER}");
+        db_set("version", CURRENT_VER.as_bytes());
         db!("DROP TABLE health_list").unwrap();
     }
 }
