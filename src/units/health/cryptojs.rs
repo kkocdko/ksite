@@ -1,6 +1,6 @@
 //! Incomplete reimplement of
 //! [crypto-js](https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.js)
-//! with pure Rust.
+//! with pure Rust. The code here is not suitable for reading by human.
 //!
 //! # Why
 //!
@@ -30,6 +30,11 @@ fn div_ceil_posi(lhs: i32, rhs: i32) -> i32 {
     } else {
         d
     }
+}
+
+struct ConstWordArray<const N: usize> {
+    words: [i32; N],
+    sig_bytes: i32,
 }
 
 struct WordArray {
@@ -96,7 +101,7 @@ impl WordArray {
             }
             let mut j = 0;
             while j < 4 && 4 * i + 3 * j < 4 * sig_bytes {
-                r.push(BASE64_CHARS[((s >> (6 * (3 - j))) & 63) as usize]);
+                r.push(BASE64_CHARS[(s >> (6 * (3 - j)) & 63) as usize]);
                 j += 1;
             }
             i += 3;
@@ -139,7 +144,7 @@ fn pkcs7_pad(t: &mut WordArray, e: i32) {
     t.concat(padding);
 }
 
-fn aes_encrypt(words: WordArray, key: WordArray, _cfg: Option<()>) -> WordArray {
+fn aes_encrypt(words: WordArray, key: ConstWordArray<4>, _cfg: Option<()>) -> WordArray {
     const fn gen_consts() -> [[i32; 256]; 5] {
         let mut h = [0; 256];
         let mut n = [0; 256];
@@ -159,8 +164,8 @@ fn aes_encrypt(words: WordArray, key: WordArray, _cfg: Option<()>) -> WordArray 
             let mut j = s ^ (s << 1) ^ (s << 2) ^ (s << 3) ^ (s << 4);
             j = (j >> 8) ^ (255 & j) ^ 99;
             h[e] = j as _;
-            let d = t[e];
-            let z = t[d];
+            let x = t[e];
+            let z = t[x];
             let u = t[z];
             let y = (257 * t[j]) ^ (16843008 * j);
             n[e] = ((y << 24) | (y >> 8)) as _;
@@ -168,7 +173,7 @@ fn aes_encrypt(words: WordArray, key: WordArray, _cfg: Option<()>) -> WordArray 
             l[e] = ((y << 8) | (y >> 24)) as _;
             o[e] = y as _;
             if e != 0 {
-                e = d ^ t[t[t[u ^ d]]];
+                e = x ^ t[t[t[u ^ x]]];
                 s ^= t[t[s]];
             } else {
                 s = 1;
@@ -324,8 +329,8 @@ fn btoa(s: &str) -> String {
 /// Encrypt the string for JUST's form submit api.
 pub fn encrypt(s: String) -> String {
     let words = utf8_parse(s);
-    let key = WordArray {
-        words: vec![1947217763, 1550666530, -1301273701, -1041739952],
+    let key = ConstWordArray {
+        words: [1947217763, 1550666530, -1301273701, -1041739952],
         sig_bytes: 16,
     };
     btoa(&aes_encrypt(words, key, None).to_base64())

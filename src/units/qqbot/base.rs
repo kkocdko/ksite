@@ -71,7 +71,7 @@ pub async fn get_handler() -> Html<String> {
         body += line;
         body += "\n";
     }
-    body.push_str(PAGE[1]);
+    body += PAGE[1];
     Html(body)
 }
 
@@ -179,7 +179,7 @@ async fn launch() -> Result<()> {
             }
             tokio::time::sleep(Duration::from_secs(1)).await;
             qr_resp = CLIENT.query_qrcode_result(&img_sig).await?;
-            tokio::time::sleep(Duration::from_secs(2)).await;
+            tokio::time::sleep(Duration::from_secs(3)).await;
         }
     }
     // instead of `ricq::ext::common::after_login`
@@ -213,7 +213,7 @@ async fn on_event(event: QEvent) -> Result<()> {
             let mut recent = RECENT.lock().unwrap();
             recent.push(e.inner);
             let len = recent.len();
-            // filter out the expired messages if these conditions are all true:
+            // filter out the expired messages if one of these conditions is satisfied:
             // 1. message storage size is reached the limit
             // 2. size % 8 == 0, throttling while extreme scene
             if len >= 64 && len % 8 == 0 {
