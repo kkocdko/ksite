@@ -1,18 +1,16 @@
 name: CI
-
 on: [push, pull_request]
-
+env:
+  RUSTC_BOOTSTRAP: 1
 jobs:
   CI:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-
+      - name: Checkout
+        uses: actions/checkout@v3
       - name: Rustup Show
         run: rustup show
-
       - name: Cache
         uses: Swatinem/rust-cache@v2
-
       - name: Cargo Check
-        run: RUSTC_BOOTSTRAP=1 cargo check --profile=ci
+        run: cargo check --profile=ci
