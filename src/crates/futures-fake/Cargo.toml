@@ -2,7 +2,7 @@
 
 [package]
 name = "futures"
-version = "0.3.901"
+version = "0.3.900"
 edition = "2021"
 
 [lib]
