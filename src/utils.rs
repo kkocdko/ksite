@@ -232,6 +232,11 @@ pub mod str_const_ops_ {
     /// assert_eq!(PAGE, ["<h1>", "</h1><p>", "</p>"]);
     /// ```
     pub const fn slot<const N: usize>(raw: &str) -> [&str; N] {
+        if N == 1 {
+            let mut ret = [""; N];
+            ret[0] = raw;
+            return ret;
+        }
         const MARK: [u8; 10] = *b"/*{slot}*/";
         let raw = raw.as_bytes();
         let idxs: [usize; N] = kmp(raw, MARK);

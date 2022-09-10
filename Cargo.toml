@@ -54,8 +54,8 @@ tower-http = { version = "0.3", features = ["auth"] }
 webpki-roots = "0.22"
 
 [patch.crates-io]
-ricq = { rev = "bd07155", git = "https://github.com/lz1998/ricq", version = "=0.1.17" } # 259493a
-futures = { path = "src/crates/futures-fake", version = "=0.3.900" } # for `cached`
-hashbrown = { path = "src/crates/hashbrown-fake", version = "=0.11.2" } # for `cached`
-prost-build = { path = "src/crates/prost-gen", version = "=0.9.900" } # for `ricq-core`
-tracing = { path = "src/crates/tracing-fake", version = "=0.1.900" }
+ricq = { rev = "bd07155", git = "https://github.com/lz1998/ricq" } # 259493a
+futures = { path = "src/crates/futures-fake" } # for `cached`
+hashbrown = { path = "src/crates/hashbrown-fake" } # for `cached`
+prost-build = { path = "src/crates/prost-gen" } # for `ricq-core`
+tracing = { path = "src/crates/tracing-fake" }
