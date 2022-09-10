@@ -1,17 +1,29 @@
 #![allow(unused)]
 
 /*
-剪贴板和文件存储服务，读写本地文件，hash分流
+剪贴板 & 轻量文件存储
 
-账户登录
-文件存储
-加密
+features:
+* 账户登录
+* 可选加密
+* 文件分享，fork
+* 轻量，快速，不使用框架的界面
+
+details:
+* 经过优化的自增 id
+* id 不要超过 i64（测试 u64 的可能性？）
+* 写入原始内容，前端预览时自行处理转义
+* 不要做服务端解密，前端做边解密边下载
+* 如果加密，那么 mime 就失去了意义，所以用 mime 来存储是否加密的信息
+* 类似 git fork, 但不使用 cow
+
+读写本地文件账户登录，加密
 原生js糊的轻量的界面，借鉴一点点react之类的东西
-在用户之间分享
-类似 git fork, cow
+在用户之间分享，转移所有权
 尽量优化性能
-有限制的自增和其他结合的 ID
-
+用户频率限制，空间限制，会员制？
+内部用数字存储cid，文件名和路径也是数字？
+账户创建 clipboard 的速度限制。
 区分创建与插入？评估性能影响
 密码用hash，用户名和密码都固定宽度？优化性能？
 页面缓存，LRU？
@@ -20,25 +32,14 @@ https://www.runoob.com/sqlite/sqlite-intro.html
 
 密码hash加盐
 
-用户频率限制，空间限制，会员制？
-写入原始内容，前段自行处理转义
-内部用数字存储cid，文件名也是数字
-
 /paste/raw/:id
-
-每个账户1024条，固定大小的“地址空间”？
-不要超过i64
-不要做服务端解密
-
-如果加密，那么mime就失去了意义，所以用mime来存储是否加密的信息
 
 -----
 /ksite
 /ksite.db
 
 */
-use crate::{db, strip_str};
-// use crate::utils::slot;
+use crate::{db, include_page, strip_str};
 use axum::extract::{Form, Path};
 use axum::response::{Html, Redirect};
 use axum::routing::MethodRouter;
@@ -144,5 +145,7 @@ pub fn service() -> Router {
     // db_init();
     // dbg!(db!("VACUUM"));
     // mentions about the path later?
+    const PAGE: [&str; 1] = include_page!("page.html");
     Router::new()
+    // .route("/paste_next", MethodRouter::new().get(|| async { PAGE[0] }))
 }
