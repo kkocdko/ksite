@@ -18,7 +18,7 @@ All in one solution for my server.
 
 - SQLite `WAL` mode sync config?
 
-- GitHub Actions always recompile many crates.
+- Fix: GitHub Actions always recompile many crates.
 
 ## Build with MUSL
 

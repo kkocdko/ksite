@@ -35,7 +35,7 @@ pub fn encode_uri(i: &str) -> String {
         table
     }
 
-    const TABLE_LEN: usize = u8::MAX as usize + 1;
+    const TABLE_LEN: usize = u8::MAX as usize + 1; // 256
     const IS_VALID: [bool; TABLE_LEN] = gen_table();
 
     fn hex(d: u8) -> u8 {
@@ -107,7 +107,6 @@ impl IntoRequest for &str {
         ret.into_request()
     }
 }
-// TODO: simplify?
 impl IntoRequest for &String {
     fn into_request(self) -> Request<Body> {
         self.as_str().into_request()

@@ -1,4 +1,4 @@
-//! Provide login, token storage and other base functions.
+//! Provide login, token storage and other low-level functions.
 use super::gen_reply;
 use crate::utils::read_body;
 use crate::{care, db, include_page};

@@ -17,6 +17,8 @@ details:
 * 如果加密，那么 mime 就失去了意义，所以用 mime 来存储是否加密的信息
 * 类似 git fork, 但不使用 cow
 
+sessions?
+全部 public，未分享的用用户密码加密?
 读写本地文件账户登录，加密
 原生js糊的轻量的界面，借鉴一点点react之类的东西
 在用户之间分享，转移所有权
@@ -27,6 +29,8 @@ details:
 区分创建与插入？评估性能影响
 密码用hash，用户名和密码都固定宽度？优化性能？
 页面缓存，LRU？
+protobuf?
+webdav?
 
 https://www.runoob.com/sqlite/sqlite-intro.html
 
@@ -40,8 +44,9 @@ https://www.runoob.com/sqlite/sqlite-intro.html
 
 */
 use crate::{db, include_page, strip_str};
-use axum::extract::{Form, Path};
-use axum::response::{Html, Redirect};
+use axum::body::Body;
+use axum::extract::{Form, Json, Path, RequestParts};
+use axum::response::{Html, IntoResponse, Redirect};
 use axum::routing::MethodRouter;
 use axum::Router;
 use serde::Deserialize;
@@ -94,7 +99,7 @@ fn db_data_r(cid: i64) -> Option<(Vec<u8>, Vec<u8>, Vec<u8>)> {
     let sql = "SELECT * FROM paste_data WHERE cid = ?";
     db!(sql, [cid], ^(1, 2, 3)).ok()
 }
-fn db_data_r_by_user(uid: i64) -> Vec<(i64, Vec<u8>, Vec<u8>)> {
+fn db_data_r_by_user(uid: &[u8]) -> Vec<(i64, Vec<u8>, Vec<u8>)> {
     let sql = "SELECT * FROM paste_data WHERE uid = ?";
     db!(sql, [uid], (0, 2, 3)).unwrap()
 }
@@ -141,11 +146,30 @@ fn test_int2str2int() {
     assert_eq!(str2int(cid), SRC);
 }
 
+#[derive(Deserialize, Debug)]
+#[serde(tag = "Operation")]
+enum Operation<'a> {
+    UserC { uid: &'a [u8], upw: &'a [u8] },
+    DataR { cid: i64 },
+    DataRByUser { uid: &'a [u8] },
+}
+
+// receive a json?
+async fn post_handler() -> impl IntoResponse {
+    // req: RequestParts<Vec<u8>>
+    // a: Json<Operation<'_>>
+    "" // return json?
+}
+
 pub fn service() -> Router {
     // db_init();
     // dbg!(db!("VACUUM"));
     // mentions about the path later?
     const PAGE: [&str; 1] = include_page!("page.html");
-    Router::new()
-    // .route("/paste_next", MethodRouter::new().get(|| async { PAGE[0] }))
+    Router::new().route(
+        "/paste_next",
+        MethodRouter::new()
+            .get(|| async { PAGE[0] })
+            .post(post_handler),
+    )
 }

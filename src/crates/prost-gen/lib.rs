@@ -233,6 +233,7 @@ impl<'a> Oneof<'a> {
 }
 
 enum TokenKind {
+    Comment,
     Symbol,
     Number,
     Word,
@@ -266,6 +267,7 @@ impl<'a> TokenStream<'a> {
         loop {
             match next_token(&mut s) {
                 (TokenKind::End, _) => break,
+                (TokenKind::Comment, _) => continue, // TODO: support comments
                 token => ret.tokens.push(token),
             }
         }
@@ -274,58 +276,41 @@ impl<'a> TokenStream<'a> {
 }
 
 fn next_token<'a>(s: &mut &'a [u8]) -> Token<'a> {
-    let mut kind = TokenKind::End;
-    let mut begun = false;
-    let mut range = (0, 0);
-    let found = |from, c| from + s[from..].iter().position(|&v| v == c).unwrap();
-    let is_symbol = |c| matches!(c, b'{' | b'}' | b'=' | b';' | b'"');
-    while let Some(&v) = s.get(range.1) {
-        match begun {
-            false if v == b'/' => {
-                // comments
-                range.1 += 1;
-                match s[range.1] {
-                    b'/' => range.1 = found(range.1 + 1, b'\n'),
-                    b'*' => loop {
-                        range.1 = found(range.1 + 1, b'*');
-                        if s[range.1 + 1] == b'/' {
-                            range.1 += 2;
-                            break;
-                        }
-                    },
-                    _ => unreachable!(),
-                }
-            }
-            false if v.is_ascii_whitespace() => {
-                range.1 += 1;
-            }
-            false => {
-                kind = match v {
-                    _ if is_symbol(v) => TokenKind::Symbol,
-                    _ if v.is_ascii_digit() => TokenKind::Number,
-                    _ => TokenKind::Word,
-                };
-                range.0 = range.1;
-                begun = true;
-            }
-            true => match kind {
-                TokenKind::Symbol => {
-                    range.1 += 1;
-                    break;
-                }
-                TokenKind::Number if v.is_ascii_digit() => {
-                    range.1 += 1;
-                }
-                TokenKind::Word if !is_symbol(v) && !v.is_ascii_whitespace() => {
-                    range.1 += 1;
-                }
-                _ => break,
-            },
-        }
+    // https://github.com/rust-lang/rust/issues/94035
+    // *s = s.trim_ascii_start();
+    while matches!(s.first(), Some(c) if c.is_ascii_whitespace()) {
+        *s = &s[1..];
     }
-    let ret = (kind, &s[range.0..range.1]);
-    *s = &s[range.1..];
-    ret
+    let (kind, len) = match s.first() {
+        Some(b'/') => {
+            let mut iter = s.iter();
+            let r = match s[1] {
+                b'/' => iter.take_while(|&&c| c != b'\n').count(),
+                b'*' => {
+                    iter.next();
+                    while *iter.next().unwrap() != b'/' {
+                        iter.find(|&&c| c == b'*');
+                    }
+                    s.len() - iter.size_hint().0
+                }
+                _ => unreachable!(),
+            };
+            (TokenKind::Comment, r)
+        }
+        Some(b'{' | b'}' | b'=' | b';' | b'"') => (TokenKind::Symbol, 1),
+        Some(c) if c.is_ascii_digit() => {
+            let r = (s.iter()).take_while(|&&c| c.is_ascii_digit());
+            (TokenKind::Number, r.count())
+        }
+        Some(_) => {
+            let r = (s.iter()).take_while(|&&c| c.is_ascii_alphanumeric() || c == b'_');
+            (TokenKind::Word, r.count())
+        }
+        None => (TokenKind::End, 0),
+    };
+    let body;
+    (body, *s) = s.split_at(len);
+    (kind, body)
 }
 
 /// Split an identifier into sections for case transforms later.
@@ -802,8 +787,8 @@ pub fn compile_protos(
 pub fn main() {
     // return test_to_any_case();
 
-    const IN_DIR: &str = "target/3_next_in";
-    const OUT_DIR: &str = "target/2_out";
+    const IN_DIR: &str = "./ricq/ricq-core/src/pb";
+    const OUT_DIR: &str = "./target/pb-out";
     let mut v = Vec::new();
     recurse_dir(&mut v, IN_DIR);
     fn recurse_dir(v: &mut Vec<PathBuf>, dir: impl AsRef<Path>) {
