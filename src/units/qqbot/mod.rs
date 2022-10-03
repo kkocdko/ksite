@@ -168,7 +168,7 @@ macro_rules! up_notify {
     };
 }
 
-static TICKER: Lazy<Ticker> = Lazy::new(|| Ticker::new_p8(&[(-1, 20, 0), (-1, 50, 0)]));
+static TICKER: Lazy<Ticker> = Lazy::new(|| Ticker::new_p8(&[(-1, 15, 0), (-1, 45, 0)]));
 pub async fn tick() {
     if !TICKER.tick() {
         return;

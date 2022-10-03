@@ -110,7 +110,7 @@ pub fn service() -> Router {
     )
 }
 
-static TICKER: Lazy<Ticker> = Lazy::new(|| Ticker::new_p8(&[(-1, 15, 0)]));
+static TICKER: Lazy<Ticker> = Lazy::new(|| Ticker::new_p8(&[(-1, 10, 0)]));
 pub async fn tick() {
     if !TICKER.tick() {
         return;
