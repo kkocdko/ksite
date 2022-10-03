@@ -106,16 +106,26 @@ async fn check_in() -> Result<()> {
 
 pub fn service() -> Router {
     db_init();
-    Router::new().route(
-        "/health",
-        MethodRouter::new()
-            .post(post_handler)
-            .layer(crate::auth::auth_layer()) // require auth only for post
-            .get(get_handler),
-    )
+    Router::new()
+        .route(
+            "/health",
+            MethodRouter::new()
+                .post(post_handler)
+                .layer(crate::auth::auth_layer()) // require auth only for post
+                .get(get_handler),
+        )
+        .route(
+            "/health/trigger",
+            MethodRouter::new()
+                .get(|| async {
+                    care!(check_in().await).ok();
+                    Redirect::to("/health")
+                })
+                .layer(crate::auth::auth_layer()),
+        )
 }
 
-static TICKER: Lazy<Ticker> = Lazy::new(|| Ticker::new_p8(&[(3, 10, 0), (5, 10, 0)]));
+static TICKER: Lazy<Ticker> = Lazy::new(|| Ticker::new_p8(&[(7, 5, 0), (8, 5, 0), (9, 5, 0)]));
 pub async fn tick() {
     if !TICKER.tick() {
         return;

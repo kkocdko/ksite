@@ -20,6 +20,8 @@ All in one solution for my server.
 
 - Fix: GitHub Actions always recompile many crates.
 
+- Replace `anyhow` to simpler one?
+
 ## Build with MUSL
 
 Use [messense/cargo-zigbuild](https://github.com/messense/cargo-zigbuild) please.
