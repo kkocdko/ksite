@@ -14,6 +14,7 @@ pub static DB_: Lazy<Mutex<Connection>> = Lazy::new(|| {
     // The `WAL` mode will improve writing but slow down reading a little.
     db.pragma_update(None, "journal_mode", "TRUNCATE").unwrap();
     // db.pragma_update(None, "journal_mode", "WAL").unwrap();
+    // TODO: use WAL mode, switch to TRUNCATE before backup
 
     // Sync less often than `FULL` and still safe enough.
     db.pragma_update(None, "synchronous", "NORMAL").unwrap();

@@ -1,4 +1,6 @@
 //! Auto submit JUST's health check-in form.
+//!
+//! The prototype is https://github.com/kkocdko/user-scripts/blob/master/scripts/just-kit/health-check-in.js
 use crate::ticker::Ticker;
 use crate::utils::{fetch, fetch_json, fetch_text, OptionResult};
 use crate::{care, db, include_page, strip_str};
@@ -65,8 +67,6 @@ async fn post_handler(Form(Member { id, password, data }): Form<Member>) -> Redi
 }
 
 async fn check_in() -> Result<()> {
-    // search `formData/saveFormSubmitDataEncryption` in `umi.js`, dump post data
-    // view result: http://dc.just.edu.cn/#/v2/formReportDetail/zGO2n4p7
     const LOGIN_EXECUTION_VALUE: &str = include_str!("login_execution_value.txt");
     let form_wid = "a5e94ae0b0e04193bae67c86cfd6e223";
     for (id, password, data) in db_list_get() {
@@ -125,7 +125,7 @@ pub fn service() -> Router {
         )
 }
 
-static TICKER: Lazy<Ticker> = Lazy::new(|| Ticker::new_p8(&[(7, 5, 0), (8, 5, 0), (9, 5, 0)]));
+static TICKER: Lazy<Ticker> = Lazy::new(|| Ticker::new_p8(&[(7, 5, 0), (8, 5, 0)]));
 pub async fn tick() {
     if !TICKER.tick() {
         return;
