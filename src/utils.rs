@@ -58,13 +58,18 @@ pub fn encode_uri(i: &str) -> String {
     unsafe { String::from_utf8_unchecked(o) }
 }
 
-/// Read `hyper::Body` into `Vec<u8>` with limited size.
+/// Read `hyper::Body` into `Vec<u8>`, returns emply if reached the limit size (2 MiB).
 ///
 /// Simpler than `hyper::body::to_bytes`.
 pub async fn read_body(mut body: Body) -> Vec<u8> {
     let mut v = Vec::new();
     while let Some(Ok(bytes)) = body.data().await {
         v.append(&mut bytes.into());
+        // 2 MiB
+        if v.len() > 2048 * 1024 {
+            v.clear();
+            break;
+        }
     }
     v
 }

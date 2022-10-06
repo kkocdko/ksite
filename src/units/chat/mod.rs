@@ -59,8 +59,8 @@ static ROOMS: Lazy<Mutex<HashMap<u32, Room>>> = Lazy::new(Default::default);
 async fn post_handler(Path(id): Path<u32>, body: RawBody) -> impl IntoResponse {
     let body = read_body(body.0).await;
     // limited to 512 KB
-    if body.len() > 512 * 1024 {
-        return "message too long";
+    if body.len() > 512 * 1024 || body.len() == 0 {
+        return "message too long or too short";
     }
     let msg = match String::from_utf8(body) {
         Ok(v) => v,
