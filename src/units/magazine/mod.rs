@@ -7,6 +7,7 @@ use axum::http::header::{HeaderName, CACHE_CONTROL, CONTENT_ENCODING, EXPIRES, R
 use axum::response::Html;
 use axum::routing::{MethodRouter, Router};
 use once_cell::sync::Lazy;
+use std::io::Read;
 use std::sync::Mutex; // with small data, Mutex seems faster than RwLock
 use std::time::{Duration, SystemTime};
 
@@ -92,11 +93,14 @@ async fn refresh() -> Result<()> {
         r.2.map(|v| generate(&v, &mut o, 20)).ok();
         r.3.map(|v| generate(&v, &mut o, 20)).ok();
         o += PAGE[1];
-        miniz_oxide::deflate::compress_to_vec(o.as_bytes(), 10)
+        let mut buf = Vec::new();
+        let mut gz = flate2::read::GzEncoder::new(o.as_bytes(), Default::default());
+        gz.read_to_end(&mut buf).unwrap();
+        buf
     })
     .await?;
     *CACHE.lock().unwrap() = (
-        [(EXPIRES, expires), (CONTENT_ENCODING, "deflate".into())],
+        [(EXPIRES, expires), (CONTENT_ENCODING, "gzip".into())],
         Html(o),
     );
     Ok(())
