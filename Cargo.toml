@@ -1,6 +1,6 @@
 [package]
 name = "ksite"
-version = "0.6.0-alpha-14"
+version = "0.6.0-alpha-16"
 edition = "2021"
 
 [profile.release]
@@ -54,8 +54,6 @@ tower-http = { version = "0.3", features = ["auth"] }
 webpki-roots = "0.22"
 
 [patch.crates-io]
-ricq = { rev = "bd07155", git = "https://github.com/lz1998/ricq" } # 259493a
-futures = { path = "src/crates/futures-fake" } # for `cached`
-hashbrown = { path = "src/crates/hashbrown-fake" } # for `cached`
+ricq = { rev = "d2f4d8d", git = "https://github.com/kkocdko/ricq" } # 259493a
 prost-build = { path = "src/crates/prost-gen" } # for `ricq-core`
 tracing = { path = "src/crates/tracing-fake" }
