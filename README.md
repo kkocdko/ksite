@@ -4,35 +4,33 @@ All in one solution for my server.
 
 ## TODO
 
-- `crate::auth`: admin auth from database.
-
-- `units::throw`: tiny 2D game, with webrtc, ai.
-
-- `units::admin`: db shrink, get token, admin login...
-
-- `units::record`: record evidence picture, audio and video in real-time.
+### 0.6.0
 
 - `units::paste_next`: (see the comments in its code).
 
-- No out-of-service updates.
+- `crate::auth`: auth from database.
 
-- SQLite `WAL` mode sync config?
+### 0.7.0
 
-- Fix: GitHub Actions always recompile many crates.
+- `crate`: proactive traffic restriction.
 
-- Replace `anyhow` to simpler one?
+- `crate`: no out-of-service updates.
 
-## Build with MUSL
+- `crate::database`: sqlite `WAL` mode.
 
-Use [messense/cargo-zigbuild](https://github.com/messense/cargo-zigbuild) please.
+- `units::admin`: database backup.
+
+- `units::throw`: tiny 2D game, with webrtc, ai.
+
+- `units::record`: record evidence picture, audio and video in real-time.
+
+## Build
+
+This crate used some unstable Rust features (most in `ricq` dependency), so use nightly toolchain please (or set `RUSTC_BOOTSTRAP=1` for stable toolchain).
+
+If you prefer musl libc, try [cargo-zigbuild](https://github.com/messense/cargo-zigbuild):
 
 ```
 # dnf install zig # for fedora
 cargo zigbuild --release --target=x86_64-unknown-linux-musl
 ```
-
-## License
-
-Dual license: If `qqbot` feature is enabled, AGPL-3.0; Or it's MIT.
-
-I'm not sure is this valid, FFmpeg uses different licenses (GPL / LGPL) for different features so...

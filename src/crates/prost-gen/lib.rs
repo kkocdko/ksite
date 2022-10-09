@@ -1,4 +1,5 @@
 use std::cell::Cell;
+// use std::collections::BTreeMap as HashMap;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -291,7 +292,7 @@ fn next_token<'a>(s: &mut &'a [u8]) -> Token<'a> {
                     while *iter.next().unwrap() != b'/' {
                         iter.find(|&&c| c == b'*');
                     }
-                    s.len() - iter.size_hint().0
+                    s.len() - iter.count()
                 }
                 _ => unreachable!(),
             };
@@ -306,8 +307,9 @@ fn next_token<'a>(s: &mut &'a [u8]) -> Token<'a> {
             let r = (s.iter()).take_while(|&&c| c.is_ascii_alphanumeric() || c == b'_');
             (TokenKind::Word, r.count())
         }
-        None => (TokenKind::End, 0),
+        None => return (TokenKind::End, b""),
     };
+    assert!(len != 0);
     let body;
     (body, *s) = s.split_at(len);
     (kind, body)
@@ -319,9 +321,9 @@ fn to_any_case(s: &[u8]) -> Vec<&[u8]> {
     let mut parts = Vec::<&[u8]>::with_capacity(8);
     let mut range = (0, 0);
     let kindof = |c| match c {
-        b'A'..=b'Z' => 1i8, //  1 = uppercase
-        b'0'..=b'9' => 0i8, //  0 = digit
-        _ => -1i8,          // -1 = lowercase
+        b'A'..=b'Z' => 1, //  1 = uppercase
+        b'0'..=b'9' => 0, //  0 = digit
+        _ => -1i8,        // -1 = lowercase or underline
     };
     'label: while let Some(&first) = s.get(range.1) {
         range.1 += 1;
@@ -796,7 +798,7 @@ pub fn main() {
             let path = entry.unwrap().path();
             if path.is_dir() {
                 recurse_dir(v, path);
-            } else if let Some(true) = path.extension().map(|v| v == "proto") {
+            } else if matches!(path.extension(), Some(v) if v == "proto") {
                 v.push(path);
             }
         }

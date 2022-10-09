@@ -59,7 +59,7 @@ static ROOMS: Lazy<Mutex<HashMap<u32, Room>>> = Lazy::new(Default::default);
 async fn post_handler(Path(id): Path<u32>, body: RawBody) -> impl IntoResponse {
     let body = read_body(body.0).await;
     // limited to 512 KB
-    if body.len() > 512 * 1024 || body.len() == 0 {
+    if body.len() > 512 * 1024 || body.is_empty() {
         return "message too long or too short";
     }
     let msg = match String::from_utf8(body) {
@@ -72,8 +72,8 @@ async fn post_handler(Path(id): Path<u32>, body: RawBody) -> impl IntoResponse {
         None => return "room not exist",
     };
     match room.tx.send(msg) {
-        Ok(_) => "", // empty response body means succeeded
         Err(_) => "no receivers exist",
+        Ok(_) => "", // empty response body means succeeded
     }
 }
 

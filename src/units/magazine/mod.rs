@@ -7,7 +7,7 @@ use axum::http::header::{HeaderName, CACHE_CONTROL, CONTENT_ENCODING, EXPIRES, R
 use axum::response::Html;
 use axum::routing::{MethodRouter, Router};
 use once_cell::sync::Lazy;
-use std::io::Read;
+use std::io::Read as _;
 use std::sync::Mutex; // with small data, Mutex seems faster than RwLock
 use std::time::{Duration, SystemTime};
 
@@ -107,14 +107,16 @@ async fn refresh() -> Result<()> {
 }
 
 pub fn service() -> Router {
-    tokio::spawn(async { care!(refresh().await).ok() });
+    tokio::spawn(async {
+        care!(refresh().await).ok();
+    });
     Router::new().route(
         "/magazine",
         MethodRouter::new().get(|| async { CACHE.lock().unwrap().clone() }),
     )
 }
 
-static TICKER: Lazy<Ticker> = Lazy::new(|| Ticker::new_p8(&[(-1, 10, 0)]));
+static TICKER: Lazy<Ticker> = Lazy::new(|| Ticker::new_p8(&[(-1, 4, 0)]));
 pub async fn tick() {
     if !TICKER.tick() {
         return;

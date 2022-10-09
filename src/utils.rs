@@ -98,21 +98,21 @@ static CLIENT: Lazy<Client<HttpsConnector<HttpConnector>>> = Lazy::new(|| {
     Client::builder().build(connector)
 });
 
-pub trait IntoRequest {
+pub trait ToRequest {
     fn into_request(self) -> Request<Body>;
 }
-impl IntoRequest for Request<Body> {
+impl ToRequest for Request<Body> {
     fn into_request(self) -> Request<Body> {
         self
     }
 }
-impl IntoRequest for &str {
+impl ToRequest for &str {
     fn into_request(self) -> Request<Body> {
         let ret = Request::get(encode_uri(self)).body(Body::empty()).unwrap();
         ret.into_request()
     }
 }
-impl IntoRequest for &String {
+impl ToRequest for &String {
     fn into_request(self) -> Request<Body> {
         self.as_str().into_request()
     }
@@ -121,12 +121,12 @@ impl IntoRequest for &String {
 /// Send a `Request` and return the response. Allow both HTTPS and HTTP.
 ///
 /// Unlike `reqwest` crate, this function dose not follow redirect.
-pub async fn fetch(request: impl IntoRequest) -> Result<Response<Body>> {
+pub async fn fetch(request: impl ToRequest) -> Result<Response<Body>> {
     Ok(CLIENT.request(request.into_request()).await?)
 }
 
 /// Fetch a URI, returns as text.
-pub async fn fetch_text(request: impl IntoRequest) -> Result<String> {
+pub async fn fetch_text(request: impl ToRequest) -> Result<String> {
     let response = fetch(request).await?;
     let body = read_body(response.into_body()).await;
     Ok(String::from_utf8(body)?)
@@ -143,7 +143,7 @@ pub async fn fetch_text(request: impl IntoRequest) -> Result<String> {
 /// // or this? { "data": { "size": 1024 } }
 /// assert_eq!(v, Ok("1024".to_string())); // the same result!
 /// ```
-pub async fn fetch_json(request: impl IntoRequest, pointer: &str) -> Result<String> {
+pub async fn fetch_json(request: impl ToRequest, pointer: &str) -> Result<String> {
     let text = fetch_text(request).await?;
     let v = serde_json::from_str::<serde_json::Value>(&text)?;
     let v = v

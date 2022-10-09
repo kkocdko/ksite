@@ -32,7 +32,7 @@ fn div_ceil_posi(lhs: i32, rhs: i32) -> i32 {
     }
 }
 
-struct ConstWordArray<const N: usize> {
+struct FixedWordArray<const N: usize> {
     words: [i32; N],
     sig_bytes: i32,
 }
@@ -144,7 +144,7 @@ fn pkcs7_pad(t: &mut WordArray, e: i32) {
     t.concat(padding);
 }
 
-fn aes_encrypt(words: WordArray, key: ConstWordArray<4>, _cfg: Option<()>) -> WordArray {
+fn aes_encrypt(words: WordArray, key: FixedWordArray<4>, _cfg: Option<()>) -> WordArray {
     const fn gen_consts() -> [[i32; 256]; 5] {
         let mut h = [0; 256];
         let mut n = [0; 256];
@@ -327,11 +327,11 @@ fn btoa(s: &str) -> String {
 }
 
 /// Encrypt the string for JUST's form submit api.
-pub fn encrypt(s: String) -> String {
+pub fn encrypt4just(s: String) -> String {
     let words = utf8_parse(s);
-    let key = ConstWordArray {
+    const KEY: FixedWordArray<4> = FixedWordArray {
         words: [1947217763, 1550666530, -1301273701, -1041739952],
         sig_bytes: 16,
     };
-    btoa(&aes_encrypt(words, key, None).to_base64())
+    btoa(&aes_encrypt(words, KEY, None).to_base64())
 }

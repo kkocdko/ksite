@@ -92,7 +92,7 @@ async fn check_in() -> Result<()> {
 
         let uri = "http://dc.just.edu.cn/dfi/formData/saveFormSubmitDataEncryption";
         let body = format! {r#"{{"dataMap":{data},"formWid":"{form_wid}","submitToken":"{submit_token}"}}"#};
-        let body = cryptojs::encrypt(body);
+        let body = cryptojs::encrypt4just(body);
         let request = hyper::Request::post(uri)
             .header("authentication", &authentication)
             .body(body.into())?;
@@ -125,7 +125,7 @@ pub fn service() -> Router {
         )
 }
 
-static TICKER: Lazy<Ticker> = Lazy::new(|| Ticker::new_p8(&[(7, 5, 0), (8, 5, 0)]));
+static TICKER: Lazy<Ticker> = Lazy::new(|| Ticker::new_p8(&[(6, 2, 0), (8, 2, 0)]));
 pub async fn tick() {
     if !TICKER.tick() {
         return;

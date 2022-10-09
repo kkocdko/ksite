@@ -65,7 +65,7 @@ impl Ticker {
     /// Returns `true` if the next instant has been reached.
     pub fn tick(&self) -> bool {
         // https://doc.rust-lang.org/stable/reference/expressions/operator-expr.html#semantics
-        // "Casting between two integers of the same size (e.g. i32 -> u32) is a no-op"
+        // > Casting between two integers of the same size (e.g. i32 -> u32) is a no-op
         let now = UNIX_EPOCH.elapsed().unwrap().as_secs() as _;
         if now >= self.next.load(Ordering::SeqCst) {
             let nexts = self.cfgs.iter().map(|&cfg| gen_next(now, cfg));
