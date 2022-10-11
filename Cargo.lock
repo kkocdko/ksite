@@ -541,6 +541,7 @@ version = "0.6.0-alpha-17"
 dependencies = [
  "anyhow",
  "askama_escape",
+ "async-trait",
  "axum",
  "flate2",
  "futures-core",
@@ -795,7 +796,7 @@ dependencies = [
 [[package]]
 name = "ricq"
 version = "0.1.17"
-source = "git+https://github.com/lz1998/ricq?rev=c49eb6f#c49eb6f7b7249e427fedcdbda8ce8642b9e19494"
+source = "git+https://github.com/kkocdko/ricq?rev=166ffc7#166ffc7587fb1ed7a9f059b833a4bcb892ebabcb"
 dependencies = [
  "async-trait",
  "bytes",
@@ -817,7 +818,7 @@ dependencies = [
 [[package]]
 name = "ricq-core"
 version = "0.1.17"
-source = "git+https://github.com/lz1998/ricq?rev=c49eb6f#c49eb6f7b7249e427fedcdbda8ce8642b9e19494"
+source = "git+https://github.com/kkocdko/ricq?rev=166ffc7#166ffc7587fb1ed7a9f059b833a4bcb892ebabcb"
 dependencies = [
  "byteorder",
  "bytes",
