@@ -54,6 +54,6 @@ tower-http = { version = "0.3", features = ["auth"] }
 webpki-roots = "0.22"
 
 [patch.crates-io]
-ricq = { rev = "120ceac", git = "https://github.com/kkocdko/ricq" }
+ricq = { rev = "c49eb6f", git = "https://github.com/lz1998/ricq" }
 prost-build = { path = "src/crates/prost-gen" } # for `ricq-core`
 tracing = { path = "src/crates/tracing-fake" }

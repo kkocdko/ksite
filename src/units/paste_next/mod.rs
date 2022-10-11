@@ -111,7 +111,7 @@ const CID_CHARS: [u8; 36] = *b"0123456789abcdefghijklmnopqrstuvwxyz";
 const CID_MAX_LEN: usize = 16; // javascript: (2**64).toString(36).length == 13
 
 /// Convert CID integer to string.
-fn int2str(i: i64, buf: &mut [u8; CID_MAX_LEN]) -> &[u8] {
+fn cid_i2s(i: i64, buf: &mut [u8; CID_MAX_LEN]) -> &[u8] {
     const L: usize = CID_CHARS.len();
     let mut i = i as usize;
     let mut p = CID_MAX_LEN - 1;
@@ -124,7 +124,7 @@ fn int2str(i: i64, buf: &mut [u8; CID_MAX_LEN]) -> &[u8] {
 }
 
 /// Convert CID string to integer.
-fn str2int(s: &[u8]) -> i64 {
+fn cid_s2i(s: &[u8]) -> i64 {
     const L: i64 = CID_CHARS.len() as _;
     let mut ret = 0;
     for c in s {
@@ -139,11 +139,11 @@ fn str2int(s: &[u8]) -> i64 {
 }
 
 #[allow(unused)]
-fn test_int2str2int() {
+fn test_cid_conv() {
     const SRC: i64 = 123454323;
     let mut cid_buf = [0; CID_MAX_LEN];
-    let cid = int2str(SRC, &mut cid_buf);
-    assert_eq!(str2int(cid), SRC);
+    let cid = cid_i2s(SRC, &mut cid_buf);
+    assert_eq!(cid_s2i(cid), SRC);
 }
 
 #[derive(Deserialize, Debug)]
