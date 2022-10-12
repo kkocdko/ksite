@@ -7,14 +7,15 @@ use axum::extract::{RawBody, RawQuery};
 use axum::response::Html;
 use once_cell::sync::Lazy;
 use ricq::client::{Connector as _, DefaultConnector, NetworkStatus};
+use ricq::handler::QEvent;
 use ricq::msg::elem::RQElem;
 use ricq::msg::MessageChain;
 use ricq::structs::GroupMessage;
 use ricq::{Client, Device, LoginResponse, Protocol, QRCodeState};
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, UNIX_EPOCH};
-// use std::future::Future;
-// use std::pin::Pin;
 
 macro_rules! push_log {
     ($fmt:literal $(, $($arg:tt)+)?) => {{
@@ -81,7 +82,7 @@ pub fn get_login_qr() -> Vec<u8> {
 
 static LOG: Mutex<Vec<String>> = Mutex::new(Vec::new());
 static QR: Mutex<Vec<u8>> = Mutex::new(Vec::new());
-static CLIENT: Lazy<Arc<Client<MyHandler>>> = Lazy::new(|| {
+static CLIENT: Lazy<Arc<Client>> = Lazy::new(|| {
     push_log!("init client");
     db_init();
     let device = match db_cfg_get_text(K_DEVICE) {
@@ -95,7 +96,7 @@ static CLIENT: Lazy<Arc<Client<MyHandler>>> = Lazy::new(|| {
             device
         }
     };
-    let client = Arc::new(Client::new(device, Protocol::AndroidWatch.into(), MyHandler));
+    let client = Arc::new(Client::new(device, Protocol::MacOS.into(), MyHandler));
     tokio::spawn(async {
         tokio::time::sleep(Duration::from_millis(100)).await;
         let mut last = UNIX_EPOCH.elapsed().unwrap().as_secs();
@@ -193,49 +194,58 @@ fn text_msg(content: String) -> MessageChain {
     MessageChain::new(ricq::msg::elem::Text::new(format!("[BOT] {content}")))
 }
 
-static RECENT: Mutex<Vec<GroupMessage>> = Mutex::new(Vec::new());
+async fn on_event(event: QEvent) -> Result<()> {
+    static RECENT: Mutex<Vec<GroupMessage>> = Mutex::new(Vec::new());
+    match event {
+        QEvent::GroupMessage(e) => {
+            if matches!(
+                e.inner.elements.0.get(0).map(|v| RQElem::from(v.clone())),
+                Some(RQElem::At(v)) if v.target == CLIENT.uin().await
+            ) {
+                let msg = e.inner.elements.to_string();
+                let msg_parts = msg.split_whitespace().skip(1).collect();
+                let reply = care!(gen_reply(msg_parts).await)?;
+                CLIENT
+                    .send_group_message(e.inner.group_code, text_msg(reply))
+                    .await?;
+            }
+            let time = e.inner.time;
+            let mut recent = RECENT.lock().unwrap();
+            recent.push(e.inner);
+            let len = recent.len();
+            // filter out the expired messages if one of these conditions is satisfied:
+            // 1. message storage size is reached the limit
+            // 2. size % 8 == 0, throttling while extreme scene
+            if len >= 64 && len % 8 == 0 {
+                // messages sent 2 minutes ago cannot be recalled
+                recent.retain(|v| time - v.time <= 120);
+                // push_log!("cleaned {} expired messages", len - recent.len());
+            }
+        }
+        // the AndroidWatch protocol will not receive this event
+        QEvent::GroupMessageRecall(e) => {
+            let recent = RECENT.lock().unwrap();
+            if let Some(v) = recent.iter().find(|v| v.seqs.contains(&e.inner.msg_seq)) {
+                push_log!(
+                    r#"recalled message = {{ group: "{}", user: "{}", content: "{}" }}"#,
+                    v.group_name,
+                    v.group_card,
+                    v.elements.to_string()
+                );
+            }
+        }
+        QEvent::Login(e) => push_log!("login {}", e),
+        _ => {}
+    }
+    Ok(())
+}
 struct MyHandler;
-#[async_trait::async_trait]
-impl ricq::handler::RawHandler for MyHandler {
-    async fn handle_group_message(&self, e: ricq::client::event::GroupMessageEvent) {
-        if matches!(
-            e.0.elements.0.get(0).map(|v| RQElem::from(v.clone())),
-            Some(RQElem::At(v)) if v.target == CLIENT.uin().await
-        ) {
-            let msg = e.0.elements.to_string();
-            let msg_parts = msg.split_whitespace().skip(1).collect();
-            let reply = care!(gen_reply(msg_parts).await, return);
-            let sent = CLIENT
-                .send_group_message(e.0.group_code, text_msg(reply))
-                .await;
-            care!(sent, return);
-        }
-        let time = e.0.time;
-        let mut recent = RECENT.lock().unwrap();
-        recent.push(e.0);
-        let len = recent.len();
-        // filter out the expired messages if one of these conditions is satisfied:
-        // 1. message storage size is reached the limit
-        // 2. size % 8 == 0, throttling while extreme scene
-        if len >= 64 && len % 8 == 0 {
-            // messages sent 2 minutes ago cannot be recalled
-            recent.retain(|v| time - v.time <= 120);
-            // push_log!("cleaned {} expired messages", len - recent.len());
-        }
-    }
-    async fn handle_group_message_recall(&self, e: ricq::client::event::GroupMessageRecallEvent) {
-        let recent = RECENT.lock().unwrap();
-        if let Some(v) = recent.iter().find(|v| v.seqs.contains(&e.0.msg_seq)) {
-            push_log!(
-                r#"recalled message = {{ group: "{}", user: "{}", content: "{}" }}"#,
-                v.group_name,
-                v.group_card,
-                v.elements.to_string()
-            );
-        }
-    }
-    async fn handle_login(&self, e: i64) {
-        push_log!("login {}", e);
+impl ricq::handler::Handler for MyHandler {
+    fn handle<'a: 'b, 'b>(&'a self, e: QEvent) -> Pin<Box<dyn Future<Output = ()> + Send + 'b>> {
+        Box::pin(async {
+            // add timeout here?
+            care!(on_event(e).await).ok();
+        })
     }
 }
 

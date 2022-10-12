@@ -537,7 +537,7 @@ dependencies = [
 
 [[package]]
 name = "ksite"
-version = "0.6.0-alpha-17"
+version = "0.6.0-alpha-18"
 dependencies = [
  "anyhow",
  "askama_escape",
@@ -563,9 +563,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.134"
+version = "0.2.135"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "329c933548736bc49fd575ee68c89e8be4d260064184389a5b77517cddd99ffb"
+checksum = "68783febc7782c6c5cb401fbda4de5a9898be1762314da0bb2c10ced61f18b0c"
 
 [[package]]
 name = "libsqlite3-sys"
@@ -796,6 +796,7 @@ dependencies = [
 [[package]]
 name = "ricq"
 version = "0.1.17"
+source = "git+https://github.com/lz1998/ricq?rev=c49eb6f#c49eb6f7b7249e427fedcdbda8ce8642b9e19494"
 dependencies = [
  "async-trait",
  "bytes",
@@ -817,6 +818,7 @@ dependencies = [
 [[package]]
 name = "ricq-core"
 version = "0.1.17"
+source = "git+https://github.com/lz1998/ricq?rev=c49eb6f#c49eb6f7b7249e427fedcdbda8ce8642b9e19494"
 dependencies = [
  "byteorder",
  "bytes",
@@ -925,9 +927,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.85"
+version = "1.0.86"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e55a28e3aaef9d5ce0506d0a14dbba8054ddc7e499ef522dd8b26859ec9d4a44"
+checksum = "41feea4228a6f1cd09ec7a3593a682276702cd67b5273544757dae23c096f074"
 dependencies = [
  "itoa",
  "ryu",
@@ -1112,9 +1114,9 @@ dependencies = [
 
 [[package]]
 name = "tower-layer"
-version = "0.3.1"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "343bc9466d3fe6b0f960ef45960509f84480bf4fd96f92901afe7ff3df9d3a62"
+checksum = "c20c8dbed6283a09604c3e69b4b7eeb54e298b8a600d4d5ecb5ad39de609f1d0"
 
 [[package]]
 name = "tower-service"
@@ -1140,9 +1142,9 @@ checksum = "dcf81ac59edc17cc8697ff311e8f5ef2d99fcbd9817b34cec66f90b6c3dfd987"
 
 [[package]]
 name = "unicode-ident"
-version = "1.0.4"
+version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dcc811dc4066ac62f84f11307873c4850cb653bfa9b1719cee2bd2204a4bc5dd"
+checksum = "6ceab39d59e4c9499d4e5a8ee0e2735b891bb7308ac83dfb4e80cad195c9f6f3"
 
 [[package]]
 name = "untrusted"
