@@ -7,7 +7,6 @@ use axum::extract::{RawBody, RawQuery};
 use axum::response::Html;
 use once_cell::sync::Lazy;
 use ricq::client::{Connector as _, DefaultConnector, NetworkStatus};
-use ricq::handler::QEvent;
 use ricq::msg::elem::RQElem;
 use ricq::msg::MessageChain;
 use ricq::structs::GroupMessage;
@@ -96,7 +95,7 @@ static CLIENT: Lazy<Arc<Client<MyHandler>>> = Lazy::new(|| {
             device
         }
     };
-    let client = Arc::new(Client::new(device, Protocol::MacOS.into(), MyHandler));
+    let client = Arc::new(Client::new(device, Protocol::AndroidWatch.into(), MyHandler));
     tokio::spawn(async {
         tokio::time::sleep(Duration::from_millis(100)).await;
         let mut last = UNIX_EPOCH.elapsed().unwrap().as_secs();
@@ -197,7 +196,7 @@ fn text_msg(content: String) -> MessageChain {
 static RECENT: Mutex<Vec<GroupMessage>> = Mutex::new(Vec::new());
 struct MyHandler;
 #[async_trait::async_trait]
-impl ricq::handler::Handler for MyHandler {
+impl ricq::handler::RawHandler for MyHandler {
     async fn handle_group_message(&self, e: ricq::client::event::GroupMessageEvent) {
         if matches!(
             e.0.elements.0.get(0).map(|v| RQElem::from(v.clone())),
@@ -237,9 +236,6 @@ impl ricq::handler::Handler for MyHandler {
     }
     async fn handle_login(&self, e: i64) {
         push_log!("login {}", e);
-    }
-    async fn handle(&self, _: QEvent) {
-        // noop
     }
 }
 

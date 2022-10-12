@@ -55,6 +55,7 @@ webpki-roots = "0.22"
 async-trait = "0.1"
 
 [patch.crates-io]
-ricq = { rev = "166ffc7", git = "https://github.com/kkocdko/ricq" }
+ricq = { path = "/tmp/ricq/ricq" } # for `ricq-core`
+# ricq = { rev = "d1b926a", git = "https://github.com/kkocdko/ricq" }
 prost-build = { path = "src/crates/prost-gen" } # for `ricq-core`
 tracing = { path = "src/crates/tracing-fake" }
