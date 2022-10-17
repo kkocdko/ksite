@@ -10,19 +10,19 @@
   * {
     box-sizing: border-box;
     margin: 0;
-    /* transition: 0.2s; */
+    transition: 0.2s cubic-bezier(0, 0, 0, 1);
     font: 14px / 18px sans-serif;
   }
   * {
     color: #000;
     background: #fff;
   }
-  @media (prefers-color-scheme: dark) {
-    * {
-      color: #fff;
-      background: #000;
-    }
-  }
+  /* @media (prefers-color-scheme: dark) {
+      * {
+        color: #fff;
+        background: #000;
+      }
+    } */
 
   prompt_ {
     -webkit-backdrop-filter: blur(8px);
@@ -35,21 +35,48 @@
     display: none;
   }
 
-  input {
-    outline: none;
-    border-radius: 4px;
+  input,
+  button {
     border: 1px solid #888b; /* def: default_border */
+    border-width: 0 0 1px 0;
     padding: 6px 12px;
+    min-width: 0;
   }
-  input:hover {
+  input:hover,
+  button:hover,
+  input:focus {
     background: #bbb3; /* def: button_hover_color */
   }
-  input:active {
+  button {
+    border-radius: 6px;
+    border-width: 1px;
+  }
+  button:active {
     background: #bbb6; /* def: button_active_color */
+  }
+  input[type="checkbox"] {
+    height: 16px;
+    width: 16px;
+    box-shadow: inset 0 0 0 1px #ccc, inset 0 0 0 9px #fff, inset 0 0 0 9px #fff;
+  }
+  input[type="checkbox"]:checked {
+    box-shadow: inset 0 0 0 1px #ccc, inset 0 0 0 3px #fff,
+      inset 0 0 0 9px #888d, inset 0 0 0 9px #fff;
+  }
+
+  top_bar_ {
+    display: flex;
+    gap: 8px;
+    padding: 8px;
+    border-bottom: 1px solid #8885; /* def: lite_border */
+  }
+  top_bar_ span {
+    flex-grow: 1;
   }
 
   tab_login_:not([in_]),
-  tab_main_:not([in_]),
+  tab_edit_:not([in_]),
+  tab_files_:not([in_]),
   tab_settings_:not([in_]) {
     visibility: hidden;
   }
@@ -58,22 +85,22 @@
   tab_login_ div {
     display: grid;
     gap: 24px;
+    grid: auto / 2fr 3fr;
   }
   tab_login_ {
-    width: 90vw;
-    max-width: 360px;
+    width: 300px;
     margin: auto;
-    margin-top: 60px;
+    margin-top: 80px;
     padding: 24px;
     border-radius: 8px;
     border: 1px solid #888b; /* ref: default_border */
-    /* box-shadow: 0 0 8px 1px #8889; */
   }
-  tab_login_ div {
-    grid: auto / 1fr 1fr;
+  tab_login_ > input {
+    grid-column: 1 / 3;
+    margin-top: -4px;
   }
 
-  tab_main_ {
+  tab_files_ {
     display: grid;
     position: fixed;
     left: 0;
@@ -82,46 +109,42 @@
     height: 100%;
     grid: auto auto 1fr / auto;
   }
-  top_bar_ {
-    display: flex;
-    gap: 10px;
-    padding: 10px;
-    border-bottom: 1px solid #888b; /* ref: default_border */
-  }
-  top_bar_ span {
-    flex-grow: 1;
-  }
-  tab_main_ tr > * {
-    padding: 8px 12px;
-  }
-  tab_main_ td:last-child {
-    position: relative;
-  }
-  tab_main_ td:last-child::before {
-    content: "∙∙∙";
-  }
-  tab_main_ td:last-child:not(:hover) div {
-    opacity: 0;
-    visibility: hidden;
-  }
-  tab_main_ div {
+  files_list_ div {
     box-shadow: -8px 0 4px -4px #000;
     padding: 1px 10px 1px 0;
     display: flex;
-    gap: 10px;
+    gap: 8px;
     position: absolute;
     right: 0;
     top: 0;
   }
-  paste_list_ {
+  files_list_ table {
+    border-spacing: 0;
+  }
+  files_list_ tr > * {
+    padding: 8px 12px;
+    text-align: left;
+  }
+  tab_files_ td:last-child:not(:hover) div {
+    opacity: 0;
+    visibility: hidden;
+  }
+  files_list_ {
     overflow: auto;
     overflow: overlay;
     display: grid;
     padding-right: 8px;
   }
-  paste_list_ thead tr {
+  files_list_ thead tr {
     position: sticky;
     top: 0;
+  }
+  files_list_ tr > :first-child {
+    writing-mode: vertical-rl;
+    text-align: center;
+    padding: 0;
+    line-height: 6px;
+    transform: translateX(5px);
   }
 </style>
 
@@ -129,13 +152,53 @@
   <tab_login_>
     <input placeholder="Username" />
     <input placeholder="Password" type="password" />
-    <div>
-      <input type="button" value="Sign up" />
-      <input type="button" value="Log in" />
-    </div>
+    <button>Sign up</button>
+    <button>Log in</button>
   </tab_login_>
 
-  <tab_main_ in_>
+  <tab_files_>
+    <top_bar_>
+      <button>@ kkocdko</button>
+      <br />
+      <button>Volume: 3 / 512</button>
+      <span></span>
+      <button>Settings</button>
+    </top_bar_>
+    <files_list_>
+      <table>
+        <tbody>
+          <tr id="$tr">
+            <td>
+              <input type="checkbox" />
+            </td>
+            <td>8y81yw2</td>
+            <td>Hello World</td>
+            <td>321 KB</td>
+          </tr>
+        </tbody>
+        <thead>
+          <tr>
+            <th width="1"></th>
+            <th width="1">ID</th>
+            <th>Description</th>
+            <th width="80">Size</th>
+          </tr>
+        </thead>
+      </table>
+    </files_list_>
+  </tab_files_>
+
+  <tab_edit_>
+    <top_bar_>
+      <input type="button" value="{{fid}}" />
+      <input type="button" value="Create" />
+      <input type="button" value="Delete" />
+      <span></span>
+      <input type="button" value="Cancel" />
+    </top_bar_>
+  </tab_edit_>
+
+  <tab_settings_ in_>
     <top_bar_>
       <input type="button" value="@ kkocdko" />
       <br />
@@ -144,36 +207,9 @@
       <span></span>
       <input type="button" value="Settings" />
     </top_bar_>
-    <paste_list_>
-      <table>
-        <tbody>
-          <tr id="$tr">
-            <td>8y81yw2</td>
-            <td>Hello World</td>
-            <td>321 KB</td>
-            <td>
-              <div>
-                <!-- <input type="button" value="Copy link" /> -->
-                <input type="button" value="Delete" />
-              </div>
-            </td>
-          </tr>
-        </tbody>
-        <thead>
-          <tr>
-            <th width="1">ID</th>
-            <th>Description</th>
-            <th width="80">Size</th>
-            <th width="34"></th>
-          </tr>
-        </thead>
-      </table>
-    </paste_list_>
-  </tab_main_>
+  </tab_settings_>
 
-  <tab_settings_></tab_settings_>
-
-  <prompt_><div>Hello</div></prompt_>
+  <!-- <prompt_><div>Hello</div></prompt_> -->
 </body>
 
 <script>

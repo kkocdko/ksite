@@ -144,7 +144,7 @@ async fn launch() -> Result<()> {
     if let Some(v) = db_cfg_get_text(K_TOKEN) {
         let token = serde_json::from_str(&v)?;
         CLIENT.token_login(token).await?;
-        push_log!("login by token succeeded");
+        push_log!("login by token");
     } else {
         let mut qr_resp = CLIENT.fetch_qrcode().await?;
         let mut img_sig = Vec::new();
@@ -168,7 +168,7 @@ async fn launch() -> Result<()> {
                     if let LoginResponse::DeviceLockLogin { .. } = login_resp {
                         CLIENT.device_lock_login().await?;
                     }
-                    push_log!("login by qrcode succeeded");
+                    push_log!("login by qrcode");
                     let token = serde_json::to_string(&CLIENT.gen_token().await)?;
                     db_cfg_set(K_TOKEN, token.into_bytes());
                     break;
