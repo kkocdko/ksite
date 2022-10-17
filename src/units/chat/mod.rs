@@ -1,7 +1,7 @@
 //! Simple chat rooms, client-to-client encrypted.
-use crate::utils::read_body;
 use anyhow::Result;
-use axum::extract::{Path, RawBody};
+
+use axum::extract::Path;
 use axum::http::header::CACHE_CONTROL;
 use axum::response::sse::{Event, Sse};
 use axum::response::{Html, IntoResponse};
@@ -56,16 +56,7 @@ impl Drop for SseStream {
 
 static ROOMS: Lazy<Mutex<HashMap<u32, Room>>> = Lazy::new(Default::default);
 
-async fn post_handler(Path(id): Path<u32>, body: RawBody) -> impl IntoResponse {
-    let body = read_body(body.0).await;
-    // limited to 512 KB
-    if body.len() > 512 * 1024 || body.is_empty() {
-        return "message too long or too short";
-    }
-    let msg = match String::from_utf8(body) {
-        Ok(v) => v,
-        Err(_) => return "message is not valid utf8",
-    };
+async fn post_handler(Path(id): Path<u32>, msg: String) -> impl IntoResponse {
     let rooms = ROOMS.lock().unwrap();
     let room = match rooms.get(&id) {
         Some(v) => v,

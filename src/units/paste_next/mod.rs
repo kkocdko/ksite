@@ -49,8 +49,7 @@ DOUBLE HASH
 
 */
 use crate::{db, include_page, strip_str};
-use async_trait::async_trait;
-use axum::body::{Body, HttpBody};
+use axum::body::{Body, Bytes, HttpBody};
 use axum::extract::rejection::StringRejection;
 use axum::extract::{BodyStream, Form, FromRequest, FromRequestParts, Json, Path, RawBody};
 use axum::http::{
@@ -170,31 +169,8 @@ enum Operation<'a> {
     List { uid: &'a [u8] },
 }
 
-struct AsOperation(String);
-
-impl AsOperation {
-    fn as_operation<'a>(&'a self) -> Operation<'a> {
-        serde_json::from_str(&self.0).unwrap()
-    }
-}
-
-#[async_trait]
-impl<S, B> FromRequest<S, B> for AsOperation
-where
-    B: HttpBody + Send + 'static,
-    B::Data: Send,
-    B::Error: Into<BoxError>,
-    S: Send + Sync,
-{
-    type Rejection = StringRejection;
-
-    async fn from_request(req: Request<B>, state: &S) -> Result<Self, Self::Rejection> {
-        Ok(AsOperation(String::from_request(req, state).await?))
-    }
-}
-
-async fn post_handler(as_op: AsOperation) -> String {
-    let op = as_op.as_operation();
+async fn post_handler(req_body: Bytes) -> String {
+    let op = serde_json::from_slice(&req_body).unwrap();
     match op {
         Operation::Register { uid, upw } => {}
         Operation::Login { uid, upw } => {}

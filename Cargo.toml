@@ -52,7 +52,6 @@ tokio-rustls = "0.23"
 tower = "0.4"
 tower-http = { version = "0.3", features = ["auth"] }
 webpki-roots = "0.22"
-async-trait = "0.1"
 
 [patch.crates-io]
 ricq = { rev = "c49eb6f", git = "https://github.com/lz1998/ricq" }

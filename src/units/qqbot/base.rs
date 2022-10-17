@@ -1,9 +1,9 @@
 //! Provide login, token storage and other low-level functions.
 use super::gen_reply;
-use crate::utils::read_body;
 use crate::{care, db, include_page};
 use anyhow::Result;
-use axum::extract::{RawBody, RawQuery};
+use axum::body::Bytes;
+use axum::extract::RawQuery;
 use axum::response::Html;
 use once_cell::sync::Lazy;
 use ricq::client::{Connector as _, DefaultConnector, NetworkStatus};
@@ -57,11 +57,10 @@ pub fn _db_groups_delete(group_id: i64) -> bool {
     db!("DELETE FROM qqbot_groups WHERE group_id = ?", [group_id]).is_ok()
 }
 
-pub async fn post_handler(q: RawQuery, RawBody(body): RawBody) {
+pub async fn post_handler(q: RawQuery, body: Bytes) {
     let q = q.0.unwrap();
     let k = q.split_once('=').unwrap().1;
-    let v = read_body(body).await;
-    db_cfg_set(k, v);
+    db_cfg_set(k, body.into());
 }
 
 pub async fn get_handler() -> Html<String> {

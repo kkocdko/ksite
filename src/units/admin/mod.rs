@@ -1,7 +1,7 @@
 //! Admin console.
 use crate::db;
-use crate::utils::read_body;
-use axum::extract::{RawBody, RawQuery};
+use axum::body::Bytes;
+use axum::extract::RawQuery;
 use axum::response::Html;
 use axum::routing::{MethodRouter, Router};
 
@@ -16,11 +16,10 @@ fn _db_get(k: &str) -> Option<(Vec<u8>,)> {
     db!("SELECT v FROM admin WHERE k = ?", [k], ^(0)).ok()
 }
 
-async fn post_handler(q: RawQuery, RawBody(body): RawBody) {
+async fn post_handler(q: RawQuery, body: Bytes) {
     let q = q.0.unwrap();
     let k = q.split_once('=').unwrap().1;
-    let v = read_body(body).await;
-    db_set(k, v);
+    db_set(k, body.into());
 }
 
 pub fn service() -> Router {

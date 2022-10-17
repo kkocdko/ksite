@@ -541,7 +541,6 @@ version = "0.6.0-alpha-19"
 dependencies = [
  "anyhow",
  "askama_escape",
- "async-trait",
  "axum",
  "flate2",
  "futures-core",
