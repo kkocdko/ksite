@@ -4,23 +4,24 @@
 剪贴板 & 轻量文件存储
 
 features:
-* 账户登录
-* 可选加密
-* 文件分享，fork
+* 账户登录，邮箱关联
+* 强加密
+* 文件分享
 * 轻量，快速，不使用框架的界面
 
 details:
-* 经过优化的自增 id
+* 经过优化的自增 id （保留前 32 个 ID？）
 * id 不要超过 i64（测试 u64 的可能性？）
 * 写入原始内容，前端预览时自行处理转义
 * 不要做服务端解密，前端做边解密边下载
-* 如果加密，那么 mime 就失去了意义，所以用 mime 来存储是否加密的信息
+* 默认使用用户密码加密，可自定义加密。用 mime 来存储是否自定义加密的信息
 * 类似 git fork, 但不使用 cow
+* 邮箱关联
 
 sessions?
 全部 public，未分享的用用户密码加密?
 读写本地文件账户登录，加密
-原生js糊的轻量的界面，借鉴一点点react之类的东西
+原生js糊的轻量的界面，借鉴一点点 react 之类的东西
 在用户之间分享，转移所有权
 尽量优化性能
 用户频率限制，空间限制，会员制？
@@ -32,7 +33,9 @@ sessions?
 protobuf?
 webdav?
 
+https://github.com/lettre/lettre
 https://www.runoob.com/sqlite/sqlite-intro.html
+https://github.com/su18/wooyun-drops/blob/b2a5416/papers/%E5%8A%A0%E7%9B%90hash%E4%BF%9D%E5%AD%98%E5%AF%86%E7%A0%81%E7%9A%84%E6%AD%A3%E7%A1%AE%E6%96%B9%E5%BC%8F.md
 
 密码hash加盐
 
@@ -43,7 +46,11 @@ https://www.runoob.com/sqlite/sqlite-intro.html
 /ksite.db
 
 DOUBLE HASH
-1. register: plain -> hash1, server save hash1
+
+* ===== REGISTER =====
+client: gen salt, plain password to hash,
+server: save hash1
+
 2. login (client): plain -> hash1 -> hash2
 3. login (server): hash1 -> hash2
 
@@ -64,62 +71,80 @@ use axum::Router;
 use serde::Deserialize;
 use serde::{de::DeserializeOwned, Serialize};
 use std::ops::{Deref, DerefMut};
-pub type BoxError = Box<dyn std::error::Error + Send + Sync>;
+// pub type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
 fn db_init() {
-    // uid: user id (hashed)
-    // upw: user password (hashed)
+    // uid: user id
+    // upw: user password
+    // mail: user email address
+    // level: user level (admin / vip / banned / normal)
     // fid: file id (i64, != 0)
     // desc: description
     // mime: use this as the content-type, and is encrypted flag
-    let sqls = [
-        strip_str! {"CREATE TABLE paste_user (
-            uid BLOB PRIMARY KEY,
-            upw INTEGER
-        )"},
-        strip_str! {"CREATE TABLE paste_data (
-            fid INTEGER PRIMARY KEY AUTOINCREMENT,
-            uid BLOB,
-            desc BLOB,
-            mime BLOB
-        )"},
-    ];
-    for sql in sqls {
-        db!(sql).ok();
-    }
+    db! {"
+        CREATE TABLE IF NOT EXISTS paste_user
+        (uid BLOB PRIMARY KEY, upw BLOB, mail BLOB, level INTEGER)
+    "}
+    .unwrap();
+    db! {"
+        CREATE TABLE IF NOT EXISTS paste_data
+        (fid INTEGER PRIMARY KEY AUTOINCREMENT, uid BLOB, desc BLOB, mime BLOB)
+    "}
+    .unwrap();
 }
-fn db_user_cu(uid: &[u8], upw: &[u8]) {
-    db!("REPLACE INTO paste_user VALUES (?1, ?2)", [uid, upw]).unwrap();
+fn db_user_cu(uid: &[u8], upw: &[u8], mail: &[u8]) {
+    db! {"
+        REPLACE INTO paste_user
+        VALUES (?1, ?2, ?3)
+    ",[uid, upw, mail]}
+    .unwrap();
 }
-fn db_user_r(uid: &[u8]) -> Option<(Vec<u8>,)> {
-    db!("SELECT upw FROM paste_user WHERE uid = ?", [uid], ^(0)).ok()
+fn db_user_r(uid: &[u8]) -> Option<(Vec<u8>, Vec<u8>, i64)> {
+    db! {"
+        SELECT * FROM paste_user
+        WHERE uid = ?
+    ", [uid], ^(1, 2, 3)}
+    .ok()
 }
 fn db_user_d(uid: &[u8]) {
-    db!("DELETE FROM paste_user WHERE uid = ?", [uid]).unwrap();
+    db! {"
+        DELETE FROM paste_user
+        WHERE uid = ?
+    ", [uid]}
+    .unwrap();
 }
 fn db_data_c(uid: &[u8], desc: &[u8], mime: &[u8]) -> i64 {
-    let sql = "INSERT INTO paste_data VALUES (NULL, ?1, ?2, ?3)";
-    db!(sql, [uid, desc, mime], &).unwrap()
+    db! {"
+        INSERT INTO paste_data
+        VALUES (NULL, ?1, ?2, ?3)
+    ", [uid, desc, mime], &}
+    .unwrap()
 }
 fn db_data_u_desc(fid: i64, desc: &[u8]) -> bool {
-    let sql = "UPDATE paste_data SET desc = ?2 WHERE fid = ?1";
-    db!(sql, [fid, desc]).is_ok()
+    db! {"
+        UPDATE paste_data
+        SET desc = ?2
+        WHERE fid = ?1
+    ", [fid, desc]}
+    .is_ok()
 }
 fn db_data_u_mime(fid: i64, mime: &[u8]) -> bool {
-    let sql = "UPDATE paste_data SET mime = ?2 WHERE fid = ?1";
-    db!(sql, [fid, mime]).is_ok()
+    db! {"
+        UPDATE paste_data
+        SET mime = ?2
+        WHERE fid = ?1
+    ", [fid, mime]}
+    .is_ok()
 }
-fn db_data_r(fid: i64) -> Option<(Vec<u8>, Vec<u8>, Vec<u8>)> {
-    let sql = "SELECT * FROM paste_data WHERE fid = ?";
-    db!(sql, [fid], ^(1, 2, 3)).ok()
-}
-fn db_data_r_by_user(uid: &[u8]) -> Vec<(i64, Vec<u8>, Vec<u8>)> {
-    let sql = "SELECT * FROM paste_data WHERE uid = ?";
-    db!(sql, [uid], (0, 2, 3)).unwrap()
-}
-fn db_data_d(fid: i64) -> bool {
-    db!("DELETE FROM paste_data WHERE fid = ?", [fid]).is_ok()
-}
+// fn db_data_r(fid: i64) -> Option<(Vec<u8>, Vec<u8>, Vec<u8>)> {
+//     db!("SELECT * FROM paste_data WHERE fid = ?", [fid], ^(1, 2, 3)).ok()
+// }
+// fn db_data_r_by_user(uid: &[u8]) -> Vec<(i64, Vec<u8>, Vec<u8>)> {
+//     db!("SELECT * FROM paste_data WHERE uid = ?", [uid], (0, 2, 3)).unwrap()
+// }
+// fn db_data_d(fid: i64) -> bool {
+//     db!("DELETE FROM paste_data WHERE fid = ?", [fid]).is_ok()
+// }
 
 const FID_CHARS: [u8; 36] = *b"0123456789abcdefghijklmnopqrstuvwxyz";
 const FID_MAX_LEN: usize = 16; // javascript: (2**64).toString(36).length == 13
@@ -150,6 +175,18 @@ fn fid_s2i(s: &[u8]) -> i64 {
         ret = ret * L + c;
     }
     ret
+}
+
+/// Promised that every comparison cost the same time.
+fn slow_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false; // this is safe because everyone knows the hash len
+    }
+    let mut diff = 0;
+    for i in 0..b.len() {
+        diff |= a[i] ^ b[i];
+    }
+    diff == 0
 }
 
 #[allow(unused)]

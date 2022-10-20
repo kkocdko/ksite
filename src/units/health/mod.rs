@@ -3,7 +3,7 @@
 //! The prototype is https://github.com/kkocdko/user-scripts/blob/master/scripts/just-kit/health-check-in.js
 use crate::ticker::Ticker;
 use crate::utils::{fetch, fetch_json, fetch_text, OptionResult};
-use crate::{care, db, include_page, strip_str};
+use crate::{care, db, include_page};
 use anyhow::Result;
 use axum::extract::Form;
 use axum::response::{Html, IntoResponse, Redirect};
@@ -14,34 +14,51 @@ use std::fmt::Write as _;
 mod cryptojs;
 
 fn db_init() {
-    db!("CREATE TABLE health_list (id INTEGER PRIMARY KEY, password TEXT, data TEXT)").ok();
-    db!("CREATE TABLE health_log (time INTEGER, id INTEGER, ret TEXT)").ok();
+    db! {"
+        CREATE TABLE IF NOT EXISTS health_list
+        (id INTEGER PRIMARY KEY, password TEXT, data TEXT)
+    "}
+    .unwrap();
+    db! {"
+        CREATE TABLE IF NOT EXISTS health_log
+        (time INTEGER, id INTEGER, ret TEXT)
+    "}
+    .unwrap();
 }
 fn db_list_set(id: u64, password: String, data: String) {
-    let sql = "REPLACE INTO health_list VALUES (?1, ?2, ?3)";
-    db!(sql, [id, password, data]).unwrap();
+    db! {"
+        REPLACE INTO health_list
+        VALUES (?1, ?2, ?3)
+    ", [id, password, data]}
+    .unwrap();
 }
 fn db_list_get() -> Vec<(u64, String, String)> {
-    db!("SELECT * FROM health_list", [], (0, 1, 2)).unwrap()
+    db! {"
+        SELECT * FROM health_list
+    ", [], (0, 1, 2)}
+    .unwrap()
 }
 fn db_log_insert(id: u64, ret: String) {
-    let sql = "INSERT INTO health_log VALUES (strftime('%s','now'), ?1, ?2)";
-    db!(sql, [id, ret]).unwrap();
+    db! {"
+        INSERT INTO health_log
+        VALUES (strftime('%s','now'), ?1, ?2)
+    ", [id, ret]}
+    .unwrap();
 }
 fn db_log_get() -> Vec<(u64, u64, String)> {
-    let sql = strip_str! {"
+    db! {"
         SELECT * FROM health_log
         WHERE strftime('%s','now') - time <= 3600 * 24 * 5
         ORDER BY time DESC
-    "};
-    db!(sql, [], (0, 1, 2)).unwrap()
+    ", [], (0, 1, 2)}
+    .unwrap()
 }
 fn db_log_clean() {
-    let sql = strip_str! {"
+    db! {"
         DELETE FROM health_log
         WHERE strftime('%s','now') - time > 3600 * 24 * 7
-    "};
-    db!(sql).unwrap();
+    "}
+    .unwrap();
 }
 
 #[derive(Deserialize)]

@@ -7,16 +7,32 @@ use axum::Router;
 use serde::Deserialize;
 
 fn db_init() {
-    db!("CREATE TABLE paste (id INTEGER PRIMARY KEY AUTOINCREMENT, data BLOB)").ok();
+    db! {"
+        CREATE TABLE IF NOT EXISTS paste
+        (id INTEGER PRIMARY KEY AUTOINCREMENT, data BLOB)
+    "}
+    .unwrap();
 }
 fn db_insert(data: &str) -> u64 {
-    db!("INSERT INTO paste VALUES (NULL, ?)", [data], &).unwrap() as _
+    db! {"
+        INSERT INTO paste
+        VALUES (NULL, ?)
+    ", [data], &}
+    .unwrap() as _
 }
 fn db_update(id: u64, data: &str) {
-    db!("UPDATE paste SET data = ?1 WHERE id = ?2;", [data, id]).unwrap();
+    db! {"
+        UPDATE paste SET data = ?1
+        WHERE id = ?2
+    ", [data, id]}
+    .unwrap();
 }
 fn db_get(id: u64) -> Option<(String,)> {
-    db!("SELECT data FROM paste WHERE id = ?", [id], ^(0)).ok()
+    db! {"
+        SELECT data FROM paste
+        WHERE id = ?
+    ", [id], ^(0)}
+    .ok()
 }
 
 fn escape(v: &str) -> String {

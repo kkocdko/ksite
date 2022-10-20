@@ -28,35 +28,35 @@ pub static DB_: Lazy<Mutex<Connection>> = Lazy::new(|| {
 #[macro_export]
 macro_rules! db {
     // simplest usage
-    ( $sql:expr ) => {{ $crate::db!($sql, []) }};
+    ( $sql:literal ) => {{ $crate::db!($sql, []) }};
     // execute a statement with params
-    ( $sql:expr, [ $($param:expr),* ] ) => {{
+    ( $sql:literal, [ $($param:expr),* ] ) => {{
         let params = rusqlite::params![$($param),*];
         let db = $crate::database::DB_.lock().unwrap();
-        db.prepare_cached($sql)
+        db.prepare_cached($crate::strip_str!($sql))
             .and_then(|mut s| s.execute(params))
     }};
     // execute a statement then returns `last_insert_rowid()`
-    ( $sql:expr, [ $($param:expr),* ], & ) => {{
+    ( $sql:literal, [ $($param:expr),* ], & ) => {{
         let params = rusqlite::params![$($param),*];
         let db = $crate::database::DB_.lock().unwrap();
-        db.prepare_cached($sql)
+        db.prepare_cached($crate::strip_str!($sql))
             .and_then(|mut s| s.execute(params))
             .map(|_| db.last_insert_rowid())
     }};
     // query and return the first matched row, the symbol '^' means "first" in regexp
-    ( $sql:expr, [ $($param:expr),* ], ^( $($idx:expr),* ) ) => {{
+    ( $sql:literal, [ $($param:expr),* ], ^( $($idx:expr),* ) ) => {{
         let params = rusqlite::params![$($param),*];
         let db = $crate::database::DB_.lock().unwrap();
-        db.prepare_cached($sql)
+        db.prepare_cached($crate::strip_str!($sql))
             .and_then(|mut s| s.query_row(params, |r| Ok(( $( r.get($idx)?, )* ))))
     }};
     // query and return all rows as `Vec<T>`
-    ( $sql:expr, [ $($param:expr),* ], ( $($idx:expr),* ) ) => {(||{
+    ( $sql:literal, [ $($param:expr),* ], ( $($idx:expr),* ) ) => {(||{
         let params = rusqlite::params![$($param),*];
         let mut ret = Vec::new();
         let db = $crate::database::DB_.lock().unwrap();
-        let mut stmd = db.prepare_cached($sql)?;
+        let mut stmd = db.prepare_cached($crate::strip_str!($sql))?;
         let mut rows = stmd.query(params)?;
         while let Ok(Some(r)) = rows.next() {
             ret.push(( $( r.get($idx)?, )* ));

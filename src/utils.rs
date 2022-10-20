@@ -275,36 +275,47 @@ pub mod str_const_ops_ {
         ret
     }
 
-    pub const fn strip_get_len(s: &[u8]) -> usize {
-        let mut len = 0;
-        let mut idx = 0;
-        while idx < s.len() {
-            if s[idx] == b'\n' {
-                idx += 1;
-                len += 1;
-                while idx < s.len() && s[idx] == b' ' {
-                    idx += 1;
-                }
+    pub const fn strip_get_len(src: &[u8]) -> usize {
+        // lite version of strip_do
+        let mut buf_i = 0;
+        let mut src_i = 0;
+        loop {
+            while src_i < src.len() && (src[src_i] == b'\n' || src[src_i] == b' ') {
+                src_i += 1;
+            }
+            while src_i < src.len() && src[src_i] != b'\n' {
+                // buf[buf_i] = src[src_i];
+                buf_i += 1;
+                src_i += 1;
+            }
+            if src_i < src.len() {
+                // buf[buf_i] = b'\n';
+                buf_i += 1;
             } else {
-                idx += 1;
-                len += 1;
+                break;
             }
         }
-        len
+        buf_i
     }
 
     pub const fn strip_do<const LEN: usize>(src: &[u8]) -> [u8; LEN] {
         let mut buf: [u8; LEN] = [0; LEN];
         let mut buf_i = 0;
         let mut src_i = 0;
-        while src_i < src.len() {
-            buf[buf_i] = src[src_i];
-            buf_i += 1;
-            src_i += 1;
-            if src[src_i - 1] == b'\n' {
-                while src_i < src.len() && src[src_i] == b' ' {
-                    src_i += 1;
-                }
+        loop {
+            while src_i < src.len() && (src[src_i] == b'\n' || src[src_i] == b' ') {
+                src_i += 1;
+            }
+            while src_i < src.len() && src[src_i] != b'\n' {
+                buf[buf_i] = src[src_i];
+                buf_i += 1;
+                src_i += 1;
+            }
+            if src_i < src.len() {
+                buf[buf_i] = b'\n';
+                buf_i += 1;
+            } else {
+                break;
             }
         }
         buf
