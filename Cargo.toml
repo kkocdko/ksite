@@ -1,6 +1,6 @@
 [package]
 name = "ksite"
-version = "0.6.0-alpha-19"
+version = "0.6.0-alpha-20"
 edition = "2021"
 
 [profile.release]
@@ -10,7 +10,7 @@ lto = "fat"
 codegen-units = 1
 # opt-level = "z"
 
-# Best check speed, `cargo check --profile=ci`.
+# Best check speed, `cargo check --profile=ci`
 [profile.ci]
 inherits = "release"
 opt-level = 0
@@ -19,7 +19,7 @@ panic = "abort"
 incremental = false
 codegen-units = 256
 
-# Best incremental build speed, less disk usage, `mold -run cargo run`.
+# Best incremental build speed, less disk usage, `mold -run cargo run`
 [profile.dev]
 # debug = false # this switch disabled backtrace
 panic = "abort"
@@ -27,10 +27,6 @@ panic = "abort"
 debug = false
 strip = true
 opt-level = "z"
-
-[features]
-default = ["qqbot"]
-qqbot = []
 
 [dependencies]
 anyhow = "1"
@@ -52,8 +48,9 @@ tokio-rustls = "0.23"
 tower = "0.4"
 tower-http = { version = "0.3", features = ["auth"] }
 webpki-roots = "0.22"
+ring = "0.16"
 
 [patch.crates-io]
-ricq = { rev = "c49eb6f", git = "https://github.com/lz1998/ricq" }
+ricq = { rev = "87ca76f", git = "https://github.com/lz1998/ricq" }
 prost-build = { path = "src/crates/prost-gen" } # for `ricq-core`
 tracing = { path = "src/crates/tracing-fake" }
