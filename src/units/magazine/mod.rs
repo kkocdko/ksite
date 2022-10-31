@@ -80,22 +80,27 @@ static CACHE: Lazy<Mutex<Res>> = Lazy::new(|| {
 
 async fn refresh() -> Result<()> {
     let expires = httpdate::fmt_http_date(SystemTime::now() + Duration::from_secs(3600));
+    // https://rsshub.app | https://rsshub.uneasy.win | https://rss.itggg.cn
     let r = tokio::join!(
-        fetch_text("https://rss.itggg.cn/zhihu/daily"),
-        fetch_text("https://rss.itggg.cn/cnbeta"),
-        fetch_text("https://rss.itggg.cn/oschina/news/industry"),
-        fetch_text("https://rss.itggg.cn/1point3acres/post/hot3")
+        fetch_text("https://rsshub.uneasy.win/leetcode/dailyquestion/solution/en"),
+        fetch_text("https://rsshub.uneasy.win/bbc"),
+        fetch_text("https://rsshub.uneasy.win/zhihu/daily"),
+        fetch_text("https://rsshub.uneasy.win/oschina/news/industry"),
+        fetch_text("https://rsshub.uneasy.win/1point3acres/post/hot3"),
+        fetch_text("https://rsshub.uneasy.win/rustcc/jobs"),
     );
     let o = tokio::task::spawn_blocking(move || {
         let mut o = PAGE[0].to_string();
-        r.0.map(|v| generate(&v, &mut o, 20)).ok();
-        r.1.map(|v| generate(&v, &mut o, 20)).ok();
-        r.2.map(|v| generate(&v, &mut o, 20)).ok();
-        r.3.map(|v| generate(&v, &mut o, 20)).ok();
+        r.0.map(|v| generate(&v, &mut o, 5)).ok();
+        r.1.map(|v| generate(&v, &mut o, 9)).ok();
+        r.2.map(|v| generate(&v, &mut o, 9)).ok();
+        r.3.map(|v| generate(&v, &mut o, 9)).ok();
+        r.4.map(|v| generate(&v, &mut o, 9)).ok();
+        r.5.map(|v| generate(&v, &mut o, 5)).ok();
         o += PAGE[1];
         let mut buf = Vec::new();
-        let mut gz = flate2::read::GzEncoder::new(o.as_bytes(), Default::default());
-        gz.read_to_end(&mut buf).unwrap();
+        let mut enc = flate2::read::GzEncoder::new(o.as_bytes(), Default::default());
+        enc.read_to_end(&mut buf).unwrap();
         buf
     })
     .await?;
