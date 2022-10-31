@@ -57,11 +57,10 @@
   input[type="checkbox"] {
     height: 16px;
     width: 16px;
-    box-shadow: inset 0 0 0 1px #ccc, inset 0 0 0 9px #fff, inset 0 0 0 9px #fff;
+    box-shadow: inset 0 0 0 1px #ccc, inset 0 0 0 9px #fff, inset 0 0 0 9px #999;
   }
   input[type="checkbox"]:checked {
-    box-shadow: inset 0 0 0 1px #ccc, inset 0 0 0 3px #fff,
-      inset 0 0 0 9px #888d, inset 0 0 0 9px #fff;
+    box-shadow: inset 0 0 0 1px #ccc, inset 0 0 0 4px #fff, inset 0 0 0 9px #999;
   }
 
   top_bar_ {
@@ -74,20 +73,20 @@
     flex-grow: 1;
   }
 
-  tab_login_:not([in_]),
+  tab_launch_:not([in_]),
   tab_edit_:not([in_]),
   tab_files_:not([in_]),
   tab_settings_:not([in_]) {
     visibility: hidden;
   }
 
-  tab_login_,
-  tab_login_ div {
+  tab_launch_,
+  tab_launch_ div {
     display: grid;
     gap: 24px;
     grid: auto / 2fr 3fr;
   }
-  tab_login_ {
+  tab_launch_ {
     width: 300px;
     margin: auto;
     margin-top: 80px;
@@ -95,7 +94,7 @@
     border-radius: 8px;
     border: 1px solid #888b; /* ref: default_border */
   }
-  tab_login_ > input {
+  tab_launch_ > input {
     grid-column: 1 / 3;
     margin-top: -4px;
   }
@@ -149,20 +148,20 @@
 </style>
 
 <body>
-  <tab_login_>
-    <input placeholder="Username" />
-    <input placeholder="Password" type="password" />
-    <button>Sign up</button>
-    <button>Log in</button>
-  </tab_login_>
+  <tab_launch_ in_>
+    <input id="$uid" placeholder="Username" />
+    <input id="$upw" placeholder="Password" type="password" />
+    <button id="$signup">Sign up</button>
+    <button id="$login">Log in</button>
+  </tab_launch_>
 
   <tab_files_>
     <top_bar_>
       <button>@ kkocdko</button>
       <br />
-      <button>Volume: 3 / 512</button>
-      <span></span>
-      <button>Settings</button>
+      <button>Create</button>
+      <button>Edit</button>
+      <button>Delete</button>
     </top_bar_>
     <files_list_>
       <table>
@@ -190,15 +189,15 @@
 
   <tab_edit_>
     <top_bar_>
-      <input type="button" value="{{fid}}" />
-      <input type="button" value="Create" />
-      <input type="button" value="Delete" />
+      <button>Back</button>
       <span></span>
-      <input type="button" value="Cancel" />
+      <button>{{fid}}</button>
     </top_bar_>
+    <input placeholder="Username" />
+    <input placeholder="Password" type="password" />
   </tab_edit_>
 
-  <tab_settings_ in_>
+  <tab_settings_>
     <top_bar_>
       <input type="button" value="@ kkocdko" />
       <br />
@@ -213,10 +212,45 @@
 </body>
 
 <script>
-  setTimeout(() => {
-    // location.reload();
-  }, 3000);
-  const p = $tr.parentNode;
-  const el = $tr.cloneNode(true);
-  for (let i = 0; i < 99; i++) p.appendChild(el.cloneNode(true));
+  // const toBase64 = (arrbuf) => {
+  //   // https://stackoverflow.com/a/66046176/11338291
+  //   const reader = new FileReader();
+  //   const promise = new Promise((r) => (reader.onload = r));
+  //   reader.readAsDataURL(new Blob([arrbuf]));
+  //   return promise.then(() => reader.result.split(",", 2)[1]);
+  // };
+
+  const getUpw = async () => {
+    const enc = new TextEncoder();
+    const data = enc.encode(`paste_${$uid.value}_${$upw.value}`);
+    const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", data));
+    return hash.reduce((s, v) => s + v.toString(16).padStart(2, "0"), "");
+  };
+
+  $signup.onclick = async () => {
+    const body = JSON.stringify({
+      op: "signup",
+      uid: $uid.value,
+      upw: getUpw(),
+    });
+    const r = await fetch("/paste_next", { method: "POST", body });
+    await r.text(); // TODO
+    $login.onclick();
+  };
+
+  $login.onclick = async () => {
+    const body = JSON.stringify({
+      op: "login",
+      uid: $uid.value,
+      upw: getUpw(),
+    });
+    const r = await fetch("/paste_next", { method: "POST", body });
+    await r.text(); // TODO
+  };
+  // setTimeout(() => {
+  //   // location.reload();
+  // }, 3000);
+  // const p = $tr.parentNode;
+  // const el = $tr.cloneNode(true);
+  // for (let i = 0; i < 99; i++) p.appendChild(el.cloneNode(true));
 </script>
