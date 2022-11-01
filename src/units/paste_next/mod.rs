@@ -24,6 +24,7 @@ evolution:
 * 修改用户名，不对称算力验证防攻击
 * 邮箱关联
 * 类似 git fork, 但不使用 cow
+* 大文件增量同步
 * 页面缓存
 * 会员制
 
@@ -57,11 +58,11 @@ file:///home/kkocdko/misc/Markdown_1666085837234.html
 
 * ===== SIGNUP
 client: post(id, h = hash(id + password))
-server: store(id, salt = random(), hash(salt + h)), ret(true or false)
+server: store(id, salt = random(), hash(salt + h)), ret(result)
 
 * ===== LOGIN
 client: post(id, h = hash(id + password))
-server: compare(hash(salt + h), secret), ret(token = hash(time + id)(cached?))
+server: compare(hash(salt + h), secret), ret(token = hash(seed + id))
 
 * ===== OPERATION
 client: post(operation, token)
@@ -73,12 +74,19 @@ use axum::body::{Body, Bytes, HttpBody};
 use axum::extract::rejection::StringRejection;
 use axum::extract::{BodyStream, Form, FromRequest, FromRequestParts, Json, Path, RawBody};
 use axum::http::header::{self, HeaderMap, HeaderValue};
+use axum::http::request::Parts as RequestParts;
 use axum::http::{Request, StatusCode};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{MethodRouter, Router};
+use ring::digest::Digest;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use std::fmt::Display;
+use std::future::Future;
 use std::mem::MaybeUninit;
 use std::ops::{Deref, DerefMut};
+use std::pin::Pin;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Mutex;
 // use tokio_rustls::rustls::internal::msgs::codec::Codec as _;
 // use tokio_rustls::rustls::internal::msgs::enums::HashAlgorithm;
 // use bytes::{BufMut, BytesMut};
@@ -89,7 +97,7 @@ fn db_init() {
     // upw: user secret
     // mail: user email address
     // level: user level (admin / vip / banned / normal)
-    // fid: file id (i64, != 0)
+    // fid: file id (u64, != 0)
     // desc: file description
     // mime: file mime, use this as the content-type, and is encrypted flag
     db! {"
@@ -102,6 +110,7 @@ fn db_init() {
         (fid INTEGER PRIMARY KEY AUTOINCREMENT, uid BLOB, desc BLOB, mime BLOB)
     "}
     .unwrap();
+    // TODO: insert one to avoid 0th file?
 }
 fn db_user_cu(uid: &[u8], upw: &[u8], mail: &[u8], level: u64) {
     db! {"
@@ -115,7 +124,7 @@ fn db_user_r(uid: &[u8]) -> Option<(Vec<u8>, Vec<u8>, u64)> {
         SELECT * FROM paste_user
         WHERE uid = ?
     ", [uid], ^(1, 2, 3)}
-    .ok() // convert i64 to u64?
+    .ok() // TODO: convert i64 to u64?
 }
 fn db_user_d(uid: &[u8]) {
     db! {"
@@ -187,6 +196,38 @@ fn db_user_d(uid: &[u8]) {
 
 // const FID_HASH_TABLE: u64 = 0x922d8336cc9cad34; // random magic number
 
+/// Convert fid, hashed -> raw
+fn fid_h2r(i: u64) -> u64 {
+    i
+}
+
+/// Convert fid, raw -> hashed
+fn fid_r2h(i: u64) -> u64 {
+    i
+}
+
+static TOKEN_SEED_POOL: [[u8; SHA256_LEN]; 2] = [[0u8; SHA256_LEN]; 2]; // use unsafe to modify
+static TOKEN_SEED_IDX: AtomicUsize = AtomicUsize::new(usize::MAX); // use as a mutex lock
+
+// token = sha256(seed + level + uid)
+
+// | token 0 | token 1 |
+// -----| token 1 |
+//
+
+fn token_gen(uid: &[u8], level: u64) -> Digest {
+    let seed = TOKEN_SEED_POOL[TOKEN_SEED_IDX.load(Ordering::Relaxed)];
+    let mut buf = Vec::new();
+    buf.extend(seed);
+    buf.extend(uid);
+    buf.extend(level.to_le_bytes());
+    ring::digest::digest(&ring::digest::SHA256, &buf)
+}
+
+fn token_vertify(uid: &[u8], level: u64, token: &[u8]) -> bool {
+    true
+}
+
 /// Promised that every comparison cost the same time.
 fn slow_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
@@ -199,54 +240,154 @@ fn slow_eq(a: &[u8], b: &[u8]) -> bool {
     diff == 0
 }
 
-#[derive(Deserialize, Debug)]
-#[serde(tag = "op", rename_all = "lowercase")]
 enum Op<'a> {
-    Signup { uid: &'a [u8], upw: &'a [u8] },
-    Login { uid: &'a [u8], upw: &'a [u8] },
-    Get { fid: i64 },
-    List { uid: &'a [u8] },
+    Signup {
+        uid: &'a [u8],
+        upw: &'a [u8],
+        mail: &'a [u8],
+    },
+    Login {
+        uid: &'a [u8],
+        upw: &'a [u8],
+    },
+    Renew {
+        uid: &'a [u8],
+        level: u64,
+        token: &'a [u8],
+    },
+    // Download {},
+    // Upload {},
+    // Get {
+    //     fid: i64,
+    // },
+    // List {
+    //     uid: &'a [u8],
+    //     token: &'a [u8],
+    // },
 }
 
-const SHA256LEN: usize = 32; // sha256 should be 32 bytes len
-async fn post_handler(req_body: Bytes) -> Response {
-    let op = serde_json::from_slice(&req_body).unwrap();
+struct IntoOp<B: HttpBody + Send + 'static>(Request<B>);
+
+impl<B: HttpBody + Send + 'static> IntoOp<B> {
+    fn into_op(&self) -> Result<Op, ()> {
+        let headers = self.0.headers();
+        macro_rules! value_of {
+            ($k:expr) => {{
+                match headers.get($k) {
+                    Some(v) => v.as_bytes(),
+                    None => return Err(()),
+                }
+            }};
+        }
+        Ok(match value_of!("$op") {
+            b"signup" => Op::Signup {
+                uid: value_of!("$uid"),
+                upw: value_of!("$upw"),
+                mail: value_of!("$mail"),
+            },
+            b"login" => Op::Login {
+                uid: value_of!("$uid"),
+                upw: value_of!("$upw"),
+            },
+            b"renew" => Op::Renew {
+                uid: value_of!("$uid"),
+                level: std::str::from_utf8(value_of!("$level"))
+                    .unwrap()
+                    .parse()
+                    .unwrap(),
+                token: value_of!("$token"),
+            },
+            _ => return Err(()),
+        })
+    }
+}
+
+impl<S: Send + Sync, B: HttpBody + Send> FromRequest<S, B> for IntoOp<B> {
+    type Rejection = ();
+    fn from_request<'a: 'b, 'b>(
+        req: Request<B>,
+        _state: &'a S,
+    ) -> Pin<Box<dyn Future<Output = Result<Self, Self::Rejection>> + Send + 'b>> {
+        Box::pin(std::future::ready(Ok(IntoOp(req))))
+    }
+}
+
+const SHA256_LEN: usize = 32; // sha256 should be 32 bytes len
+const UID_LEN: usize = 32; // uid should be 32 bytes len
+
+struct BytesToHex<'a>(&'a [u8]);
+impl<'a> Display for BytesToHex<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        fn to_hex(d: u8) -> u8 {
+            match d {
+                0..=9 => d + b'0',
+                10..=255 => d - 10 + b'a',
+            }
+        }
+        for byte in self.0 {
+            write!(f, "{}", to_hex(byte >> 4) as char)?;
+            write!(f, "{}", to_hex(byte & 15) as char)?;
+        }
+        Ok(())
+    }
+}
+
+fn hex2bytes(hex: &[u8], bytes: &mut Vec<u8>) {
+    unimplemented!()
+}
+
+async fn post_handler<B: HttpBody + Send + 'static>(into_op: IntoOp<B>) -> Response {
+    let op = match into_op.into_op() {
+        Ok(v) => v,
+        Err(_) => return r#"{"type":"err_header_invalid"}"#.into_response(),
+    };
     match op {
-        Op::Signup { uid, upw } => {
+        Op::Signup { uid, upw, mail } => {
+            // TODO: uid length limit
             if db_user_r(uid).is_some() {
-                return r#"{"type":"error_uid_exists"}"#.into_response();
+                return r#"{"type":"err_uid_exists"}"#.into_response();
             }
-            let mut upw_buf = Vec::with_capacity(SHA256LEN * 2);
-            for _ in 0..SHA256LEN {
-                upw_buf.push(rand::random());
+            let upw = ring::test::from_hex(std::str::from_utf8(upw).unwrap()).unwrap(); // TODO: change to static convert function
+            let mut upw_buf = [0u8; SHA256_LEN * 2];
+            for v in &mut upw_buf[..SHA256_LEN] {
+                *v = rand::random(); // TODO: use rand::Fill?
             }
-            upw_buf.append(&mut ring::test::from_hex(std::str::from_utf8(upw).unwrap()).unwrap());
-            assert!(upw_buf.len() == SHA256LEN * 2);
-            let mut upw_store = upw_buf[..SHA256LEN].to_vec();
-            upw_store.extend(ring::digest::digest(&ring::digest::SHA256, &upw_buf).as_ref());
-            db_user_cu(uid, &upw_store, b"foo@kkocdko.site", 64);
-            r#"{"type":"signup_succeed"}"#.into_response()
+            // avoid panic of copy_from_slice
+            if upw.len() != SHA256_LEN {
+                return r#"{"type":"err_upw_len"}"#.into_response();
+            }
+            upw_buf[SHA256_LEN..].copy_from_slice(&upw);
+            let sha256 = ring::digest::digest(&ring::digest::SHA256, &upw_buf);
+            upw_buf[SHA256_LEN..].copy_from_slice(sha256.as_ref());
+            db_user_cu(uid, &upw_buf, mail, 64); // TODO: mail vertify
+            r#"{"type":"ok_signup"}"#.into_response()
         }
         Op::Login { uid, upw } => {
-            const ERR_UID_UPW: &str = r#"{"type":"error_uid_upw"}"#;
-            let (upw_correct, _mail, _level) = match db_user_r(uid) {
+            // TODO: uid length limit
+            const ERR_UID_UPW_WRONG: &str = r#"{"type":"err_uid_upw_wrong"}"#;
+            let (upw_correct, _mail, level) = match db_user_r(uid) {
                 Some(v) => v,
-                None => return ERR_UID_UPW.into_response(),
+                None => return ERR_UID_UPW_WRONG.into_response(), // TODO: avoid time-side attack
             };
-            let mut upw_buf = upw_correct[..SHA256LEN].to_vec();
+            let mut upw_buf = upw_correct[..SHA256_LEN].to_vec();
             upw_buf.append(&mut ring::test::from_hex(std::str::from_utf8(upw).unwrap()).unwrap());
-            assert!(upw_buf.len() == SHA256LEN * 2);
+            assert!(upw_buf.len() == SHA256_LEN * 2);
             let upw_req = ring::digest::digest(&ring::digest::SHA256, &upw_buf);
-            if upw_req.as_ref() != &upw_correct[SHA256LEN..] {
-                return ERR_UID_UPW.into_response();
+            if upw_req.as_ref() != &upw_correct[SHA256_LEN..] {
+                return ERR_UID_UPW_WRONG.into_response();
             }
-            // TODO: gen token
-            unimplemented!()
+            let token = token_gen(uid, level);
+            let token = BytesToHex(token.as_ref());
+            format!(r#"{{"type":"ok_login","token":"{token}","level":{level}}}"#).into_response()
         }
-        Op::Get { fid: i64 } => {
-            unimplemented!()
+        Op::Renew { uid, level, token } => {
+            if !token_vertify(uid, level, token) {
+                return r#"{"type":"err_token_invalid"}"#.into_response();
+            }
+            let token = token_gen(uid, level);
+            let token = BytesToHex(token.as_ref());
+            format!(r#"{{"type":"ok_renew","token":"{token}"}}"#).into_response()
         }
-        _ => unimplemented!(),
     }
 }
 
@@ -260,14 +401,16 @@ pub fn dev() {
 }
 
 pub fn service() -> Router {
-    // db_init();
-    // dbg!(db!("VACUUM"));
-    // mentions about the path later?
-    const PAGE: [&str; 1] = include_page!("page.html");
+    // TODO： vertify if the trigger fn not register!
+    db_init();
     Router::new().route(
-        "/paste_next",
+        "/paste",
         MethodRouter::new()
-            .get(|| async { PAGE[0] })
+            .get(|| async { (include_page!("page.html") as [_; 1])[0] })
             .post(post_handler),
     )
+}
+
+pub async fn tick() {
+    // update token seed
 }

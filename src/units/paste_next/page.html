@@ -151,6 +151,7 @@
   <tab_launch_ in_>
     <input id="$uid" placeholder="Username" />
     <input id="$upw" placeholder="Password" type="password" />
+    <!-- <input id="$mail" placeholder="Mail" type="email" /> -->
     <button id="$signup">Sign up</button>
     <button id="$login">Log in</button>
   </tab_launch_>
@@ -220,6 +221,8 @@
   //   return promise.then(() => reader.result.split(",", 2)[1]);
   // };
 
+  let token;
+
   const getUpw = async () => {
     const enc = new TextEncoder();
     const data = enc.encode(`paste_${$uid.value}_${$upw.value}`);
@@ -227,24 +230,28 @@
     return hash.reduce((s, v) => s + v.toString(16).padStart(2, "0"), "");
   };
 
+  const msgbox = (msg) => {};
+
   $signup.onclick = async () => {
-    const body = JSON.stringify({
-      op: "signup",
-      uid: $uid.value,
-      upw: getUpw(),
+    const r = await fetch("/paste", {
+      method: "POST",
+      headers: {
+        $op: "signup",
+        $uid: $uid.value,
+        $upw: getUpw(),
+        $mail: `${$uid.value}@kkocdko.site`,
+        // $mail: $mail.value, // TODO
+      },
     });
-    const r = await fetch("/paste_next", { method: "POST", body });
-    await r.text(); // TODO
+    const ret = await r.text(); // TODO
     $login.onclick();
   };
 
   $login.onclick = async () => {
-    const body = JSON.stringify({
-      op: "login",
-      uid: $uid.value,
-      upw: getUpw(),
+    const r = await fetch("/paste", {
+      method: "POST",
+      headers: { $op: "login", $uid: $uid.value, $upw: getUpw() },
     });
-    const r = await fetch("/paste_next", { method: "POST", body });
     await r.text(); // TODO
   };
   // setTimeout(() => {

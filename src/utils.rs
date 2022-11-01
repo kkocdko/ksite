@@ -35,13 +35,13 @@ pub fn encode_uri(i: &str) -> String {
         table
     }
 
-    const TABLE_LEN: usize = u8::MAX as usize + 1; // 256
+    const TABLE_LEN: usize = u8::MAX as usize + 1; // == 256
     const IS_VALID: [bool; TABLE_LEN] = gen_table();
 
-    fn hex(d: u8) -> u8 {
+    fn to_hex(d: u8) -> u8 {
         match d {
-            0..=9 => b'0' + d,
-            10..=255 => b'A' - 10 + d,
+            0..=9 => d + b'0',
+            10..=255 => d - 10 + b'a', // regardless of upper or lower case
         }
     }
 
@@ -51,8 +51,8 @@ pub fn encode_uri(i: &str) -> String {
             o.push(*b);
         } else {
             o.push(b'%');
-            o.push(hex(b >> 4));
-            o.push(hex(b & 15));
+            o.push(to_hex(b >> 4));
+            o.push(to_hex(b & 15));
         }
     }
     unsafe { String::from_utf8_unchecked(o) }

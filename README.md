@@ -24,6 +24,10 @@ All in one solution for my server.
 
 - `units::record`: record evidence picture, audio and video in real-time.
 
+### 0.8.0
+
+- `units::?`: convert office files to PDF by ms office rpc.
+
 ## Build
 
 This crate used some unstable Rust features (most in `ricq` dependency), so use nightly toolchain please (or set `RUSTC_BOOTSTRAP=1` for stable toolchain).
