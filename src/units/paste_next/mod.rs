@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 /*
 剪贴板 & 轻量文件存储
 
@@ -69,24 +67,22 @@ client: post(operation, token)
 server: compare(token, target = hash(time + id)), ret(result)
 
 */
-use crate::{db, include_page, strip_str};
+use crate::ticker::Ticker;
+use crate::{db, include_page};
 use axum::body::{Body, Bytes, HttpBody};
-use axum::extract::rejection::StringRejection;
-use axum::extract::{BodyStream, Form, FromRequest, FromRequestParts, Json, Path, RawBody};
-use axum::http::header::{self, HeaderMap, HeaderValue};
-use axum::http::request::Parts as RequestParts;
+use axum::extract::{BodyStream, Form, FromRequest, RawBody};
 use axum::http::{Request, StatusCode};
-use axum::response::{Html, IntoResponse, Redirect, Response};
+use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{MethodRouter, Router};
+use once_cell::sync::Lazy;
 use ring::digest::Digest;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::fmt::Display;
 use std::future::Future;
-use std::mem::MaybeUninit;
-use std::ops::{Deref, DerefMut};
+use std::mem::{swap, MaybeUninit};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
+use std::time::UNIX_EPOCH;
 // use tokio_rustls::rustls::internal::msgs::codec::Codec as _;
 // use tokio_rustls::rustls::internal::msgs::enums::HashAlgorithm;
 // use bytes::{BufMut, BytesMut};
@@ -133,6 +129,7 @@ fn db_user_d(uid: &[u8]) {
     ", [uid]}
     .unwrap();
 }
+
 // fn db_data_c(uid: &[u8], desc: &[u8], mime: &[u8]) -> i64 {
 //     db! {"
 //         INSERT INTO paste_data
@@ -206,28 +203,6 @@ fn fid_r2h(i: u64) -> u64 {
     i
 }
 
-static TOKEN_SEED_POOL: [[u8; SHA256_LEN]; 2] = [[0u8; SHA256_LEN]; 2]; // use unsafe to modify
-static TOKEN_SEED_IDX: AtomicUsize = AtomicUsize::new(usize::MAX); // use as a mutex lock
-
-// token = sha256(seed + level + uid)
-
-// | token 0 | token 1 |
-// -----| token 1 |
-//
-
-fn token_gen(uid: &[u8], level: u64) -> Digest {
-    let seed = TOKEN_SEED_POOL[TOKEN_SEED_IDX.load(Ordering::Relaxed)];
-    let mut buf = Vec::new();
-    buf.extend(seed);
-    buf.extend(uid);
-    buf.extend(level.to_le_bytes());
-    ring::digest::digest(&ring::digest::SHA256, &buf)
-}
-
-fn token_vertify(uid: &[u8], level: u64, token: &[u8]) -> bool {
-    true
-}
-
 /// Promised that every comparison cost the same time.
 fn slow_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
@@ -240,6 +215,101 @@ fn slow_eq(a: &[u8], b: &[u8]) -> bool {
     diff == 0
 }
 
+/// Token Module
+///
+/// token = `timestamp:second_u64_le + sha256(seed[timestamp] + uid + level:u64_le)`
+///
+/// The token was regenerated every 30 minutes, and expired after 1 hour. There are 3 seed in the
+/// pool, request renew on client should response the next token and the valid timestamp.
+///
+/// ```norust
+/// | 30 min |
+/// | --- seed 00 --- |
+///          | --- seed 01 --- |
+///                   | --- seed 02 --- |
+///                            | --- seed 00 --- |
+/// ```
+mod token {
+    use super::SHA256_LEN;
+    use ring::digest::Digest;
+    use std::fmt::Display;
+    use std::future::Future;
+    use std::mem::MaybeUninit;
+    use std::pin::Pin;
+    use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+    use std::sync::Mutex;
+    use std::time::UNIX_EPOCH;
+
+    const TIMESTAMP_LEN: usize = 8; // u64
+    const TOKEN_LEN: usize = TIMESTAMP_LEN + SHA256_LEN;
+    static mut SEED_POOL: [[u8; SHA256_LEN]; 3] = [[0; SHA256_LEN]; 3];
+    static CURRENT_TIMESTAMP: AtomicU64 = AtomicU64::new(0);
+
+    fn gen(seed_idx: usize, uid: &[u8], level: u64) -> Digest {
+        let seed = unsafe { SEED_POOL[seed_idx] };
+        let mut buf = Vec::new();
+        buf.extend(seed);
+        buf.extend(uid);
+        buf.extend(level.to_le_bytes());
+        ring::digest::digest(&ring::digest::SHA256, &buf) // it's hardware accelerated!
+    }
+
+    /// Get the seed index (`0`, `1` or `2`) by timestamp, returns `usize::MAX` if the timestamp
+    /// was outdated (after 1 hour).
+    fn timestamp2idx(timestamp: u64) -> usize {
+        let current_timestamp = CURRENT_TIMESTAMP.load(Ordering::Relaxed);
+        const LIMIT: u64 = 3600 - 600; // WARNING: avoid edge case?
+        if current_timestamp.saturating_sub(timestamp) > LIMIT {
+            return usize::MAX; // outdated
+        }
+        (timestamp % 5400 / 1800) as _
+    }
+
+    /// Generate token in current time.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let token: &[u8] = token_current(uid, level).as_ref();
+    /// ```
+    pub fn current(uid: &[u8], level: u64) -> Digest {
+        let seed_idx = timestamp2idx(CURRENT_TIMESTAMP.load(Ordering::Relaxed));
+        gen(seed_idx, uid, level)
+    }
+
+    pub fn vertify(uid: &[u8], level: u64, token: &[u8]) -> bool {
+        let mut timestamp: [u8; 8] = [0; 8];
+        timestamp.copy_from_slice(&token[0..TIMESTAMP_LEN]);
+        let seed_idx = timestamp2idx(u64::from_le_bytes(timestamp));
+        gen(seed_idx, uid, level).as_ref() == token
+    }
+
+    pub fn renew_tick() {
+        // WARNING: edge case?
+        let current_timestamp = UNIX_EPOCH.elapsed().unwrap().as_secs();
+        let seed_idx = timestamp2idx(current_timestamp);
+        unsafe {
+            if seed_idx == usize::MAX {
+                // is init
+                for seed in &mut SEED_POOL {
+                    for v in seed {
+                        *v = rand::random();
+                    }
+                }
+            } else {
+                let next_idx = (seed_idx + 1) % 3;
+                for v in &mut SEED_POOL[next_idx] {
+                    *v = rand::random();
+                }
+                // if this function runs overfrquency, the next seed will renew many times, but
+                // it's allowed and sound.
+            }
+        }
+        // store **AFTER** the seed pool was renewed
+        CURRENT_TIMESTAMP.store(current_timestamp, Ordering::SeqCst);
+    }
+}
+
 enum Op<'a> {
     Signup {
         uid: &'a [u8],
@@ -250,13 +320,23 @@ enum Op<'a> {
         uid: &'a [u8],
         upw: &'a [u8],
     },
-    Renew {
+    // Renew {
+    //     uid: &'a [u8],
+    //     level: u64,
+    //     token: &'a [u8],
+    // },
+    // Download {
+    //     fid: u64,
+    //     uid: &'a [u8],
+    //     token: &'a [u8],
+    // },
+    Upload {
         uid: &'a [u8],
         level: u64,
         token: &'a [u8],
+        body: Body,
+        // stream: BodyStream,
     },
-    // Download {},
-    // Upload {},
     // Get {
     //     fid: i64,
     // },
@@ -266,15 +346,23 @@ enum Op<'a> {
     // },
 }
 
-struct IntoOp<B: HttpBody + Send + 'static>(Request<B>);
+struct IntoOp(Request<Body>);
 
-impl<B: HttpBody + Send + 'static> IntoOp<B> {
-    fn into_op(&self) -> Result<Op, ()> {
+impl IntoOp {
+    fn into_op(&mut self) -> Result<Op, ()> {
+        let mut body = Body::empty();
+        swap(self.0.body_mut(), &mut body);
         let headers = self.0.headers();
         macro_rules! value_of {
             ($k:expr) => {{
                 match headers.get($k) {
                     Some(v) => v.as_bytes(),
+                    None => return Err(()),
+                }
+            }};
+            (:$k:expr) => {{
+                match headers.get($k) {
+                    Some(v) => v.to_str().or(Err(()))?.parse().or(Err(()))?,
                     None => return Err(()),
                 }
             }};
@@ -289,23 +377,22 @@ impl<B: HttpBody + Send + 'static> IntoOp<B> {
                 uid: value_of!("$uid"),
                 upw: value_of!("$upw"),
             },
-            b"renew" => Op::Renew {
+            b"upload" => Op::Upload {
                 uid: value_of!("$uid"),
-                level: std::str::from_utf8(value_of!("$level"))
-                    .unwrap()
-                    .parse()
-                    .unwrap(),
+                level: value_of!(:"$level"),
                 token: value_of!("$token"),
+                body,
             },
             _ => return Err(()),
         })
+        // hyper docs: Note: To read the full body, use body::to_bytes or body::aggregate.
     }
 }
 
-impl<S: Send + Sync, B: HttpBody + Send> FromRequest<S, B> for IntoOp<B> {
+impl<S: Send + Sync> FromRequest<S, Body> for IntoOp {
     type Rejection = ();
     fn from_request<'a: 'b, 'b>(
-        req: Request<B>,
+        req: Request<Body>,
         _state: &'a S,
     ) -> Pin<Box<dyn Future<Output = Result<Self, Self::Rejection>> + Send + 'b>> {
         Box::pin(std::future::ready(Ok(IntoOp(req))))
@@ -316,6 +403,7 @@ const SHA256_LEN: usize = 32; // sha256 should be 32 bytes len
 const UID_LEN: usize = 32; // uid should be 32 bytes len
 
 struct BytesToHex<'a>(&'a [u8]);
+
 impl<'a> Display for BytesToHex<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         fn to_hex(d: u8) -> u8 {
@@ -336,7 +424,8 @@ fn hex2bytes(hex: &[u8], bytes: &mut Vec<u8>) {
     unimplemented!()
 }
 
-async fn post_handler<B: HttpBody + Send + 'static>(into_op: IntoOp<B>) -> Response {
+async fn post_handler(mut into_op: IntoOp) -> Response {
+    const ERR_TOKEN: &str = r#"{"type":"err_token"}"#;
     let op = match into_op.into_op() {
         Ok(v) => v,
         Err(_) => return r#"{"type":"err_header_invalid"}"#.into_response(),
@@ -347,6 +436,7 @@ async fn post_handler<B: HttpBody + Send + 'static>(into_op: IntoOp<B>) -> Respo
             if db_user_r(uid).is_some() {
                 return r#"{"type":"err_uid_exists"}"#.into_response();
             }
+            dbg!(std::str::from_utf8(upw).unwrap());
             let upw = ring::test::from_hex(std::str::from_utf8(upw).unwrap()).unwrap(); // TODO: change to static convert function
             let mut upw_buf = [0u8; SHA256_LEN * 2];
             for v in &mut upw_buf[..SHA256_LEN] {
@@ -376,17 +466,20 @@ async fn post_handler<B: HttpBody + Send + 'static>(into_op: IntoOp<B>) -> Respo
             if upw_req.as_ref() != &upw_correct[SHA256_LEN..] {
                 return ERR_UID_UPW_WRONG.into_response();
             }
-            let token = token_gen(uid, level);
+            let token = token::current(uid, level);
             let token = BytesToHex(token.as_ref());
             format!(r#"{{"type":"ok_login","token":"{token}","level":{level}}}"#).into_response()
         }
-        Op::Renew { uid, level, token } => {
-            if !token_vertify(uid, level, token) {
-                return r#"{"type":"err_token_invalid"}"#.into_response();
+        Op::Upload {
+            uid,
+            level,
+            token,
+            body,
+        } => {
+            if !token::vertify(uid, level, token) {
+                return ERR_TOKEN.into_response();
             }
-            let token = token_gen(uid, level);
-            let token = BytesToHex(token.as_ref());
-            format!(r#"{{"type":"ok_renew","token":"{token}"}}"#).into_response()
+            unimplemented!()
         }
     }
 }
@@ -401,16 +494,22 @@ pub fn dev() {
 }
 
 pub fn service() -> Router {
-    // TODO： vertify if the trigger fn not register!
+    // TODO: vertify if the trigger fn not register!
+    // TODO: user may make request immediately after the server launch, is this sound?
     db_init();
     Router::new().route(
         "/paste",
         MethodRouter::new()
-            .get(|| async { (include_page!("page.html") as [_; 1])[0] })
+            .get(|| async { Html((include_page!("page.html") as [_; 1])[0]) })
             .post(post_handler),
     )
 }
 
+static TICKER: Lazy<Ticker> = Lazy::new(|| Ticker::new_p8(&[(-1, 0, 0), (-1, 30, 0)]));
 pub async fn tick() {
-    // update token seed
+    if !TICKER.tick() {
+        return;
+    }
+    unimplemented!()
+    // unsafe { token_renew_tick() }
 }

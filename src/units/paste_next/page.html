@@ -238,7 +238,7 @@
       headers: {
         $op: "signup",
         $uid: $uid.value,
-        $upw: getUpw(),
+        $upw: await getUpw(),
         $mail: `${$uid.value}@kkocdko.site`,
         // $mail: $mail.value, // TODO
       },
@@ -250,7 +250,7 @@
   $login.onclick = async () => {
     const r = await fetch("/paste", {
       method: "POST",
-      headers: { $op: "login", $uid: $uid.value, $upw: getUpw() },
+      headers: { $op: "login", $uid: $uid.value, $upw: await getUpw() },
     });
     await r.text(); // TODO
   };
