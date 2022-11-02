@@ -1,4 +1,6 @@
 # ksite
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fkkocdko%2Fksite.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fkkocdko%2Fksite?ref=badge_shield)
+
 
 All in one solution for my server.
 
@@ -38,3 +40,7 @@ If you prefer musl libc, try [cargo-zigbuild](https://github.com/messense/cargo-
 # dnf install zig # for fedora
 cargo zigbuild --release --target=x86_64-unknown-linux-musl
 ```
+
+
+## License
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fkkocdko%2Fksite.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Fkkocdko%2Fksite?ref=badge_large)
