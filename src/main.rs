@@ -62,6 +62,7 @@ async fn main() {
             let _ = tokio::join!(
                 units::health::tick(),
                 units::magazine::tick(),
+                units::paste::tick(),
                 units::qqbot::tick(),
             );
         }

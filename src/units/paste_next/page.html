@@ -148,7 +148,7 @@
 </style>
 
 <body>
-  <tab_launch_ in_>
+  <tab_launch_ id="$tabLaunch" in_>
     <input id="$uid" placeholder="Username" />
     <input id="$upw" placeholder="Password" type="password" />
     <!-- <input id="$mail" placeholder="Mail" type="email" /> -->
@@ -156,9 +156,9 @@
     <button id="$login">Log in</button>
   </tab_launch_>
 
-  <tab_files_>
+  <tab_files_ id="$tabFiles">
     <top_bar_>
-      <button>@ kkocdko</button>
+      <button id="$uidRefFiles"></button>
       <br />
       <button>Create</button>
       <button>Edit</button>
@@ -230,7 +230,9 @@
     return hash.reduce((s, v) => s + v.toString(16).padStart(2, "0"), "");
   };
 
-  const msgbox = (msg) => {};
+  const msgbox = async (msg) => {
+    alert(msg); // TODO: replace to no-blocking dialog
+  };
 
   $signup.onclick = async () => {
     const r = await fetch("/paste", {
@@ -243,16 +245,41 @@
         // $mail: $mail.value, // TODO
       },
     });
-    const ret = await r.text(); // TODO
+    const d = await r.json();
+    if (d.type !== "ok_signup") return msgbox(JSON.stringify(d));
     $login.onclick();
   };
 
-  $login.onclick = async () => {
+  // login without modify the state
+  const login = async () => {
     const r = await fetch("/paste", {
       method: "POST",
       headers: { $op: "login", $uid: $uid.value, $upw: await getUpw() },
     });
-    await r.text(); // TODO
+    const d = await r.json();
+    if (d.type !== "ok_login") return msgbox(JSON.stringify(d));
+    token = d.token;
+    // d.level
+  };
+
+  const refreshFiles = async () => {
+    const r = await fetch("/paste", {
+      method: "POST",
+      headers: { $op: "list", $token: token },
+    });
+    const d = await r.json();
+    if (d.type !== "ok_list") return msgbox(JSON.stringify(d));
+    for (const e of d.files) {
+      // TODO
+    }
+  };
+
+  $login.onclick = async () => {
+    await login();
+    $tabLaunch.toggleAttribute("in_");
+    $tabFiles.toggleAttribute("in_");
+    $uidRefFiles.textContent = "@ " + $uid.value;
+    await refreshFiles();
   };
   // setTimeout(() => {
   //   // location.reload();

@@ -69,20 +69,17 @@ server: compare(token, target = hash(time + id)), ret(result)
 */
 use crate::ticker::Ticker;
 use crate::{db, include_page};
-use axum::body::{Body, Bytes, HttpBody};
-use axum::extract::{BodyStream, Form, FromRequest, RawBody};
-use axum::http::{Request, StatusCode};
-use axum::response::{Html, IntoResponse, Response};
+use axum::body::Body;
+use axum::extract::FromRequest;
+use axum::http::header::CONTENT_TYPE;
+use axum::http::Request;
+use axum::response::{Html, IntoResponse, Json, Response};
 use axum::routing::{MethodRouter, Router};
 use once_cell::sync::Lazy;
-use ring::digest::Digest;
-use std::fmt::Display;
 use std::future::Future;
+use std::io::Write as _;
 use std::mem::{swap, MaybeUninit};
 use std::pin::Pin;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Mutex;
-use std::time::UNIX_EPOCH;
 // use tokio_rustls::rustls::internal::msgs::codec::Codec as _;
 // use tokio_rustls::rustls::internal::msgs::enums::HashAlgorithm;
 // use bytes::{BufMut, BytesMut};
@@ -103,40 +100,39 @@ fn db_init() {
     .unwrap();
     db! {"
         CREATE TABLE IF NOT EXISTS paste_data
-        (fid INTEGER PRIMARY KEY AUTOINCREMENT, uid BLOB, desc BLOB, mime BLOB)
+        (fid INTEGER PRIMARY KEY AUTOINCREMENT, size INTEGER, uid BLOB, desc BLOB, mime BLOB)
     "}
     .unwrap();
     // TODO: insert one to avoid 0th file?
 }
-fn db_user_cu(uid: &[u8], upw: &[u8], mail: &[u8], level: u64) {
+fn db_user_cu(uid: &[u8], upw: &[u8], mail: &[u8], level: u8) {
     db! {"
         REPLACE INTO paste_user
         VALUES (?1, ?2, ?3, ?4)
     ",[uid, upw, mail, level as i64]}
     .unwrap();
 }
-fn db_user_r(uid: &[u8]) -> Option<(Vec<u8>, Vec<u8>, u64)> {
+fn db_user_r(uid: &[u8]) -> Option<(Vec<u8>, Vec<u8>, u8)> {
     db! {"
         SELECT * FROM paste_user
         WHERE uid = ?
     ", [uid], ^(1, 2, 3)}
     .ok() // TODO: convert i64 to u64?
 }
-fn db_user_d(uid: &[u8]) {
-    db! {"
-        DELETE FROM paste_user
-        WHERE uid = ?
-    ", [uid]}
-    .unwrap();
-}
-
-// fn db_data_c(uid: &[u8], desc: &[u8], mime: &[u8]) -> i64 {
+// fn db_user_d(uid: &[u8]) {
 //     db! {"
-//         INSERT INTO paste_data
-//         VALUES (NULL, ?1, ?2, ?3)
-//     ", [uid, desc, mime], &}
-//     .unwrap()
+//         DELETE FROM paste_user
+//         WHERE uid = ?
+//     ", [uid]}
+//     .unwrap();
 // }
+fn db_data_c(size: u64, uid: &[u8], desc: &[u8], mime: &[u8]) -> u64 {
+    db! {"
+        INSERT INTO paste_data
+        VALUES (NULL, ?1, ?2, ?3, ?4)
+    ", [size, uid, desc, mime], &}
+    .unwrap() as _
+}
 // fn db_data_u_desc(fid: i64, desc: &[u8]) -> bool {
 //     db! {"
 //         UPDATE paste_data
@@ -156,9 +152,9 @@ fn db_user_d(uid: &[u8]) {
 // fn db_data_r(fid: i64) -> Option<(Vec<u8>, Vec<u8>, Vec<u8>)> {
 //     db!("SELECT * FROM paste_data WHERE fid = ?", [fid], ^(1, 2, 3)).ok()
 // }
-// fn db_data_r_by_user(uid: &[u8]) -> Vec<(i64, Vec<u8>, Vec<u8>)> {
-//     db!("SELECT * FROM paste_data WHERE uid = ?", [uid], (0, 2, 3)).unwrap()
-// }
+fn db_data_r_by_user(uid: &[u8]) -> Vec<(i64, Vec<u8>, Vec<u8>)> {
+    db!("SELECT * FROM paste_data WHERE uid = ?", [uid], (0, 2, 3)).unwrap()
+}
 // fn db_data_d(fid: i64) -> bool {
 //     db!("DELETE FROM paste_data WHERE fid = ?", [fid]).is_ok()
 // }
@@ -217,12 +213,18 @@ fn slow_eq(a: &[u8], b: &[u8]) -> bool {
 
 /// Token Module
 ///
-/// token = `timestamp:second_u64_le + sha256(seed[timestamp] + uid + level:u64_le)`
-///
 /// The token was regenerated every 30 minutes, and expired after 1 hour. There are 3 seed in the
 /// pool, request renew on client should response the next token and the valid timestamp.
 ///
 /// ```norust
+/// timestamp: u32 = minutes, level: u8, uid: &[u8]
+/// token: &[u8] =
+///     hash(seed[timestamp] + level:u8 + uid)
+///     + timestamp:u32_le_bytes
+///     + level:u8
+///     + b'.'
+///     + uid:&[u8]
+///
 /// | 30 min |
 /// | --- seed 00 --- |
 ///          | --- seed 01 --- |
@@ -230,63 +232,68 @@ fn slow_eq(a: &[u8], b: &[u8]) -> bool {
 ///                            | --- seed 00 --- |
 /// ```
 mod token {
-    use super::SHA256_LEN;
     use ring::digest::Digest;
-    use std::fmt::Display;
-    use std::future::Future;
-    use std::mem::MaybeUninit;
-    use std::pin::Pin;
-    use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicU32, Ordering};
     use std::time::UNIX_EPOCH;
 
-    const TIMESTAMP_LEN: usize = 8; // u64
-    const TOKEN_LEN: usize = TIMESTAMP_LEN + SHA256_LEN;
-    static mut SEED_POOL: [[u8; SHA256_LEN]; 3] = [[0; SHA256_LEN]; 3];
-    static CURRENT_TIMESTAMP: AtomicU64 = AtomicU64::new(0);
+    static mut SEED_POOL: [[u8; 32]; 3] = [[0; 32]; 3];
+    static CURRENT_TIMESTAMP: AtomicU32 = AtomicU32::new(0);
 
-    fn gen(seed_idx: usize, uid: &[u8], level: u64) -> Digest {
+    fn hash(seed_idx: usize, level: u8, uid: &[u8]) -> Digest {
         let seed = unsafe { SEED_POOL[seed_idx] };
-        let mut buf = Vec::new();
+        let mut buf = Vec::new(); // TODO: avoid dynamic memory
         buf.extend(seed);
+        buf.push(level);
         buf.extend(uid);
-        buf.extend(level.to_le_bytes());
         ring::digest::digest(&ring::digest::SHA256, &buf) // it's hardware accelerated!
     }
 
     /// Get the seed index (`0`, `1` or `2`) by timestamp, returns `usize::MAX` if the timestamp
     /// was outdated (after 1 hour).
-    fn timestamp2idx(timestamp: u64) -> usize {
+    fn timestamp2idx(timestamp: u32) -> usize {
         let current_timestamp = CURRENT_TIMESTAMP.load(Ordering::Relaxed);
-        const LIMIT: u64 = 3600 - 600; // WARNING: avoid edge case?
+        const LIMIT: u32 = 60 - 5; // WARNING: avoid edge case?
         if current_timestamp.saturating_sub(timestamp) > LIMIT {
             return usize::MAX; // outdated
         }
-        (timestamp % 5400 / 1800) as _
+        (timestamp % 90 / 30) as _
     }
 
     /// Generate token in current time.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let token: &[u8] = token_current(uid, level).as_ref();
-    /// ```
-    pub fn current(uid: &[u8], level: u64) -> Digest {
-        let seed_idx = timestamp2idx(CURRENT_TIMESTAMP.load(Ordering::Relaxed));
-        gen(seed_idx, uid, level)
+    pub fn current(uid: &[u8], level: u8) -> String {
+        let timestamp = CURRENT_TIMESTAMP.load(Ordering::Relaxed);
+        let seed_idx = timestamp2idx(timestamp);
+        let mut buf = Vec::new();
+        buf.extend(hash(seed_idx, level, uid).as_ref());
+        buf.extend(timestamp.to_le_bytes());
+        buf.extend(level.to_le_bytes());
+        buf = super::bytes2hex(&buf);
+        buf.push(b'.');
+        buf.extend(uid);
+        String::from_utf8(buf).unwrap()
     }
 
-    pub fn vertify(uid: &[u8], level: u64, token: &[u8]) -> bool {
-        let mut timestamp: [u8; 8] = [0; 8];
-        timestamp.copy_from_slice(&token[0..TIMESTAMP_LEN]);
-        let seed_idx = timestamp2idx(u64::from_le_bytes(timestamp));
-        gen(seed_idx, uid, level).as_ref() == token
+    /// Extract (uid, level).
+    pub fn vertify(token: &[u8]) -> Result<(&[u8], u8), ()> {
+        if token.len() < 76 {
+            return Err(()); // too short
+        }
+        let sha256: [u8; 32] = super::hex2bytes(&token[..64])?;
+        let timestamp = u32::from_le_bytes(super::hex2bytes(&token[64..72])?);
+        let level = super::hex2bytes::<1>(&token[72..74])?[0];
+        let uid = &token[75..];
+        let seed_idx = timestamp2idx(timestamp);
+        match hash(seed_idx, level, &uid).as_ref() == sha256 {
+            true => Ok((uid, level)),
+            false => Err(()),
+        }
+        // In export interface, we use (uid, level); in this module, due to the flexibility, we use
+        // the token format that uid is behind the level.
     }
 
     pub fn renew_tick() {
         // WARNING: edge case?
-        let current_timestamp = UNIX_EPOCH.elapsed().unwrap().as_secs();
+        let current_timestamp = (UNIX_EPOCH.elapsed().unwrap().as_secs() / 60) as u32;
         let seed_idx = timestamp2idx(current_timestamp);
         unsafe {
             if seed_idx == usize::MAX {
@@ -310,38 +317,39 @@ mod token {
     }
 }
 
+/// Operations from client.
 enum Op<'a> {
+    /// Create a new user.
     Signup {
         uid: &'a [u8],
         upw: &'a [u8],
         mail: &'a [u8],
     },
-    Login {
-        uid: &'a [u8],
-        upw: &'a [u8],
-    },
-    // Renew {
-    //     uid: &'a [u8],
-    //     level: u64,
+    /// User login or token renew.
+    Login { uid: &'a [u8], upw: &'a [u8] },
+    /// Change user profile.
+    // Profile {
+    //     upw: &'a [u8],
+    //     mail: &'a [u8],
+    //     level: &'a [u8],
     //     token: &'a [u8],
     // },
-    // Download {
-    //     fid: u64,
-    //     uid: &'a [u8],
-    //     token: &'a [u8],
-    // },
-    Upload {
-        uid: &'a [u8],
-        level: u64,
+    /// Get the files list.
+    List { token: &'a [u8] },
+    /// Create a file.
+    Create {
+        desc: &'a [u8],
+        mime: &'a [u8],
         token: &'a [u8],
         body: Body,
-        // stream: BodyStream,
     },
+    // Update {},
+    // Delete {},
     // Get {
     //     fid: i64,
     // },
-    // List {
-    //     uid: &'a [u8],
+    // Info {
+    //     fid: i64,
     //     token: &'a [u8],
     // },
 }
@@ -350,38 +358,35 @@ struct IntoOp(Request<Body>);
 
 impl IntoOp {
     fn into_op(&mut self) -> Result<Op, ()> {
-        let mut body = Body::empty();
+        let mut body = Body::empty(); // TODO: optimize unnecessary body extact
         swap(self.0.body_mut(), &mut body);
         let headers = self.0.headers();
-        macro_rules! value_of {
+        macro_rules! v {
             ($k:expr) => {{
                 match headers.get($k) {
                     Some(v) => v.as_bytes(),
                     None => return Err(()),
                 }
             }};
-            (:$k:expr) => {{
-                match headers.get($k) {
-                    Some(v) => v.to_str().or(Err(()))?.parse().or(Err(()))?,
-                    None => return Err(()),
-                }
-            }};
         }
-        Ok(match value_of!("$op") {
+        Ok(match v!("$op") {
             b"signup" => Op::Signup {
-                uid: value_of!("$uid"),
-                upw: value_of!("$upw"),
-                mail: value_of!("$mail"),
+                uid: v!("$uid"),
+                upw: v!("$upw"),
+                mail: v!("$mail"),
             },
             b"login" => Op::Login {
-                uid: value_of!("$uid"),
-                upw: value_of!("$upw"),
+                uid: v!("$uid"),
+                upw: v!("$upw"),
             },
-            b"upload" => Op::Upload {
-                uid: value_of!("$uid"),
-                level: value_of!(:"$level"),
-                token: value_of!("$token"),
+            b"create" => Op::Create {
+                desc: v!("$desc"),
+                mime: v!("$mime"),
+                token: v!("$token"),
                 body,
+            },
+            b"list" => Op::List {
+                token: v!("$token"),
             },
             _ => return Err(()),
         })
@@ -400,86 +405,125 @@ impl<S: Send + Sync> FromRequest<S, Body> for IntoOp {
 }
 
 const SHA256_LEN: usize = 32; // sha256 should be 32 bytes len
-const UID_LEN: usize = 32; // uid should be 32 bytes len
+const UID_LEN_LIMIT: usize = 32;
 
-struct BytesToHex<'a>(&'a [u8]);
-
-impl<'a> Display for BytesToHex<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        fn to_hex(d: u8) -> u8 {
-            match d {
-                0..=9 => d + b'0',
-                10..=255 => d - 10 + b'a',
-            }
+fn bytes2hex(bytes: &[u8]) -> Vec<u8> {
+    fn to_hex(d: u8) -> u8 {
+        match d {
+            0..=9 => d + b'0',
+            10..=255 => d - 10 + b'a',
         }
-        for byte in self.0 {
-            write!(f, "{}", to_hex(byte >> 4) as char)?;
-            write!(f, "{}", to_hex(byte & 15) as char)?;
-        }
-        Ok(())
     }
+    let mut buf = Vec::new();
+    for byte in bytes {
+        buf.push(to_hex(byte >> 4));
+        buf.push(to_hex(byte & 15));
+    }
+    buf
 }
 
-fn hex2bytes(hex: &[u8], bytes: &mut Vec<u8>) {
-    unimplemented!()
+fn hex2bytes<const N: usize>(hex: &[u8]) -> Result<[u8; N], ()> {
+    fn from_hex(d: u8) -> Result<u8, ()> {
+        Ok(match d {
+            b'0'..=b'9' => d - b'0',
+            b'a'..=b'f' => d - b'a' + 10,
+            _ => return Err(()),
+        })
+    }
+    if hex.len() != N * 2 {
+        return Err(());
+    }
+    let mut ret = [0; N];
+    for (i, chunk) in hex.chunks(2).enumerate() {
+        ret[i] = (from_hex(chunk[0])? << 4) | from_hex(chunk[1])?;
+    }
+    Ok(ret)
+}
+
+fn json_response<T: IntoResponse>(i: T) -> Response {
+    ([(CONTENT_TYPE, "application/json")], i).into_response()
 }
 
 async fn post_handler(mut into_op: IntoOp) -> Response {
     const ERR_TOKEN: &str = r#"{"type":"err_token"}"#;
     let op = match into_op.into_op() {
         Ok(v) => v,
-        Err(_) => return r#"{"type":"err_header_invalid"}"#.into_response(),
+        Err(_) => return json_response(r#"{"type":"err_header_invalid"}"#),
     };
     match op {
         Op::Signup { uid, upw, mail } => {
-            // TODO: uid length limit
-            if db_user_r(uid).is_some() {
-                return r#"{"type":"err_uid_exists"}"#.into_response();
+            if uid.len() > UID_LEN_LIMIT {
+                return json_response(r#"{"type":"err_uid_too_long"}"#);
             }
-            dbg!(std::str::from_utf8(upw).unwrap());
-            let upw = ring::test::from_hex(std::str::from_utf8(upw).unwrap()).unwrap(); // TODO: change to static convert function
+            if db_user_r(uid).is_some() {
+                return json_response(r#"{"type":"err_uid_exists"}"#);
+            }
             let mut upw_buf = [0u8; SHA256_LEN * 2];
             for v in &mut upw_buf[..SHA256_LEN] {
-                *v = rand::random(); // TODO: use rand::Fill?
+                *v = rand::random();
             }
-            // avoid panic of copy_from_slice
-            if upw.len() != SHA256_LEN {
-                return r#"{"type":"err_upw_len"}"#.into_response();
-            }
+            let upw = match hex2bytes::<SHA256_LEN>(upw) {
+                Ok(v) => v,
+                Err(()) => return json_response(r#"{"type":"err_upw_encode"}"#),
+            };
             upw_buf[SHA256_LEN..].copy_from_slice(&upw);
             let sha256 = ring::digest::digest(&ring::digest::SHA256, &upw_buf);
             upw_buf[SHA256_LEN..].copy_from_slice(sha256.as_ref());
             db_user_cu(uid, &upw_buf, mail, 64); // TODO: mail vertify
-            r#"{"type":"ok_signup"}"#.into_response()
+            json_response(r#"{"type":"ok_signup"}"#)
         }
         Op::Login { uid, upw } => {
             // TODO: uid length limit
             const ERR_UID_UPW_WRONG: &str = r#"{"type":"err_uid_upw_wrong"}"#;
             let (upw_correct, _mail, level) = match db_user_r(uid) {
                 Some(v) => v,
-                None => return ERR_UID_UPW_WRONG.into_response(), // TODO: avoid time-side attack
+                None => return json_response(ERR_UID_UPW_WRONG), // TODO: avoid time-side attack
             };
             let mut upw_buf = upw_correct[..SHA256_LEN].to_vec();
             upw_buf.append(&mut ring::test::from_hex(std::str::from_utf8(upw).unwrap()).unwrap());
             assert!(upw_buf.len() == SHA256_LEN * 2);
             let upw_req = ring::digest::digest(&ring::digest::SHA256, &upw_buf);
             if upw_req.as_ref() != &upw_correct[SHA256_LEN..] {
-                return ERR_UID_UPW_WRONG.into_response();
+                return json_response(ERR_UID_UPW_WRONG);
             }
             let token = token::current(uid, level);
-            let token = BytesToHex(token.as_ref());
-            format!(r#"{{"type":"ok_login","token":"{token}","level":{level}}}"#).into_response()
+            json_response(format!(
+                r#"{{"type":"ok_login","token":"{token}","level":{level}}}"#
+            ))
         }
-        Op::Upload {
-            uid,
-            level,
+        Op::Create {
+            desc,
+            mime,
             token,
             body,
         } => {
-            if !token::vertify(uid, level, token) {
-                return ERR_TOKEN.into_response();
-            }
+            let (uid, _level) = match token::vertify(token) {
+                Ok(v) => v,
+                Err(_) => return json_response(ERR_TOKEN),
+            };
             unimplemented!()
+        }
+        Op::List { token } => {
+            let (uid, _level) = match token::vertify(token) {
+                Ok(v) => v,
+                Err(_) => return Json(ERR_TOKEN).into_response(),
+            };
+            let mut response = Vec::<u8>::new();
+            response.extend(br#"{"type":"ok_list","files":["#);
+            for (fid, mut desc, mut mime) in db_data_r_by_user(uid) {
+                response.extend(br#"{"fid":"#);
+                write!(response, "{fid}").unwrap();
+                response.extend(br#","desc":""#);
+                response.append(&mut desc);
+                response.extend(br#"","mime":""#);
+                response.append(&mut mime);
+                response.extend(br#""},"#);
+            }
+            if response.last() == Some(&b',') {
+                response.pop();
+            }
+            response.extend(br#"]}"#);
+            json_response(response)
         }
     }
 }
@@ -497,6 +541,7 @@ pub fn service() -> Router {
     // TODO: vertify if the trigger fn not register!
     // TODO: user may make request immediately after the server launch, is this sound?
     db_init();
+    token::renew_tick();
     Router::new().route(
         "/paste",
         MethodRouter::new()
@@ -510,6 +555,5 @@ pub async fn tick() {
     if !TICKER.tick() {
         return;
     }
-    unimplemented!()
-    // unsafe { token_renew_tick() }
+    token::renew_tick();
 }
