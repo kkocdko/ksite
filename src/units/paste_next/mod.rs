@@ -69,7 +69,7 @@ server: compare(token, target = hash(time + id)), ret(result)
 */
 use crate::ticker::Ticker;
 use crate::{db, include_page};
-use axum::body::Body;
+use axum::body::{Body, HttpBody as _};
 use axum::extract::FromRequest;
 use axum::http::header::CONTENT_TYPE;
 use axum::http::Request;
@@ -152,12 +152,17 @@ fn db_data_c(size: u64, uid: &[u8], desc: &[u8], mime: &[u8]) -> u64 {
 // fn db_data_r(fid: i64) -> Option<(Vec<u8>, Vec<u8>, Vec<u8>)> {
 //     db!("SELECT * FROM paste_data WHERE fid = ?", [fid], ^(1, 2, 3)).ok()
 // }
-fn db_data_r_by_user(uid: &[u8]) -> Vec<(i64, Vec<u8>, Vec<u8>)> {
-    db!("SELECT * FROM paste_data WHERE uid = ?", [uid], (0, 2, 3)).unwrap()
+fn db_data_r_by_user(uid: &[u8]) -> Vec<(u64, u64, Vec<u8>, Vec<u8>)> {
+    db!(
+        "SELECT * FROM paste_data WHERE uid = ?",
+        [uid],
+        (0, 1, 3, 4)
+    )
+    .unwrap()
 }
-// fn db_data_d(fid: i64) -> bool {
-//     db!("DELETE FROM paste_data WHERE fid = ?", [fid]).is_ok()
-// }
+fn db_data_d(fid: i64) -> bool {
+    db!("DELETE FROM paste_data WHERE fid = ?", [fid]).is_ok()
+}
 
 // /// Convert fid integer to string.
 // fn fid_i2s(i: i64, buf: &mut [u8; FID_MAX_LEN]) -> &[u8] {
@@ -338,9 +343,9 @@ enum Op<'a> {
     List { token: &'a [u8] },
     /// Create a file.
     Create {
+        token: &'a [u8],
         desc: &'a [u8],
         mime: &'a [u8],
-        token: &'a [u8],
         body: Body,
     },
     // Update {},
@@ -380,9 +385,9 @@ impl IntoOp {
                 upw: v!("$upw"),
             },
             b"create" => Op::Create {
+                token: v!("$token"),
                 desc: v!("$desc"),
                 mime: v!("$mime"),
-                token: v!("$token"),
                 body,
             },
             b"list" => Op::List {
@@ -492,15 +497,29 @@ async fn post_handler(mut into_op: IntoOp) -> Response {
             ))
         }
         Op::Create {
+            token,
             desc,
             mime,
-            token,
-            body,
+            mut body,
         } => {
-            let (uid, _level) = match token::vertify(token) {
+            let (uid, level) = match token::vertify(token) {
                 Ok(v) => v,
                 Err(_) => return json_response(ERR_TOKEN),
             };
+            // prevent big file in front end, just make a later limit here
+            // tokio::fs::write(path, contents)
+            while let Some(buf) = body.data().await {
+                let buf = match buf {
+                    Ok(v) => v,
+                    Err(_) => return json_response(r#"{"type":"err_body_read_failed"}"#),
+                };
+
+                // if buf.has_remaining() {
+                //     bufs.push(buf);
+                // }
+            }
+
+            // hyper::body::aggregate(body);
             unimplemented!()
         }
         Op::List { token } => {
@@ -508,11 +527,13 @@ async fn post_handler(mut into_op: IntoOp) -> Response {
                 Ok(v) => v,
                 Err(_) => return Json(ERR_TOKEN).into_response(),
             };
-            let mut response = Vec::<u8>::new();
+            let mut response = Vec::new();
             response.extend(br#"{"type":"ok_list","files":["#);
-            for (fid, mut desc, mut mime) in db_data_r_by_user(uid) {
+            for (fid, size, mut desc, mut mime) in db_data_r_by_user(uid) {
                 response.extend(br#"{"fid":"#);
                 write!(response, "{fid}").unwrap();
+                response.extend(br#","size":"#);
+                write!(response, "{size}").unwrap();
                 response.extend(br#","desc":""#);
                 response.append(&mut desc);
                 response.extend(br#"","mime":""#);

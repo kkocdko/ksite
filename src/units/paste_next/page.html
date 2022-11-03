@@ -158,24 +158,15 @@
 
   <tab_files_ id="$tabFiles">
     <top_bar_>
-      <button id="$uidRefFiles"></button>
+      <button id="$info"></button>
       <br />
-      <button>Create</button>
-      <button>Edit</button>
-      <button>Delete</button>
+      <button id="$create">Create</button>
+      <button id="$edit">Edit</button>
+      <button $id="$delete">Delete</button>
     </top_bar_>
     <files_list_>
       <table>
-        <tbody>
-          <tr id="$tr">
-            <td>
-              <input type="checkbox" />
-            </td>
-            <td>8y81yw2</td>
-            <td>Hello World</td>
-            <td>321 KB</td>
-          </tr>
-        </tbody>
+        <tbody id="$filesContainer"></tbody>
         <thead>
           <tr>
             <th width="1"></th>
@@ -246,7 +237,7 @@
       },
     });
     const d = await r.json();
-    if (d.type !== "ok_signup") return msgbox(JSON.stringify(d));
+    if (d.type !== "ok_signup") throw msgbox(JSON.stringify(d));
     $login.onclick();
   };
 
@@ -257,10 +248,13 @@
       headers: { $op: "login", $uid: $uid.value, $upw: await getUpw() },
     });
     const d = await r.json();
-    if (d.type !== "ok_login") return msgbox(JSON.stringify(d));
+    if (d.type !== "ok_login") throw msgbox(JSON.stringify(d));
     token = d.token;
     // d.level
   };
+
+  const friendlySize = (inBytes) => {};
+  const fidEnc = (fidNum) => {};
 
   const refreshFiles = async () => {
     const r = await fetch("/paste", {
@@ -268,19 +262,32 @@
       headers: { $op: "list", $token: token },
     });
     const d = await r.json();
-    if (d.type !== "ok_list") return msgbox(JSON.stringify(d));
+    if (d.type !== "ok_list") throw msgbox(JSON.stringify(d));
+    let innerHTML = "";
     for (const e of d.files) {
-      // TODO
+      // TODO: prevent XSS
+      innerHTML += `
+        <tr>
+          <td><input type="checkbox" /></td>
+          <td>${fidEnc(e.fid)}</td>
+          <td>${e.desc}</td>
+          <td>${friendlySize(e.size)}</td>
+        </tr>
+      `;
     }
+    $filesContainer.innerHTML = "";
   };
 
   $login.onclick = async () => {
     await login();
     $tabLaunch.toggleAttribute("in_");
     $tabFiles.toggleAttribute("in_");
-    $uidRefFiles.textContent = "@ " + $uid.value;
+    $info.textContent = "@ " + $uid.value;
     await refreshFiles();
   };
+
+  $create.onclick = async () => {};
+
   // setTimeout(() => {
   //   // location.reload();
   // }, 3000);
