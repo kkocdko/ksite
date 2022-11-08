@@ -1,5 +1,3 @@
-#![feature(const_slice_from_raw_parts)] // stabilized in 1.64 (#97522)
-#![feature(future_poll_fn)] // stabilized in 1.64 (#99306)
 mod auth;
 mod database;
 mod ticker;
