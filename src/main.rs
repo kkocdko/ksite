@@ -13,8 +13,7 @@ use std::time::Duration;
 
 #[tokio::main]
 async fn main() {
-    // units::paste_next::dev();
-    // return;
+    // return units::paste_next::dev().await;
     println!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
     println!("enter :q to quit");
     println!("authorization token = {}", *auth::TOKEN);
@@ -40,8 +39,8 @@ async fn main() {
             .merge(units::health::service())
             .merge(units::info::service())
             .merge(units::magazine::service())
-            // .merge(units::paste::service())
-            .merge(units::paste_next::service())
+            .merge(units::paste::service())
+            // .merge(units::paste_next::service())
             .merge(units::qqbot::service())
             .into_make_service();
         // .into_make_service_with_connect_info::<SocketAddr>();
@@ -60,7 +59,7 @@ async fn main() {
             let _ = tokio::join!(
                 units::health::tick(),
                 units::magazine::tick(),
-                units::paste_next::tick(),
+                // units::paste_next::tick(),
                 units::qqbot::tick(),
             );
         }

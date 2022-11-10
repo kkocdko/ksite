@@ -1,7 +1,7 @@
 //! TLS & HTTPS support for the server.
 use crate::db;
 use axum::routing::IntoMakeService;
-use axum::Router;
+use axum::RouterService;
 use hyper::server::accept::Accept;
 use hyper::server::conn::{AddrIncoming, Http};
 use std::future::poll_fn;
@@ -50,7 +50,7 @@ use tower::MakeService;
 /// * https://github.com/hyperium/hyper/blob/v0.14.20/src/server/server.rs#L176
 /// * https://github.com/tokio-rs/axum/tree/axum-v0.5.15/examples/low-level-rustls
 /// * https://github.com/programatik29/axum-server
-pub async fn serve(addr: &SocketAddr, mut app: IntoMakeService<Router>) {
+pub async fn serve(addr: &SocketAddr, mut app: IntoMakeService<RouterService>) {
     static IS_FIRST_CALL: AtomicBool = AtomicBool::new(true);
     assert!(IS_FIRST_CALL.load(Ordering::SeqCst), "called twice");
     IS_FIRST_CALL.store(false, Ordering::SeqCst);
