@@ -62,6 +62,7 @@ pub fn encode_uri(i: &str) -> String {
 ///
 /// Simpler than `hyper::body::to_bytes`.
 pub async fn read_body(mut body: Body) -> Vec<u8> {
+    // TODO: reimplement?
     let mut v = Vec::new();
     while let Some(Ok(bytes)) = body.data().await {
         v.append(&mut bytes.into());
@@ -127,8 +128,12 @@ pub async fn fetch(request: impl ToRequest) -> Result<Response<Body>> {
 
 /// Fetch a URI, returns as text.
 pub async fn fetch_text(request: impl ToRequest) -> Result<String> {
+    // let request = request.into_request();
+    // let a = format!("{}", request.uri());
+    // println!("begin:  {a}");
     let response = fetch(request).await?;
     let body = read_body(response.into_body()).await;
+    // println!("finish: {a}");
     Ok(String::from_utf8(body)?)
 }
 

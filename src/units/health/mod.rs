@@ -1,6 +1,7 @@
 //! Auto submit JUST's health check-in form.
 //!
 //! The prototype is https://github.com/kkocdko/user-scripts/blob/master/scripts/just-kit/health-check-in.js
+
 use crate::ticker::Ticker;
 use crate::utils::{fetch, fetch_json, fetch_text, OptionResult};
 use crate::{care, db, include_page};

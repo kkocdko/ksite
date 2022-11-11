@@ -1,4 +1,5 @@
 //! Online clipboard.
+
 use crate::{db, include_page};
 use axum::extract::{Form, Path};
 use axum::response::{Html, Redirect};

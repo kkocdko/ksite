@@ -1,4 +1,5 @@
 //! Provide server info.
+
 use crate::include_page;
 use crate::utils::fetch_text;
 use axum::http::header::{CACHE_CONTROL, REFRESH};

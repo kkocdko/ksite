@@ -129,7 +129,7 @@ fn judge_spam(msg: &str) -> bool {
         "资料",
     ];
     const SENSITIVITY: f64 = 0.7;
-    judge(msg, &LIST, SENSITIVITY)
+    judge(msg, LIST, SENSITIVITY)
 }
 
 pub fn service() -> Router {

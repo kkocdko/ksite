@@ -1,6 +1,6 @@
 //! Simple chat rooms, client-to-client encrypted.
-use anyhow::Result;
 
+use anyhow::Result;
 use axum::extract::Path;
 use axum::http::header::CACHE_CONTROL;
 use axum::response::sse::{Event, Sse};

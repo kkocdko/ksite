@@ -1,4 +1,5 @@
 //! Admin console.
+
 use crate::{db, include_page};
 use axum::body::Bytes;
 use axum::extract::RawQuery;

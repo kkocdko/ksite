@@ -1,14 +1,17 @@
 //! Collections of my favorite news source.
+
 use crate::ticker::Ticker;
 use crate::utils::{fetch_text, OptionResult};
 use crate::{care, include_page};
 use anyhow::Result;
-use axum::http::header::{HeaderName, CACHE_CONTROL, CONTENT_ENCODING, EXPIRES, REFRESH};
+use axum::body::Bytes;
+use axum::http::header::{HeaderName, HeaderValue};
+use axum::http::header::{CACHE_CONTROL, CONTENT_ENCODING, EXPIRES, REFRESH};
 use axum::response::Html;
 use axum::routing::{MethodRouter, Router};
 use once_cell::sync::Lazy;
 use std::io::Read as _;
-use std::sync::Mutex; // with small data, Mutex seems faster than RwLock
+use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
 fn generate(mut i: &str, o: &mut String, mut limit: usize) -> Result<()> {
@@ -66,28 +69,43 @@ fn generate(mut i: &str, o: &mut String, mut limit: usize) -> Result<()> {
     Ok(())
 }
 
-type Res = ([(HeaderName, String); 2], Html<Vec<u8>>);
+type Res = ([(HeaderName, HeaderValue); 2], Html<Bytes>);
 
 const PAGE: [&str; 2] = include_page!("page.html");
 
 static CACHE: Lazy<Mutex<Res>> = Lazy::new(|| {
     let body = format!("{}<h2>Magazine is generating ...</h2>{}", PAGE[0], PAGE[1]);
+    // with small data, Mutex seems faster than RwLock
     Mutex::new((
-        [(CACHE_CONTROL, "no-store".into()), (REFRESH, "2".into())],
-        Html(body.into_bytes()),
+        [
+            (CACHE_CONTROL, HeaderValue::from_static("no-store")),
+            (REFRESH, HeaderValue::from_static("2")),
+        ],
+        Html(Bytes::from(body)),
     ))
 });
 
 async fn refresh() -> Result<()> {
     let expires = httpdate::fmt_http_date(SystemTime::now() + Duration::from_secs(3600));
-    // https://rsshub.app | https://rsshub.uneasy.win | https://rss.itggg.cn
+    macro_rules! rss {
+        ($p:expr) => {{
+            /*
+            https://rsshub.app
+            https://rsshub.uneasy.win
+            https://rsshub.rssforever.com
+            https://rsshub.moeyy.cn
+            https://rss.itggg.cn
+            */
+            fetch_text(concat!("https://rsshub.rssforever.com", $p))
+        }};
+    }
     let r = tokio::join!(
-        fetch_text("https://rsshub.uneasy.win/leetcode/dailyquestion/solution/en"),
-        fetch_text("https://rsshub.uneasy.win/bbc"),
-        fetch_text("https://rsshub.uneasy.win/zhihu/daily"),
-        fetch_text("https://rsshub.uneasy.win/oschina/news/industry"),
-        fetch_text("https://rsshub.uneasy.win/1point3acres/post/hot3"),
-        fetch_text("https://rsshub.uneasy.win/rustcc/jobs"),
+        rss!("/leetcode/dailyquestion/solution/en"),
+        rss!("/bbc"),
+        rss!("/zhihu/daily"),
+        rss!("/oschina/news/industry"),
+        rss!("/1point3acres/post/hot3"),
+        rss!("/rustcc/jobs"),
     );
     let o = tokio::task::spawn_blocking(move || {
         let mut o = PAGE[0].to_string();
@@ -105,8 +123,14 @@ async fn refresh() -> Result<()> {
     })
     .await?;
     *CACHE.lock().unwrap() = (
-        [(EXPIRES, expires), (CONTENT_ENCODING, "gzip".into())],
-        Html(o),
+        [
+            (
+                EXPIRES,
+                HeaderValue::from_maybe_shared(Bytes::from(expires)).unwrap(),
+            ),
+            (CONTENT_ENCODING, HeaderValue::from_static("gzip")),
+        ],
+        Html(Bytes::from(o)), // `bytes::Bytes` is cheaper than `Vec<u8>` on clone
     );
     Ok(())
 }
@@ -117,7 +141,9 @@ pub fn service() -> Router {
     });
     Router::new().route(
         "/magazine",
-        MethodRouter::new().get(|| async { CACHE.lock().unwrap().clone() }),
+        MethodRouter::new().get(|| async {
+            CACHE.lock().unwrap().to_owned() // just clone some AtomicPtr inner
+        }),
     )
 }
 
