@@ -17,7 +17,16 @@ async fn gen_reply(msg_parts: Vec<&str>) -> Result<String> {
         Mutex::new(HashMap::from([
             ("呜".into(), "呜".into()),
             ("你说对吧".into(), "啊对对对".into()),
-            ("运行平台".into(), "ksite / axum / ricq".into()),
+            (
+                "运行平台".into(),
+                concat!(
+                    env!("CARGO_PKG_NAME"),
+                    " v",
+                    env!("CARGO_PKG_VERSION"),
+                    " with ricq and axum"
+                )
+                .into(),
+            ),
         ]))
     });
     Ok(match msg_parts[..] {
@@ -109,9 +118,18 @@ fn judge(msg: &str, list: &[&str], sensitivity: f64) -> bool {
 
 #[allow(unused)]
 fn judge_spam(msg: &str) -> bool {
-    let sensitivity = 0.7;
-    let list = ["重要", "通知", "群", "后果自负", "二维码", "同学"];
-    judge(msg, &list, sensitivity)
+    const LIST: &[&str] = &[
+        "重要",
+        "通知",
+        "群",
+        "后果自负",
+        "二维码",
+        "同学",
+        "免费",
+        "资料",
+    ];
+    const SENSITIVITY: f64 = 0.7;
+    judge(msg, &LIST, SENSITIVITY)
 }
 
 pub fn service() -> Router {
