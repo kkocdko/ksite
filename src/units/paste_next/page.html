@@ -251,15 +251,15 @@
     const r = await fetch("/paste", {
       method: "POST",
       headers: {
-        $op: "signup",
-        $uid: $uid.value,
-        $upw: await getUpw(),
-        $mail: `${$uid.value}@kkocdko.site`,
+        op_: "signup",
+        uid_: $uid.value,
+        upw_: await getUpw(),
+        mail_: `${$uid.value}@kkocdko.site`,
         // $mail: $mail.value, // TODO
       },
     });
-    const d = await r.json();
-    if (d.type !== "ok_signup") throw msgbox(JSON.stringify(d));
+    const type = r.headers.get("type_");
+    if (type !== "ok_default") throw msgbox(type);
     $login.onclick();
   };
 
@@ -267,31 +267,32 @@
   const login = async () => {
     const r = await fetch("/paste", {
       method: "POST",
-      headers: { $op: "login", $uid: $uid.value, $upw: await getUpw() },
+      headers: { op_: "login", uid_: $uid.value, upw_: await getUpw() },
     });
-    const d = await r.json();
-    if (d.type !== "ok_login") throw msgbox(JSON.stringify(d));
-    token = d.token;
-    // d.level
+    const type = r.headers.get("type_");
+    if (type !== "ok_default") throw msgbox(type);
+    token = r.headers.get("token_");
+    // let _level = r.headers.get("level_");
   };
 
   setInterval(() => {
     login();
   }, 30 * 60 * 1000);
 
-  const friendlySize = (inBytes) => `${inBytes / 1024} KiB`; // TODO
+  const friendlySize = (inBytes) =>
+    `${Math.ceil((inBytes * 100) / 1024) / 100} KiB`; // TODO
   const fidEnc = (fidNum) => fidNum; // TODO
+  const fidDec = (fidNum) => fidNum; // TODO
 
   const refreshFiles = async () => {
     const r = await fetch("/paste", {
       method: "POST",
-      headers: { $op: "list", $token: token },
+      headers: { op_: "list", token_: token },
     });
-    const d = await r.json();
-    if (d.type !== "ok_list") throw msgbox(JSON.stringify(d));
+    const type = r.headers.get("type_");
+    if (type !== "ok_default") throw msgbox(JSON.stringify(type));
     let innerHTML = "";
-    for (const e of d.files) {
-      // TODO: prevent XSS
+    const handleEntry = (e) => {
       innerHTML += `
         <tr>
           <td><input type="checkbox" /></td>
@@ -300,6 +301,13 @@
           <td>${friendlySize(e.size)}</td>
         </tr>
       `;
+    };
+    let e = {};
+    for (const line of (await r.text()).split("\n")) {
+      // depends on a newline at the end of file!
+      if (!line) handleEntry(e), (e = {});
+      const [k, v] = line.split(":", 2);
+      e[k] = v;
     }
     $filesContainer.innerHTML = innerHTML;
   };
@@ -338,21 +346,37 @@
     const r = await fetch("/paste", {
       method: "POST",
       headers: {
-        $op: "create",
-        $token: token,
-        $desc: "default test",
-        $mime: "text/plain",
-        $size: body.length,
+        op_: "create",
+        token_: token,
+        desc_: "default test",
+        mime_: "text/plain",
+        size_: body.length,
       },
       body,
     });
-    const d = await r.json();
-    if (d.type !== "ok_create") throw msgbox(JSON.stringify(d));
+    const type = r.headers.get("type_");
+    if (type !== "ok_default") throw msgbox(type);
     await refreshFiles();
     switchTab($tabFiles);
   };
 
-  $filesContainer.onclick = async (e) => {};
+  $filesContainer.onclick = async ({ target }) => {
+    if (target.childElementCount) return;
+    if (target instanceof HTMLTableCellElement) target = target.parentNode;
+    const r = await fetch("/paste", {
+      method: "POST",
+      headers: {
+        op_: "download",
+        token_: token,
+        fid_: fidDec(target.children[1].textContent),
+      },
+    });
+    const type = r.headers.get("type_");
+    if (type !== "ok_default") throw msgbox(type);
+    const body = await r.text();
+    switchTab($tabEdit);
+    $editText.value = body;
+  };
   // setTimeout(() => {
   //   // location.reload();
   // }, 3000);

@@ -69,30 +69,31 @@ server: compare(token, target = hash(time + id)), ret(result)
 */
 use crate::ticker::Ticker;
 use crate::{care, db, include_page};
-use futures_core::Stream;
+use axum::body::StreamBody;
 use axum::body::{Body, Bytes, HttpBody as _};
 use axum::extract::{FromRef, FromRequest};
 use axum::http::header::CONTENT_TYPE;
 use axum::http::{HeaderValue, Request};
-use axum::response::{Html, IntoResponse, Json, Response};
+use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{MethodRouter, Router};
+use futures_core::{Stream};
 use hyper::header::{HeaderName, CONTENT_LENGTH};
 use once_cell::sync::Lazy;
 use std::ffi::OsStr;
-use std::fmt::format;
 use std::future::Future;
-use std::io;
 use std::io::{Read, Write as _};
-use std::mem::{swap, MaybeUninit};
+use std::mem::swap;
 use std::os::unix::prelude::OsStrExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::str::FromStr;
+use std::task::Context;
+use std::task::Poll;
 use tokio::fs::File;
+use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
-use tokio::io::AsyncRead;
-use tokio::io::AsyncReadExt;
+use tokio::io::{self, AsyncRead};
 // use tokio_rustls::rustls::internal::msgs::codec::Codec as _;
 // use tokio_rustls::rustls::internal::msgs::enums::HashAlgorithm;
 // use bytes::{BufMut, BytesMut};
@@ -177,7 +178,7 @@ fn db_data_r_by_user(uid: &[u8]) -> Vec<(u64, u64, Vec<u8>, Vec<u8>)> {
 fn db_data_d(fid: u64) -> bool {
     db!("DELETE FROM paste_data WHERE fid = ?", [fid]).is_ok()
 }
-
+const DEFAULT_USER_LEVEL: u8 = 64;
 // /// Convert fid integer to string.
 // fn fid_i2s(i: i64, buf: &mut [u8; FID_MAX_LEN]) -> &[u8] {
 //     const L: usize = FID_CHARS.len();
@@ -368,17 +369,16 @@ enum Op<'a> {
         mime: &'a [u8],
         body: Body,
     },
+    // Download a file.
     Download {
         token: &'a [u8],
         fid: &'a [u8],
     },
-    // Delete {
-    //     token: &'a [u8],
-    //     fid: u64,
-    // },
-    // Get {
-    //     fid: i64,
-    // },
+    // Delete a file.
+    Delete {
+        token: &'a [u8],
+        fid: &'a [u8],
+    },
     // Update {},
     // Info {
     //     fid: i64,
@@ -401,30 +401,32 @@ impl IntoOp {
                 }
             }};
         }
-        Ok(match v!("$op") {
+        Ok(match v!(OP_) {
             b"signup" => Op::Signup {
-                uid: v!("$uid"),
-                upw: v!("$upw"),
-                mail: v!("$mail"),
+                uid: v!(UID_),
+                upw: v!(UPW_),
+                mail: v!(MAIL_),
             },
             b"login" => Op::Login {
-                uid: v!("$uid"),
-                upw: v!("$upw"),
+                uid: v!(UID_),
+                upw: v!(UPW_),
             },
             b"create" => Op::Create {
-                token: v!("$token"),
-                size: v!("$size"),
-                desc: v!("$desc"),
-                mime: v!("$mime"),
+                token: v!(TOKEN_),
+                size: v!(SIZE_),
+                desc: v!(DESC_),
+                mime: v!(MIME_),
                 body,
             },
             b"download" => Op::Download {
-                token: v!("$token"),
-                fid: v!("$fid"),
+                token: v!(TOKEN_),
+                fid: v!(FID_),
             },
-            b"list" => Op::List {
-                token: v!("$token"),
+            b"delete" => Op::Delete {
+                token: v!(TOKEN_),
+                fid: v!(FID_),
             },
+            b"list" => Op::List { token: v!(TOKEN_) },
             _ => return Err(()),
         })
         // hyper docs: Note: To read the full body, use body::to_bytes or body::aggregate.
@@ -509,81 +511,128 @@ fn parse_slice<T: FromStr>(i: &[u8]) -> Result<T, ()> {
     std::str::from_utf8(i).or(Err(()))?.parse().or(Err(()))
 }
 
-trait CastJsonErr<T> {
+trait FromBuf {
+    fn from_buf(buf: impl Into<Vec<u8>>) -> Self;
+}
+impl FromBuf for HeaderValue {
+    fn from_buf(buf: impl Into<Vec<u8>>) -> Self {
+        let buf = buf.into();
+        // TODO: use unsafe here?
+        Self::from_maybe_shared(Bytes::from(buf)).unwrap()
+    }
+}
+// impl FromString for HeaderName {
+//     fn from_string(s: String) -> Self {
+//         // TODO: use unsafe here?
+//         // HeaderValue::from_string(s)
+//         // Self::fr(Bytes::from(s)).unwrap()
+//     }
+// }
+
+macro_rules! def_const {
+    ($k:ident) => {
+        const $k: &'static str = {
+            const fn lower_case_const<const N: usize>(v: &[u8]) -> [u8; N] {
+                let mut ret = [0; N];
+                let mut i = 0;
+                while i < N {
+                    ret[i] = v[i].to_ascii_lowercase();
+                    i += 1;
+                }
+                ret
+            }
+            const UPPER: &'static str = stringify!($k);
+            const LOWER: [u8; UPPER.len()] = lower_case_const(UPPER.as_bytes());
+            unsafe { std::str::from_utf8_unchecked(&LOWER) }
+        };
+    };
+}
+// header names
+def_const!(OP_);
+def_const!(UID_);
+def_const!(UPW_);
+def_const!(TYPE_);
+def_const!(MAIL_);
+def_const!(TOKEN_);
+def_const!(SIZE_);
+def_const!(LEVEL_);
+def_const!(DESC_);
+def_const!(MIME_);
+def_const!(FID_);
+// ok types
+def_const!(OK_DEFAULT);
+// err types
+def_const!(ERR_TOKEN);
+def_const!(ERR_UID_UPW);
+def_const!(ERR_UPW_DECODE);
+def_const!(ERR_HEADER_INVALID);
+def_const!(ERR_BODY_READ);
+def_const!(ERR_BODY_SIZE);
+def_const!(ERR_UID_EXISTS);
+def_const!(ERR_UID_TOO_LONG);
+def_const!(ERR_FILE_NOT_FOUND_OR_DENY);
+def_const!(ERR_SERVER_INNER);
+
+trait CastErr<T> {
     fn cast_err(self, e: &'static str) -> Result<T, Response>;
 }
-impl<T, E> CastJsonErr<T> for Result<T, E> {
+impl<T, E> CastErr<T> for Result<T, E> {
     fn cast_err(self, e: &'static str) -> Result<T, Response> {
-        self.map_err(|_| json_response(e))
+        self.map_err(|_| [(TYPE_, e)].into_response())
     }
 }
-impl<T> CastJsonErr<T> for Option<T> {
+impl<T> CastErr<T> for Option<T> {
     fn cast_err(self, e: &'static str) -> Result<T, Response> {
-        self.ok_or_else(|| json_response(e))
+        self.ok_or_else(|| [(TYPE_, e)].into_response())
     }
 }
-impl CastJsonErr<()> for bool {
+impl CastErr<()> for bool {
     fn cast_err(self, e: &'static str) -> Result<(), Response> {
-        if self {
-            Ok(())
-        } else {
-            Err(json_response(e))
+        match self {
+            true => Ok(()),
+            false => Err([(TYPE_, e)].into_response()),
         }
     }
 }
 
-struct ERR;
-const _: () = {
-    macro_rules! def_err {
-        ($k:ident, $v:literal) => {
-            impl ERR {
-                const $k: &str = concat!(r#"{"type":"err_"#, $v, r#""}"#);
-            }
-        };
-    }
-    def_err!(TOKEN, "token");
-    def_err!(UID_UPW, "uid_upw");
-    def_err!(UPW_DECODE, "upw_decode");
-    def_err!(HEADER_INVALID, "header_invalid");
-    def_err!(BODY_READ, "body_read");
-    def_err!(BODY_SIZE, "body_size");
-    def_err!(UID_EXISTS, "uid_exists");
-    def_err!(UID_TOO_LONG, "uid_too_long");
-    def_err!(FILE_NOT_FOUND_OR_DENY, "file_not_found_or_deny");
-    def_err!(SERVER_INNER, "server_inner");
-};
-
 async fn post_handler(mut into_op: IntoOp) -> Result<Response, Response> {
-    let op = into_op.into_op().cast_err(ERR::HEADER_INVALID)?;
+    let op = into_op.into_op().cast_err(ERR_HEADER_INVALID)?;
     match op {
         Op::Signup { uid, upw, mail } => {
-            (uid.len() <= UID_LEN_LIMIT).cast_err(ERR::UID_TOO_LONG)?;
-            (db_user_r(uid).is_none()).cast_err(ERR::UID_EXISTS)?;
+            (uid.len() <= UID_LEN_LIMIT).cast_err(ERR_UID_TOO_LONG)?;
+            (db_user_r(uid).is_none()).cast_err(ERR_UID_EXISTS)?;
             // salt: [0, SHA256_LEN), content: [SHA256_LEN, 2 * SHA256_LEN)
             let mut upw_buf = [0u8; SHA256_LEN * 2];
             for v in &mut upw_buf[..SHA256_LEN] {
                 *v = rand::random(); // salt
             }
-            let upw = hex2bytes::<SHA256_LEN>(upw).cast_err(ERR::UPW_DECODE)?;
+            let upw = hex2bytes::<SHA256_LEN>(upw).cast_err(ERR_UPW_DECODE)?;
             upw_buf[SHA256_LEN..].copy_from_slice(&upw);
             let sha256 = ring::digest::digest(&ring::digest::SHA256, &upw_buf);
             upw_buf[SHA256_LEN..].copy_from_slice(sha256.as_ref());
             db_user_cu(uid, &upw_buf, mail, 64); // TODO: mail vertify
-            Ok(json_response(r#"{"type":"ok_signup"}"#))
+            Ok([
+                (TYPE_, HeaderValue::from_static(OK_DEFAULT)),
+                (LEVEL_, HeaderValue::from(DEFAULT_USER_LEVEL as u16)), // u8 is ambiguity
+            ]
+            .into_response())
         }
         Op::Login { uid, upw } => {
             // TODO: uid length limit
-            let (upw_correct, _mail, level) = db_user_r(uid).cast_err(ERR::UID_UPW)?; // TODO: avoid time-side attack
+            let (upw_correct, _mail, level) = db_user_r(uid).cast_err(ERR_UID_UPW)?; // TODO: avoid time-side attack
             let mut upw_buf = [0u8; SHA256_LEN * 2];
             upw_buf[..SHA256_LEN].copy_from_slice(&upw_correct[..SHA256_LEN]); // salt
-            let upw_decoded = hex2bytes::<SHA256_LEN>(upw).cast_err(ERR::UPW_DECODE)?;
+            let upw_decoded = hex2bytes::<SHA256_LEN>(upw).cast_err(ERR_UPW_DECODE)?;
             upw_buf[SHA256_LEN..].copy_from_slice(&upw_decoded);
             let upw_req = ring::digest::digest(&ring::digest::SHA256, &upw_buf);
-            (upw_req.as_ref() == &upw_correct[SHA256_LEN..]).cast_err(ERR::UID_UPW)?;
+            (upw_req.as_ref() == &upw_correct[SHA256_LEN..]).cast_err(ERR_UID_UPW)?;
             let token = token::current(uid, level);
-            Ok(json_response(format!(
-                r#"{{"type":"ok_login","token":"{token}","level":{level}}}"#
-            )))
+            Ok([
+                (TYPE_, HeaderValue::from_static(OK_DEFAULT)),
+                (TOKEN_, HeaderValue::from_buf(token)),
+                (LEVEL_, HeaderValue::from(level as u16)),
+            ]
+            .into_response())
         }
         Op::Create {
             token,
@@ -592,10 +641,11 @@ async fn post_handler(mut into_op: IntoOp) -> Result<Response, Response> {
             mime,
             mut body,
         } => {
-            let (uid, level) = token::vertify(token).cast_err(ERR::TOKEN)?;
+            // TODO: https://github.com/tokio-rs/axum/blob/main/examples/stream-to-file/src/main.rs
+            let (uid, level) = token::vertify(token).cast_err(ERR_TOKEN)?;
             // prevent big file in front end, just make a later limit here
             let size_limit = get_size_limit(level);
-            let expect_size = parse_slice::<u64>(size).cast_err(ERR::HEADER_INVALID)?;
+            let expect_size = parse_slice::<u64>(size).cast_err(ERR_HEADER_INVALID)?;
             let fid = db_data_c(expect_size, uid, desc, mime);
             let p = fid_to_path(fid.to_string().as_bytes());
             let mut file = tokio::fs::OpenOptions::new()
@@ -603,13 +653,13 @@ async fn post_handler(mut into_op: IntoOp) -> Result<Response, Response> {
                 .create(true)
                 .open(&p)
                 .await
-                .cast_err(ERR::SERVER_INNER)?;
+                .cast_err(ERR_SERVER_INNER)?;
             let mut size = 0;
             while let Some(buf) = body.data().await {
-                let buf = buf.cast_err(ERR::BODY_READ)?;
+                let buf = buf.cast_err(ERR_BODY_READ)?;
                 size += buf.len();
-                (size <= size_limit).cast_err(ERR::BODY_SIZE)?;
-                care!(file.write(&buf).await).cast_err(ERR::SERVER_INNER)?;
+                (size <= size_limit).cast_err(ERR_BODY_SIZE)?;
+                care!(file.write(&buf).await).cast_err(ERR_SERVER_INNER)?;
             }
             if size as u64 != expect_size {
                 db_data_d(fid);
@@ -617,63 +667,90 @@ async fn post_handler(mut into_op: IntoOp) -> Result<Response, Response> {
                 file.shutdown().await.ok(); // or flush?
                 drop(file);
                 care!(tokio::fs::remove_file(&p).await).ok(); // ignore inner error?
-                false.cast_err(ERR::BODY_SIZE)?;
+                false.cast_err(ERR_BODY_SIZE)?;
             }
-            Ok(json_response(format!(
-                r#"{{"type":"ok_create","fid":{fid}}}"#
-            )))
+            Ok([
+                (TYPE_, HeaderValue::from_static(OK_DEFAULT)),
+                (FID_, HeaderValue::from(fid)),
+            ]
+            .into_response())
         }
         Op::Download { token, fid } => {
-            let (uid, _level) = token::vertify(token).cast_err(ERR::TOKEN)?;
-            let fid_u64 = parse_slice::<u64>(fid).cast_err(ERR::HEADER_INVALID)?;
+            let (uid, _level) = token::vertify(token).cast_err(ERR_TOKEN)?;
+            let fid_u64 = parse_slice::<u64>(fid).cast_err(ERR_HEADER_INVALID)?;
             let (size, owner_uid, desc, mime) =
-                db_data_r(fid_u64).cast_err(ERR::FILE_NOT_FOUND_OR_DENY)?;
-            (uid == owner_uid).cast_err(ERR::FILE_NOT_FOUND_OR_DENY)?;
-            let mut response = ().into_response();
-            let mut headers = response.headers_mut();
-            headers.insert(CONTENT_LENGTH, HeaderValue::from(size));
-            headers.insert(
-                "$desc",
-                HeaderValue::from_maybe_shared(Bytes::from(desc)).unwrap(),
-            );
-            headers.insert(
-                "$mime",
-                HeaderValue::from_maybe_shared(Bytes::from(mime)).unwrap(),
-            );
+                db_data_r(fid_u64).cast_err(ERR_FILE_NOT_FOUND_OR_DENY)?;
+            (uid == owner_uid).cast_err(ERR_FILE_NOT_FOUND_OR_DENY)?;
             let p = fid_to_path(fid);
-            let mut file = tokio::fs::OpenOptions::new()
-                .read(true)
-                .open(&p)
-                .await
-                .cast_err(ERR::SERVER_INNER)?;
+            let file = File::open(p).await.unwrap();
+            let body = StreamBody::new(FileStream(file));
+            let mut response = body.into_response();
+            let headers = response.headers_mut();
+            headers.insert(CONTENT_LENGTH, HeaderValue::from(size));
+            headers.insert(TYPE_, HeaderValue::from_static(OK_DEFAULT));
+            headers.insert(DESC_, HeaderValue::from_buf(desc));
+            headers.insert(MIME_, HeaderValue::from_buf(mime));
             Ok(response)
+            // https://docs.rs/axum-extra/latest/src/axum_extra/body/async_read_body.rs.html#15-53
+        }
+        Op::Delete { token, fid } => {
+            let (uid, _level) = token::vertify(token).cast_err(ERR_TOKEN)?;
+            let fid_u64 = parse_slice::<u64>(fid).cast_err(ERR_HEADER_INVALID)?;
+            let (_size, owner_uid, _desc, _mime) =
+                db_data_r(fid_u64).cast_err(ERR_FILE_NOT_FOUND_OR_DENY)?;
+            (uid == owner_uid).cast_err(ERR_FILE_NOT_FOUND_OR_DENY)?;
+            let p = fid_to_path(fid);
+            db_data_d(fid_u64)
+                .cast_err(ERR_FILE_NOT_FOUND_OR_DENY)
+                .unwrap(); // illegal state, unwrap here
+            tokio::fs::remove_file(p).await.unwrap();
+            Ok([(TYPE_, HeaderValue::from_static(OK_DEFAULT))].into_response())
         }
         Op::List { token } => {
-            let (uid, _level) = token::vertify(token).cast_err(ERR::TOKEN)?;
-            let mut response = Vec::new();
-            response.extend(br#"{"type":"ok_list","files":["#);
-            for (fid, size, mut desc, mut mime) in db_data_r_by_user(uid) {
-                response.extend(br#"{"fid":"#);
-                write!(response, "{fid}").unwrap();
-                response.extend(br#","size":"#);
-                write!(response, "{size}").unwrap();
-                response.extend(br#","desc":""#);
-                response.append(&mut desc);
-                response.extend(br#"","mime":""#);
-                response.append(&mut mime);
-                response.extend(br#""},"#);
+            let (uid, _level) = token::vertify(token).cast_err(ERR_TOKEN)?;
+            let list = db_data_r_by_user(uid);
+            let list_is_empty = list.is_empty();
+            let mut body = Vec::<u8>::new(); // TODO: set capacity for performance
+            for (fid, size, mut desc, mut mime) in list {
+                write!(body, "fid:{fid}\nsize:{size}\ndesc:").unwrap();
+                body.append(&mut desc);
+                body.extend(b"\nmime:");
+                body.append(&mut mime);
+                body.push(b'\n');
+                body.push(b'\n');
             }
-            if response.last() == Some(&b',') {
-                response.pop();
+            if !list_is_empty {
+                body.pop(); // depends on a newline at the end of file!
             }
-            response.extend(br#"]}"#);
-            Ok(json_response(response))
+            let mut response = body.into_response();
+            let headers = response.headers_mut();
+            headers.insert(TYPE_, HeaderValue::from_static(OK_DEFAULT));
+            Ok(response)
         }
     }
 }
 
+// https://docs.rs/axum-extra/latest/axum_extra/
+
+struct FileStream(File);
+impl Stream for FileStream {
+    type Item = Result<Vec<u8>, io::Error>;
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
+        let mut buf = Vec::with_capacity(4 * 1024);
+        let mut fut = self.0.read_buf(&mut buf);
+        let fut = unsafe {
+            // safety: todo
+            Pin::new_unchecked(&mut fut)
+        };
+        if 0 == futures_core::ready!(fut.poll(cx))? {
+            return Poll::Ready(None);
+        }
+        Poll::Ready(Some(Ok(buf)))
+    }
+}
+
 pub async fn dev() {
-    dbg!(db_data_r_by_user(b"a"));
+    dbg!(ERR_TOKEN);
     // let mut file = tokio::fs::OpenOptions::new()
     //     // .create(true)
     //     .create(true)
