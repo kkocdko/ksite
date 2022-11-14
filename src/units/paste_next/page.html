@@ -99,7 +99,8 @@
     margin-top: -4px;
   }
 
-  tab_files_ {
+  tab_files_,
+  tab_edit_ {
     display: grid;
     position: fixed;
     left: 0;
@@ -145,6 +146,23 @@
     line-height: 6px;
     transform: translateX(5px);
   }
+
+  tab_edit_ textarea {
+    border: none;
+    outline: none;
+    padding: 8px;
+    grid-row-end: 4;
+    resize: none;
+    font-family: monospace;
+    /* place-content: ; */
+  }
+  tab_edit_ textarea[blank_] {
+    /* because the css `:blank` pseudo have poor supports */
+    /* background: #ccc; */
+  }
+  tab_edit_ textarea[blank_]::before {
+    content: "Input text or upload file";
+  }
 </style>
 
 <body>
@@ -179,17 +197,21 @@
     </files_list_>
   </tab_files_>
 
-  <tab_edit_>
+  <tab_edit_ id="$tabEdit">
     <top_bar_>
-      <button>Back</button>
+      <button id="$cancel">Cancel</button>
       <span></span>
-      <button>{{fid}}</button>
+      <!-- <button id="$upload">Upload</button> -->
+      <!-- <span></span> -->
+      <!-- <button id="$size">0.32 KiB</button> -->
+      <!-- <button id="$meta">Info</button> -->
+      <button id="$editCreate">Create</button>
+      <!-- <button id="$save">Save</button> -->
     </top_bar_>
-    <input placeholder="Username" />
-    <input placeholder="Password" type="password" />
+    <textarea id="$editText" placeholder="Input content here"></textarea>
   </tab_edit_>
 
-  <tab_settings_>
+  <tab_settings_ id="$tabSettings">
     <top_bar_>
       <input type="button" value="@ kkocdko" />
       <br />
@@ -253,8 +275,12 @@
     // d.level
   };
 
-  const friendlySize = (inBytes) => {};
-  const fidEnc = (fidNum) => {};
+  setInterval(() => {
+    login();
+  }, 30 * 60 * 1000);
+
+  const friendlySize = (inBytes) => `${inBytes / 1024} KiB`; // TODO
+  const fidEnc = (fidNum) => fidNum; // TODO
 
   const refreshFiles = async () => {
     const r = await fetch("/paste", {
@@ -275,7 +301,13 @@
         </tr>
       `;
     }
-    $filesContainer.innerHTML = "";
+    $filesContainer.innerHTML = innerHTML;
+  };
+
+  const switchTab = (target) => {
+    for (const el of [$tabLaunch, $tabFiles, $tabEdit, $tabSettings])
+      el.removeAttribute("in_");
+    target.toggleAttribute("in_");
   };
 
   $login.onclick = async () => {
@@ -286,8 +318,41 @@
     await refreshFiles();
   };
 
-  $create.onclick = async () => {};
+  $create.onclick = async () => {
+    switchTab($tabEdit);
+  };
 
+  $editText.oninput = () => {
+    if ($editText.value.length) $editText.removeAttribute("blank_");
+    else $editText.toggleAttribute("blank_");
+  };
+  $editText.oninput();
+
+  $cancel.onclick = async () => {
+    switchTab($tabFiles);
+  };
+
+  $editCreate.onclick = async () => {
+    const enc = new TextEncoder();
+    const body = new Uint8Array(enc.encode($editText.value));
+    const r = await fetch("/paste", {
+      method: "POST",
+      headers: {
+        $op: "create",
+        $token: token,
+        $desc: "default test",
+        $mime: "text/plain",
+        $size: body.length,
+      },
+      body,
+    });
+    const d = await r.json();
+    if (d.type !== "ok_create") throw msgbox(JSON.stringify(d));
+    await refreshFiles();
+    switchTab($tabFiles);
+  };
+
+  $filesContainer.onclick = async (e) => {};
   // setTimeout(() => {
   //   // location.reload();
   // }, 3000);

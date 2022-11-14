@@ -85,6 +85,7 @@ async fn post_handler(Form(Member { id, password, data }): Form<Member>) -> Redi
 }
 
 async fn check_in() -> Result<()> {
+    db_log_insert(0, "call check_in()".into());
     const LOGIN_EXECUTION_VALUE: &str = include_str!("login_execution_value.txt");
     let form_wid = "a5e94ae0b0e04193bae67c86cfd6e223";
     for (id, password, data) in db_list_get() {

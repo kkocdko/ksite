@@ -4,11 +4,15 @@ All in one solution for my server.
 
 ## TODO
 
+### 0.6.0-beta
+
+- `units::paste_next`: basic functions like create and delete file.
+
+- `crate::auth`: auth from database.
+
 ### 0.6.0
 
 - `units::paste_next`: (see the comments in its code).
-
-- `crate::auth`: auth from database.
 
 ### 0.7.0
 

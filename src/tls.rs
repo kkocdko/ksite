@@ -56,8 +56,9 @@ pub async fn serve(addr: &SocketAddr, mut app: IntoMakeService<RouterService>) {
     IS_FIRST_CALL.store(false, Ordering::SeqCst);
 
     fn db_get(k: &str) -> (Vec<u8>,) {
-        let msg = format!("query '{k}' in table 'admin' failed");
-        db!("SELECT v FROM admin WHERE k = ?", [k], ^(0)).expect(&msg)
+        db!("SELECT v FROM admin WHERE k = ?", [k], ^(0))
+            .map_err(|_| format!("query '{k}' in table 'admin' failed"))
+            .unwrap()
     }
 
     let mut tls_cfg = ServerConfig::builder()
