@@ -7,11 +7,13 @@ use crate::utils::{fetch, fetch_json, fetch_text, OptionResult};
 use crate::{care, db, include_page};
 use anyhow::Result;
 use axum::extract::Form;
+use axum::http::header::{AUTHORIZATION, CONTENT_TYPE, USER_AGENT};
 use axum::response::{Html, IntoResponse, Redirect};
 use axum::routing::{MethodRouter, Router};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use std::fmt::Write as _;
+use std::time::Duration;
 mod cryptojs;
 
 fn db_init() {
@@ -92,8 +94,8 @@ async fn check_in() -> Result<()> {
         let uri = "http://ids2.just.edu.cn/cas/login?service=http%3A%2F%2Fdc.just.edu.cn%2F%23%2F";
         let body = format!("username={id}&password={password}&execution={LOGIN_EXECUTION_VALUE}&_eventId=submit&encrypted=true&loginType=1&submit=%E7%99%BB+%E5%BD%95");
         let request = hyper::Request::post(uri)
-            .header("content-type", "application/x-www-form-urlencoded")
-            .header("user-agent", "Chrome")
+            .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .header(USER_AGENT, "Chrome")
             .body(body.into())?;
         let r = fetch(request).await?;
         let r = r.headers().get("location").e()?.to_str()?;
@@ -105,7 +107,7 @@ async fn check_in() -> Result<()> {
 
         let uri = format!("http://dc.just.edu.cn/dfi/formOpen/saveFormView?formWid={form_wid}");
         let request = hyper::Request::post(uri)
-            .header("authentication", &authentication)
+            .header(AUTHORIZATION, &authentication)
             .body(hyper::Body::empty())?;
         let submit_token = fetch_json(request, "/data/submitToken").await?;
 
@@ -113,7 +115,7 @@ async fn check_in() -> Result<()> {
         let body = format! {r#"{{"dataMap":{data},"formWid":"{form_wid}","submitToken":"{submit_token}"}}"#};
         let body = cryptojs::encrypt4just(body);
         let request = hyper::Request::post(uri)
-            .header("authentication", &authentication)
+            .header(AUTHORIZATION, &authentication)
             .body(body.into())?;
         let ret = fetch_text(request).await?.replace('\n', "");
         let ret = askama_escape::escape(&ret, askama_escape::Html).to_string(); // XSS
@@ -150,6 +152,8 @@ pub async fn tick() {
         return;
     }
 
-    care!(check_in().await).ok();
+    let limit = Duration::from_secs(2 * 60); // 2 minutes
+    let _ = care!(tokio::time::timeout(limit, check_in()).await) // error in `timeout`
+        .map(|r| care!(r).ok()); // error in `check_in`
     db_log_clean();
 }

@@ -71,17 +71,17 @@ use crate::ticker::Ticker;
 use crate::{care, db, include_page};
 use axum::body::StreamBody;
 use axum::body::{Body, Bytes, HttpBody as _};
-use axum::extract::{FromRef, FromRequest};
+use axum::extract::FromRequest;
 use axum::http::header::CONTENT_TYPE;
 use axum::http::{HeaderValue, Request};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{MethodRouter, Router};
-use futures_core::{Stream};
-use hyper::header::{HeaderName, CONTENT_LENGTH};
+use futures_core::Stream;
+use hyper::header::{ CONTENT_LENGTH};
 use once_cell::sync::Lazy;
 use std::ffi::OsStr;
 use std::future::Future;
-use std::io::{Read, Write as _};
+use std::io::{ Write as _};
 use std::mem::swap;
 use std::os::unix::prelude::OsStrExt;
 use std::path::PathBuf;
@@ -91,9 +91,8 @@ use std::task::Context;
 use std::task::Poll;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
-use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
-use tokio::io::{self, AsyncRead};
+use tokio::io::{self};
 // use tokio_rustls::rustls::internal::msgs::codec::Codec as _;
 // use tokio_rustls::rustls::internal::msgs::enums::HashAlgorithm;
 // use bytes::{BufMut, BytesMut};
@@ -486,10 +485,6 @@ fn get_size_limit(level: u8) -> usize {
         64 => 2 * MIB,
         _ => 0,
     }
-}
-
-fn json_response<T: IntoResponse>(i: T) -> Response {
-    ([(CONTENT_TYPE, "application/json")], i).into_response()
 }
 
 fn fid_to_path(fid: &[u8]) -> PathBuf {
