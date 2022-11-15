@@ -77,26 +77,20 @@ use axum::http::{HeaderValue, Request};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{MethodRouter, Router};
 use futures_core::Stream;
-use hyper::header::{ CONTENT_LENGTH};
+use hyper::header::CONTENT_LENGTH;
 use once_cell::sync::Lazy;
 use std::ffi::OsStr;
 use std::future::Future;
-use std::io::{ Write as _};
+use std::io::Write as _;
 use std::mem::swap;
-use std::os::unix::prelude::OsStrExt;
+// use std::os::unix::prelude::OsStrExt;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::str::FromStr;
 use std::task::Context;
 use std::task::Poll;
 use tokio::fs::File;
-use tokio::io::AsyncReadExt;
-use tokio::io::AsyncWriteExt;
-use tokio::io::{self};
-// use tokio_rustls::rustls::internal::msgs::codec::Codec as _;
-// use tokio_rustls::rustls::internal::msgs::enums::HashAlgorithm;
-// use bytes::{BufMut, BytesMut};
-// pub type BoxError = Box<dyn std::error::Error + Send + Sync>;
+use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 
 fn db_init() {
     // uid: user id
@@ -498,7 +492,7 @@ fn fid_to_path(fid: &[u8]) -> PathBuf {
         }
         p
     });
-    STORAGE_ROOT.join(OsStr::from_bytes(fid))
+    STORAGE_ROOT.join(std::str::from_utf8(fid).unwrap())
     // TODO: https://docs.ceph.com/en/quincy/cephfs/index.html
 }
 
@@ -725,8 +719,7 @@ async fn post_handler(mut into_op: IntoOp) -> Result<Response, Response> {
     }
 }
 
-// https://docs.rs/axum-extra/latest/axum_extra/
-
+// https://docs.rs/axum/0.6.0-rc.4/axum/body/struct.StreamBody.html
 struct FileStream(File);
 impl Stream for FileStream {
     type Item = Result<Vec<u8>, io::Error>;
@@ -734,7 +727,7 @@ impl Stream for FileStream {
         let mut buf = Vec::with_capacity(4 * 1024);
         let mut fut = self.0.read_buf(&mut buf);
         let fut = unsafe {
-            // safety: todo
+            // safety: pin-project
             Pin::new_unchecked(&mut fut)
         };
         if 0 == futures_core::ready!(fut.poll(cx))? {

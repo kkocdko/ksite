@@ -7,7 +7,7 @@ use crate::utils::{fetch, fetch_json, fetch_text, OptionResult};
 use crate::{care, db, include_page};
 use anyhow::Result;
 use axum::extract::Form;
-use axum::http::header::{AUTHORIZATION, CONTENT_TYPE, USER_AGENT};
+use axum::http::header::{HeaderName, CONTENT_TYPE, USER_AGENT};
 use axum::response::{Html, IntoResponse, Redirect};
 use axum::routing::{MethodRouter, Router};
 use once_cell::sync::Lazy;
@@ -88,6 +88,7 @@ async fn post_handler(Form(Member { id, password, data }): Form<Member>) -> Redi
 
 async fn check_in() -> Result<()> {
     db_log_insert(0, "call check_in()".into());
+    const AUTHENTICATION: HeaderName = HeaderName::from_static("authentication"); // not AUTHORIZATION
     const LOGIN_EXECUTION_VALUE: &str = include_str!("login_execution_value.txt");
     let form_wid = "a5e94ae0b0e04193bae67c86cfd6e223";
     for (id, password, data) in db_list_get() {
@@ -107,7 +108,7 @@ async fn check_in() -> Result<()> {
 
         let uri = format!("http://dc.just.edu.cn/dfi/formOpen/saveFormView?formWid={form_wid}");
         let request = hyper::Request::post(uri)
-            .header(AUTHORIZATION, &authentication)
+            .header(AUTHENTICATION, &authentication)
             .body(hyper::Body::empty())?;
         let submit_token = fetch_json(request, "/data/submitToken").await?;
 
@@ -115,7 +116,7 @@ async fn check_in() -> Result<()> {
         let body = format! {r#"{{"dataMap":{data},"formWid":"{form_wid}","submitToken":"{submit_token}"}}"#};
         let body = cryptojs::encrypt4just(body);
         let request = hyper::Request::post(uri)
-            .header(AUTHORIZATION, &authentication)
+            .header(AUTHENTICATION, &authentication)
             .body(body.into())?;
         let ret = fetch_text(request).await?.replace('\n', "");
         let ret = askama_escape::escape(&ret, askama_escape::Html).to_string(); // XSS
