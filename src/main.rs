@@ -39,8 +39,8 @@ async fn main() {
             .merge(units::health::service())
             .merge(units::info::service())
             .merge(units::magazine::service())
-            .merge(units::paste::service())
-            // .merge(units::paste_next::service())
+            // .merge(units::paste::service())
+            .merge(units::paste_next::service())
             .merge(units::qqbot::service())
             .into_make_service();
         // .into_make_service_with_connect_info::<SocketAddr>();
@@ -59,7 +59,7 @@ async fn main() {
             let _ = tokio::join!(
                 units::health::tick(),
                 units::magazine::tick(),
-                // units::paste_next::tick(),
+                units::paste_next::tick(),
                 units::qqbot::tick(),
             );
         }
