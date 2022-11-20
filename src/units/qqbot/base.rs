@@ -1,6 +1,7 @@
 //! Provide login, token storage and other low-level functions.
 
 use super::gen_reply;
+use crate::utils::log_escape;
 use crate::{care, db, include_page};
 use anyhow::Result;
 use axum::body::Bytes;
@@ -21,15 +22,15 @@ use std::time::{Duration, UNIX_EPOCH};
 macro_rules! push_log {
     ($fmt:literal $(, $($arg:tt)+)?) => {{
         let now = UNIX_EPOCH.elapsed().unwrap().as_secs();
-        push_log_(format!(concat!("{} | ", $fmt), now, $($($arg)+)?));
+        push_log_(&format!(concat!("{} | ", $fmt), now, $($($arg)+)?));
     }}
 }
-fn push_log_(v: String) {
+fn push_log_(v: &str) {
     let mut log = LOG.lock().unwrap();
     if log.len() >= 128 {
         log.drain(..32);
     }
-    log.push(v);
+    log.push(log_escape(v));
 }
 
 const K_DEVICE: &str = "device_json";

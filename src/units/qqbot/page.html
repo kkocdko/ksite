@@ -57,7 +57,7 @@
 </form>
 
 <script>
-  const stamp2str = (v) => new Date(v * 1e3).toLocaleString();
+  const stamp2str = (v) => new Date(v * 1e3).toLocaleString("uk");
   $log.value = $log.value.replace(/(?<=\n|^)\d+/g, stamp2str);
   const onSubmit = async (event) => {
     event.preventDefault();

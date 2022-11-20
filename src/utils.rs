@@ -58,6 +58,13 @@ pub fn encode_uri(i: &str) -> String {
     unsafe { String::from_utf8_unchecked(o) }
 }
 
+/// Escape log string into a single line, html safe string.
+///
+/// `[a"foo\nbar]` into `[a&quot;foo\\nbar]`
+pub fn log_escape(s: &str) -> String {
+    askama_escape::escape(&s.replace('\n', "\\n"), askama_escape::Html).to_string()
+}
+
 /// Read `hyper::Body` into `Vec<u8>`, returns emply if reached the limit size (2 MiB).
 ///
 /// Simpler than `hyper::body::to_bytes`.

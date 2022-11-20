@@ -3,7 +3,7 @@
 //! The prototype is https://github.com/kkocdko/user-scripts/blob/master/scripts/just-kit/health-check-in.js
 
 use crate::ticker::Ticker;
-use crate::utils::{fetch, fetch_json, fetch_text, OptionResult};
+use crate::utils::{fetch, fetch_json, fetch_text, log_escape, OptionResult};
 use crate::{care, db, include_page};
 use anyhow::Result;
 use axum::extract::Form;
@@ -118,8 +118,7 @@ async fn check_in() -> Result<()> {
         let request = hyper::Request::post(uri)
             .header(AUTHENTICATION, &authentication)
             .body(body.into())?;
-        let ret = fetch_text(request).await?.replace('\n', "");
-        let ret = askama_escape::escape(&ret, askama_escape::Html).to_string(); // XSS
+        let ret = log_escape(&fetch_text(request).await?);
 
         db_log_insert(id, ret);
     }
