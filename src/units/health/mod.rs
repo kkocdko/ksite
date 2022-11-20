@@ -12,8 +12,7 @@ use axum::response::{Html, IntoResponse, Redirect};
 use axum::routing::{MethodRouter, Router};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
-use std::fmt::Write as _;
-use std::time::Duration;
+use std::fmt::Write;
 mod cryptojs;
 
 fn db_init() {
@@ -88,9 +87,10 @@ async fn post_handler(Form(Member { id, password, data }): Form<Member>) -> Redi
 
 async fn check_in() -> Result<()> {
     db_log_insert(0, "call check_in()".into());
+    #[allow(clippy::declare_interior_mutable_const)]
     const AUTHENTICATION: HeaderName = HeaderName::from_static("authentication"); // not AUTHORIZATION
     const LOGIN_EXECUTION_VALUE: &str = include_str!("login_execution_value.txt");
-    let form_wid = "a5e94ae0b0e04193bae67c86cfd6e223";
+    const FORM_WID: &str = "a5e94ae0b0e04193bae67c86cfd6e223";
     for (id, password, data) in db_list_get() {
         let uri = "http://ids2.just.edu.cn/cas/login?service=http%3A%2F%2Fdc.just.edu.cn%2F%23%2F";
         let body = format!("username={id}&password={password}&execution={LOGIN_EXECUTION_VALUE}&_eventId=submit&encrypted=true&loginType=1&submit=%E7%99%BB+%E5%BD%95");
@@ -106,14 +106,14 @@ async fn check_in() -> Result<()> {
         let request = hyper::Request::get(uri).body(hyper::Body::empty())?;
         let authentication = fetch_json(request, "/data/token").await?;
 
-        let uri = format!("http://dc.just.edu.cn/dfi/formOpen/saveFormView?formWid={form_wid}");
+        let uri = format!("http://dc.just.edu.cn/dfi/formOpen/saveFormView?formWid={FORM_WID}");
         let request = hyper::Request::post(uri)
             .header(AUTHENTICATION, &authentication)
             .body(hyper::Body::empty())?;
         let submit_token = fetch_json(request, "/data/submitToken").await?;
 
         let uri = "http://dc.just.edu.cn/dfi/formData/saveFormSubmitDataEncryption";
-        let body = format! {r#"{{"dataMap":{data},"formWid":"{form_wid}","submitToken":"{submit_token}"}}"#};
+        let body = format! {r#"{{"dataMap":{data},"formWid":"{FORM_WID}","submitToken":"{submit_token}"}}"#};
         let body = cryptojs::encrypt4just(body);
         let request = hyper::Request::post(uri)
             .header(AUTHENTICATION, &authentication)
@@ -153,8 +153,6 @@ pub async fn tick() {
         return;
     }
 
-    let limit = Duration::from_secs(2 * 60); // 2 minutes
-    let _ = care!(tokio::time::timeout(limit, check_in()).await) // error in `timeout`
-        .map(|r| care!(r).ok()); // error in `check_in`
+    care!(check_in().await).ok();
     db_log_clean();
 }

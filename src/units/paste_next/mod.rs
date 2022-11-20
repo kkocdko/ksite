@@ -67,15 +67,18 @@ client: post(operation, token)
 server: compare(token, target = hash(time + id)), ret(result)
 
 */
+use self::consts::*;
+use self::misc::*;
 use crate::ticker::Ticker;
 use crate::{care, include_page};
 use axum::body::{Body, Bytes, HttpBody, StreamBody};
 use axum::extract::FromRequest;
-use axum::http::header::{HeaderValue, CONTENT_LENGTH};
+use axum::http::header::{HeaderMap, HeaderValue, CONTENT_LENGTH};
 use axum::http::Request;
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{MethodRouter, Router};
 use futures_core::Stream;
+use hyper::header::CACHE_CONTROL;
 use once_cell::sync::Lazy;
 use rand::{thread_rng, Fill};
 use ring::digest::Digest;
@@ -89,10 +92,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::task::{Context, Poll};
 use std::time::UNIX_EPOCH;
 use tokio::fs::File;
-use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
-
-use consts::*;
-use misc::*;
+use tokio::io::{self, AsyncRead, AsyncWriteExt, ReadBuf};
 
 /// Token Module
 ///
@@ -164,7 +164,7 @@ mod token {
         let level = hex2bytes::<1>(&token[72..74])?[0];
         let uid = &token[75..];
         let seed_idx = timestamp2idx(timestamp);
-        match hash(seed_idx, level, &uid).as_ref() == sha256 {
+        match hash(seed_idx, level, uid).as_ref() == sha256 {
             true => Ok((uid, level)),
             false => Err(()),
         }
@@ -199,6 +199,8 @@ mod token {
 }
 
 mod db {
+    #![allow(clippy::type_complexity)]
+
     use crate::db;
 
     pub fn init() {
@@ -222,6 +224,7 @@ mod db {
         // TODO: insert some entrys to skip id 0~32?
         // TODO: built in guest account?
     }
+
     pub fn user_cu(uid: &[u8], upw: &[u8], mail: &[u8], level: u8) {
         db! {"
             REPLACE INTO paste_user
@@ -229,6 +232,7 @@ mod db {
         ",[uid, upw, mail, level as i64]}
         .unwrap();
     }
+
     pub fn user_r(uid: &[u8]) -> Option<(Vec<u8>, Vec<u8>, u8)> {
         db! {"
             SELECT * FROM paste_user
@@ -236,6 +240,7 @@ mod db {
         ", [uid], ^(1, 2, 3)}
         .ok()
     }
+
     pub fn user_d(uid: &[u8]) {
         db! {"
             DELETE FROM paste_user
@@ -243,6 +248,7 @@ mod db {
         ", [uid]}
         .unwrap();
     }
+
     pub fn data_c(size: u64, uid: &[u8], desc: &[u8], mime: &[u8]) -> u64 {
         db! {"
             INSERT INTO paste_data
@@ -250,35 +256,56 @@ mod db {
         ", [size, uid, desc, mime], &}
         .unwrap() as _
     }
-    pub fn data_u_desc(fid: u64, desc: &[u8]) -> bool {
+
+    pub fn data_u_size(fid: u64, size: u64) {
+        db! {"
+            UPDATE paste_data
+            SET size = ?2
+            WHERE fid = ?1
+        ", [fid, size]}
+        .unwrap();
+    }
+
+    pub fn data_u_desc(fid: u64, desc: &[u8]) {
         db! {"
             UPDATE paste_data
             SET desc = ?2
             WHERE fid = ?1
         ", [fid, desc]}
-        .is_ok()
+        .unwrap();
     }
-    pub fn data_u_mime(fid: u64, mime: &[u8]) -> bool {
+
+    pub fn data_u_mime(fid: u64, mime: &[u8]) {
         db! {"
             UPDATE paste_data
             SET mime = ?2
             WHERE fid = ?1
         ", [fid, mime]}
-        .is_ok()
+        .unwrap();
     }
+
     pub fn data_r(fid: u64) -> Option<(u64, Vec<u8>, Vec<u8>, Vec<u8>)> {
-        db!("SELECT * FROM paste_data WHERE fid = ?", [fid], ^(1, 2, 3, 4)).ok()
+        db! {"
+            SELECT * FROM paste_data
+            WHERE fid = ?
+        ", [fid], ^(1, 2, 3, 4)}
+        .ok()
     }
+
     pub fn data_r_by_user(uid: &[u8]) -> Vec<(u64, u64, Vec<u8>, Vec<u8>)> {
-        db!(
-            "SELECT * FROM paste_data WHERE uid = ?",
-            [uid],
-            (0, 1, 3, 4)
-        )
+        db! {"
+            SELECT * FROM paste_data
+            WHERE uid = ?
+        ", [uid], (0, 1, 3, 4)}
         .unwrap()
     }
+
     pub fn data_d(fid: u64) {
-        db!("DELETE FROM paste_data WHERE fid = ?", [fid]).unwrap();
+        db! {"
+            DELETE FROM paste_data
+            WHERE fid = ?
+        ", [fid]}
+        .unwrap();
     }
 }
 
@@ -309,6 +336,7 @@ mod consts {
             };
         };
     }
+
     // header names
     def_str!(OP_);
     def_str!(UID_);
@@ -321,19 +349,23 @@ mod consts {
     def_str!(DESC_);
     def_str!(MIME_);
     def_str!(FID_);
+
     // ok types
     def_str!(OK_DEFAULT);
+
     // err types
     def_str!(ERR_TOKEN);
     def_str!(ERR_UID_UPW);
     def_str!(ERR_UPW_DECODE);
     def_str!(ERR_HEADER_INVALID);
     def_str!(ERR_BODY_READ);
-    def_str!(ERR_BODY_SIZE);
+    def_str!(ERR_BODY_SIZE_CHECK);
+    def_str!(ERR_BODY_SIZE_LIMIT);
     def_str!(ERR_UID_EXISTS);
     def_str!(ERR_UID_TOO_LONG);
     def_str!(ERR_FILE_NOT_FOUND_OR_DENY);
     def_str!(ERR_SERVER_INNER);
+
     // others
     pub const DEFAULT_USER_LEVEL: u8 = 64;
     pub const SHA256_LEN: usize = 32; // sha256 should be 32 bytes len
@@ -341,6 +373,8 @@ mod consts {
 }
 
 mod misc {
+    use tokio::io::AsyncReadExt;
+
     use super::*;
 
     pub fn bytes2hex(bytes: &[u8]) -> Vec<u8> {
@@ -409,6 +443,7 @@ mod misc {
     pub trait FromBuf {
         fn from_buf(buf: impl Into<Vec<u8>>) -> Self;
     }
+
     impl FromBuf for HeaderValue {
         fn from_buf(buf: impl Into<Vec<u8>>) -> Self {
             let buf: Vec<u8> = buf.into();
@@ -421,17 +456,21 @@ mod misc {
         /// Produce `Result<T, Response>` for handlers.
         fn cast_err(self, e: &'static str) -> Result<T, Response>;
     }
+
     impl<T, E> CastErr<T> for Result<T, E> {
         fn cast_err(self, e: &'static str) -> Result<T, Response> {
             self.map_err(|_| [(TYPE_, e)].into_response())
         }
     }
+
     impl<T> CastErr<T> for Option<T> {
         fn cast_err(self, e: &'static str) -> Result<T, Response> {
             self.ok_or_else(|| [(TYPE_, e)].into_response())
         }
     }
+
     impl CastErr<()> for bool {
+        /// Like a `assert!()` macro but returns an `Response` with error message.
         fn cast_err(self, e: &'static str) -> Result<(), Response> {
             match self {
                 true => Ok(()),
@@ -440,39 +479,92 @@ mod misc {
         }
     }
 
-    // https://docs.rs/axum/0.6.0-rc.4/axum/body/struct.StreamBody.html
-    /// A warpper for tokio's `File`, satisfy the `futures_core::TryStream` trait.
-    pub struct FileStream(File);
+    /// A warpper for tokio's `File` which implemented the stream read.
+    type FileStreamFut = Pin<Box<dyn Future<Output = (Vec<u8>, io::Result<usize>, File)> + Send>>;
+
+    pub struct FileStream {
+        fut: FileStreamFut,
+    }
+
     impl FileStream {
+        const BUF_CAPACITY: usize = 64 * 1024;
+
         pub fn new(file: File) -> Self {
-            Self(file)
+            Self {
+                fut: Self::make_fut(file),
+            }
+        }
+
+        fn make_fut(mut file: File) -> FileStreamFut {
+            Box::pin(async {
+                let mut buf = Vec::with_capacity(FileStream::BUF_CAPACITY);
+                let result = file.read_buf(&mut buf).await;
+                (buf, result, file)
+            })
         }
     }
-    impl Stream for FileStream {
-        type Item = Result<Vec<u8>, io::Error>;
-        fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
-            let mut buf = Vec::with_capacity(4 * 1024);
-            let mut fut = self.0.read_buf(&mut buf);
-            let fut = unsafe {
-                // safety: pin-project
-                Pin::new_unchecked(&mut fut)
-            };
-            if 0 == futures_core::ready!(fut.poll(cx))? {
-                return Poll::Ready(None);
+
+    impl HttpBody for FileStream {
+        type Data = Bytes;
+        type Error = io::Error;
+
+        fn poll_data(
+            self: Pin<&mut Self>,
+            cx: &mut Context,
+        ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
+            let mut fut = unsafe { Pin::new_unchecked(&mut self.get_mut().fut) };
+            let (buf, result, file) = futures_core::ready!(Pin::new(&mut fut).poll(cx));
+            match result {
+                Err(e) => Poll::Ready(Some(Err(e))),
+                Ok(0) => Poll::Ready(None),
+                Ok(_) => {
+                    *fut = Self::make_fut(file);
+                    Poll::Ready(Some(Ok(buf.into())))
+                }
             }
-            Poll::Ready(Some(Ok(buf)))
+        }
+
+        fn poll_trailers(
+            self: Pin<&mut Self>,
+            _: &mut Context,
+        ) -> Poll<Result<Option<HeaderMap>, Self::Error>> {
+            Poll::Ready(Ok(None))
+        }
+    }
+
+    impl IntoResponse for FileStream {
+        fn into_response(self) -> Response {
+            Response::new(axum::body::boxed(self))
         }
     }
 
     /// Extract to an uninited `Op<'static>`.
-    impl<S> FromRequest<S, Body> for super::Op<'static> {
+    impl<S> FromRequest<S, Body> for Op<'static> {
         type Rejection = ();
         fn from_request<'a: 'b, 'b>(
             req: Request<Body>,
             _: &'a S,
         ) -> Pin<Box<dyn Future<Output = Result<Self, Self::Rejection>> + Send + 'b>> {
-            Box::pin(std::future::ready(Ok(super::Op::Uninit { req })))
+            Box::pin(std::future::ready(Ok(Op::Uninit { req })))
         }
+    }
+
+    pub async fn write_body_to_file(
+        mut body: Body,
+        file: &mut File,
+        limit: usize,
+    ) -> Result<usize, Response> {
+        let mut remain = limit;
+        while let Some(buf) = body.data().await {
+            let buf = buf.cast_err(ERR_BODY_READ)?;
+            let len = buf.len();
+            if remain < len {
+                false.cast_err(ERR_BODY_SIZE_LIMIT)?;
+            }
+            remain -= len;
+            file.write_all(&buf).await.unwrap();
+        }
+        Ok(limit - remain)
     }
 
     impl Op<'static> {
@@ -497,6 +589,12 @@ mod misc {
                     size: v(SIZE_)?,
                     desc: v(DESC_)?,
                     mime: v(MIME_)?,
+                    body,
+                },
+                b"replace" => Op::Replace {
+                    token: v(TOKEN_)?,
+                    fid: v(FID_)?,
+                    size: v(SIZE_)?,
                     body,
                 },
                 b"download" => Op::Download {
@@ -570,26 +668,23 @@ mod misc {
 /// Operation from client requests.
 enum Op<'a> {
     /// Once the `Op` created, it's in `Uninit` state and needs a `op.init()`
-    Uninit {
-        req: Request<Body>,
-    },
+    Uninit { req: Request<Body> },
+
     /// Create a new user.
     Signup {
         uid: &'a [u8],
         upw: &'a [u8],
         mail: &'a [u8],
     },
+
     /// User login or token renew.
-    Login {
-        uid: &'a [u8],
-        upw: &'a [u8],
-    },
+    Login { uid: &'a [u8], upw: &'a [u8] },
+
     // TODO: Change user profile.
     // TODO: User volumn limit.
     /// Get the files list.
-    List {
-        token: &'a [u8],
-    },
+    List { token: &'a [u8] },
+
     /// Create a file.
     Create {
         token: &'a [u8],
@@ -598,21 +693,28 @@ enum Op<'a> {
         mime: &'a [u8],
         body: Body,
     },
-    // Download a file.
-    Download {
+
+    /// Download a file.
+    Download { token: &'a [u8], fid: &'a [u8] },
+
+    /// Delete a file.
+    Delete { token: &'a [u8], fid: &'a [u8] },
+
+    /// Update a file by replace.
+    Replace {
         token: &'a [u8],
         fid: &'a [u8],
+        size: &'a [u8],
+        body: Body,
     },
-    // Delete a file.
-    Delete {
-        token: &'a [u8],
-        fid: &'a [u8],
-    },
+    // /// Update a file by modify changes.
+    // Modify {},
 }
 
 async fn post_handler(mut op: Op<'static>) -> Result<Response, Response> {
     match op.init().cast_err(ERR_HEADER_INVALID)? {
         Op::Uninit { .. } => unreachable!(),
+
         Op::Signup { uid, upw, mail } => {
             (uid.len() <= UID_LEN_LIMIT).cast_err(ERR_UID_TOO_LONG)?;
             (db::user_r(uid).is_none()).cast_err(ERR_UID_EXISTS)?;
@@ -630,6 +732,7 @@ async fn post_handler(mut op: Op<'static>) -> Result<Response, Response> {
             ]
             .into_response())
         }
+
         Op::Login { uid, upw } => {
             // TODO: uid length limit
             // TODO: avoid time-side attack?
@@ -648,64 +751,73 @@ async fn post_handler(mut op: Op<'static>) -> Result<Response, Response> {
             ]
             .into_response())
         }
+
         Op::Create {
             token,
             size,
             desc,
             mime,
-            mut body,
+            body,
         } => {
-            // TODO: https://github.com/tokio-rs/axum/blob/main/examples/stream-to-file/src/main.rs
             let (uid, level) = token::vertify(token).cast_err(ERR_TOKEN)?;
             // prevent big file in front end, just make a later limit here
             let size_limit = get_size_limit(level);
             let expect_size = parse_slice::<u64>(size).cast_err(ERR_HEADER_INVALID)?;
-            let fid = db::data_c(expect_size, uid, desc, mime);
-            let p = fid_to_path(fid.to_string().as_bytes());
-            let mut file = tokio::fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .open(&p)
-                .await
-                .cast_err(ERR_SERVER_INNER)?;
-            let mut size = 0;
-            while let Some(buf) = body.data().await {
-                let buf = buf.cast_err(ERR_BODY_READ)?;
-                size += buf.len();
-                (size <= size_limit).cast_err(ERR_BODY_SIZE)?;
-                care!(file.write(&buf).await).cast_err(ERR_SERVER_INNER)?;
-            }
-            if size as u64 != expect_size {
-                db::data_d(fid);
+            let fid_u64 = db::data_c(expect_size, uid, desc, mime);
+            let p = fid_to_path(fid_u64.to_string().as_bytes());
+            let mut file = tokio::fs::File::create(&p).await.unwrap();
+            if let Err(err) = { write_body_to_file(body, &mut file, size_limit).await }
+                .and_then(|size| (size as u64 == expect_size).cast_err(ERR_BODY_SIZE_CHECK))
+            {
+                db::data_d(fid_u64);
                 file.set_len(0).await.ok();
                 file.shutdown().await.ok(); // or flush?
                 drop(file);
                 care!(tokio::fs::remove_file(&p).await).ok(); // ignore inner error?
-                false.cast_err(ERR_BODY_SIZE)?;
+                return Err(err);
             }
             Ok([
                 (TYPE_, HeaderValue::from_static(OK_DEFAULT)),
-                (FID_, HeaderValue::from(fid)),
+                (FID_, HeaderValue::from(fid_u64)),
             ]
             .into_response())
         }
-        Op::Download { token, fid } => {
-            let (uid, _level) = token::vertify(token).cast_err(ERR_TOKEN)?;
+
+        Op::Replace {
+            token,
+            fid,
+            size,
+            body,
+        } => {
+            let (uid, level) = token::vertify(token).cast_err(ERR_TOKEN)?;
+            let size_limit = get_size_limit(level);
+            let expect_size = parse_slice::<u64>(size).cast_err(ERR_HEADER_INVALID)?;
             let fid_u64 = parse_slice::<u64>(fid).cast_err(ERR_HEADER_INVALID)?;
-            let (size, owner_uid, desc, mime) =
+            let (_size, owner_uid, _desc, _mime) =
                 db::data_r(fid_u64).cast_err(ERR_FILE_NOT_FOUND_OR_DENY)?;
             (uid == owner_uid).cast_err(ERR_FILE_NOT_FOUND_OR_DENY)?;
             let p = fid_to_path(fid);
-            let file = File::open(p).await.unwrap();
-            let body = StreamBody::new(FileStream::new(file));
-            let mut response = body.into_response();
-            let headers = response.headers_mut();
-            headers.insert(CONTENT_LENGTH, HeaderValue::from(size));
-            headers.insert(TYPE_, HeaderValue::from_static(OK_DEFAULT));
-            headers.insert(DESC_, HeaderValue::from_buf(desc));
-            headers.insert(MIME_, HeaderValue::from_buf(mime));
-            Ok(response)
+            tokio::fs::rename(&p, &p.with_extension("bak"))
+                .await
+                .unwrap();
+            let mut file = tokio::fs::File::create(&p).await.unwrap();
+            if let Err(err) = { write_body_to_file(body, &mut file, size_limit).await }
+                .and_then(|size| (size as u64 == expect_size).cast_err(ERR_BODY_SIZE_CHECK))
+            {
+                db::data_d(fid_u64);
+                file.set_len(0).await.ok();
+                file.shutdown().await.ok(); // or flush?
+                drop(file);
+                care!(tokio::fs::remove_file(&p).await).ok(); // ignore inner error?
+                tokio::fs::rename(&p.with_extension("bak"), &p)
+                    .await
+                    .unwrap();
+                return Err(err);
+            }
+            db::data_u_size(fid_u64, expect_size);
+            Ok([(TYPE_, HeaderValue::from_static(OK_DEFAULT))].into_response())
         }
+
         Op::Delete { token, fid } => {
             let (uid, _level) = token::vertify(token).cast_err(ERR_TOKEN)?;
             let fid_u64 = parse_slice::<u64>(fid).cast_err(ERR_HEADER_INVALID)?;
@@ -717,6 +829,25 @@ async fn post_handler(mut op: Op<'static>) -> Result<Response, Response> {
             tokio::fs::remove_file(p).await.unwrap();
             Ok([(TYPE_, HeaderValue::from_static(OK_DEFAULT))].into_response())
         }
+
+        Op::Download { token, fid } => {
+            let (uid, _level) = token::vertify(token).cast_err(ERR_TOKEN)?;
+            let fid_u64 = parse_slice::<u64>(fid).cast_err(ERR_HEADER_INVALID)?;
+            let (size, owner_uid, desc, mime) =
+                db::data_r(fid_u64).cast_err(ERR_FILE_NOT_FOUND_OR_DENY)?;
+            (uid == owner_uid).cast_err(ERR_FILE_NOT_FOUND_OR_DENY)?;
+            let p = fid_to_path(fid);
+            let file = File::open(p).await.unwrap();
+            let body = FileStream::new(file);
+            let mut response = body.into_response();
+            let headers = response.headers_mut();
+            headers.insert(CONTENT_LENGTH, HeaderValue::from(size));
+            headers.insert(TYPE_, HeaderValue::from_static(OK_DEFAULT));
+            headers.insert(DESC_, HeaderValue::from_buf(desc));
+            headers.insert(MIME_, HeaderValue::from_buf(mime));
+            Ok(response)
+        }
+
         Op::List { token } => {
             let (uid, _level) = token::vertify(token).cast_err(ERR_TOKEN)?;
             let list = db::data_r_by_user(uid);
@@ -749,7 +880,12 @@ pub fn service() -> Router {
     Router::new().route(
         "/paste",
         MethodRouter::new()
-            .get(|| async { Html((include_page!("page.html") as [_; 1])[0]) })
+            .get(|| async {
+                const PAGE: &str = (include_page!("page.html") as [_; 1])[0];
+                const BODY: Html<Bytes> = Html(Bytes::from_static(PAGE.as_bytes()));
+                // ([(CACHE_CONTROL, "max-age=600")], BODY)
+                ([(CACHE_CONTROL, "no-store")], BODY)
+            })
             .post(post_handler),
     )
 }

@@ -24,6 +24,10 @@
       }
     } */
 
+  [hide_] {
+    display: none;
+  }
+
   prompt_ {
     -webkit-backdrop-filter: blur(8px);
     backdrop-filter: blur(8px);
@@ -71,13 +75,6 @@
   }
   top_bar_ span {
     flex-grow: 1;
-  }
-
-  tab_launch_:not([in_]),
-  tab_edit_:not([in_]),
-  tab_files_:not([in_]),
-  tab_settings_:not([in_]) {
-    visibility: hidden;
   }
 
   tab_launch_,
@@ -148,12 +145,13 @@
   }
 
   tab_edit_ textarea {
+    font-family: monospace;
+    white-space: pre;
     border: none;
     outline: none;
     padding: 8px;
     grid-row-end: 4;
     resize: none;
-    font-family: monospace;
     /* place-content: ; */
   }
   tab_edit_ textarea[blank_] {
@@ -166,7 +164,7 @@
 </style>
 
 <body>
-  <tab_launch_ id="$tabLaunch" in_>
+  <tab_launch_ id="$tabLaunch">
     <input id="$uid" placeholder="Username" />
     <input id="$upw" placeholder="Password" type="password" />
     <!-- <input id="$mail" placeholder="Mail" type="email" /> -->
@@ -177,10 +175,9 @@
   <tab_files_ id="$tabFiles">
     <top_bar_>
       <button id="$info"></button>
-      <br />
+      <span></span>
       <button id="$create">Create</button>
-      <button id="$edit">Edit</button>
-      <button $id="$delete">Delete</button>
+      <button id="$delete">Delete</button>
     </top_bar_>
     <files_list_>
       <table>
@@ -199,13 +196,15 @@
 
   <tab_edit_ id="$tabEdit">
     <top_bar_>
-      <button id="$cancel">Cancel</button>
+      <button id="$back">Back</button>
       <span></span>
+      <button id="$fid"></button>
+      <span></span>
+      <button id="$save">Save</button>
       <!-- <button id="$upload">Upload</button> -->
       <!-- <span></span> -->
       <!-- <button id="$size">0.32 KiB</button> -->
       <!-- <button id="$meta">Info</button> -->
-      <button id="$editCreate">Create</button>
       <!-- <button id="$save">Save</button> -->
     </top_bar_>
     <textarea id="$editText" placeholder="Input content here"></textarea>
@@ -233,8 +232,11 @@
   //   reader.readAsDataURL(new Blob([arrbuf]));
   //   return promise.then(() => reader.result.split(",", 2)[1]);
   // };
+  // const { $tabLaunch, $tabFiles } = {};
 
-  let token;
+  const hideEl = (el) => el.toggleAttribute("hide_", true);
+  const unhideEl = (el) => el.removeAttribute("hide_");
+  const isElHide = (el) => el.hasAttribute("hide_");
 
   const getUpw = async () => {
     const enc = new TextEncoder();
@@ -263,34 +265,42 @@
     $login.onclick();
   };
 
-  // login without modify the state
   const login = async () => {
     const r = await fetch("/paste", {
       method: "POST",
-      headers: { op_: "login", uid_: $uid.value, upw_: await getUpw() },
+      headers: { op_: "login", uid_: localStorage.uid, upw_: localStorage.upw },
     });
     const type = r.headers.get("type_");
     if (type !== "ok_default") throw msgbox(type);
-    token = r.headers.get("token_");
-    // let _level = r.headers.get("level_");
+    $info.textContent = "@ " + localStorage.uid;
+    localStorage.token = r.headers.get("token_");
   };
 
-  setInterval(() => {
-    login();
-  }, 30 * 60 * 1000);
+  // setInterval(() => {
+  //   login();
+  // }, 30 * 60 * 1000);
 
-  const friendlySize = (inBytes) =>
-    `${Math.ceil((inBytes * 100) / 1024) / 100} KiB`; // TODO
+  const readableSize = (v /* bytes */) => {
+    let unit = "Bytes";
+    if (v >= 2 ** 40 * 1e3) throw "too big";
+    else if (v >= 2 ** 30 * 1e3) (unit = "TiB"), (v /= 2 ** 40);
+    else if (v >= 2 ** 20 * 1e3) (unit = "GiB"), (v /= 2 ** 30);
+    else if (v >= 2 ** 10 * 1e3) (unit = "MiB"), (v /= 2 ** 20);
+    else if (v >= 2 ** 00 * 1e3) (unit = "KiB"), (v /= 2 ** 10);
+    v = ("" + v).slice(0, 4);
+    if (v.endsWith(".")) v = v.slice(0, 3);
+    return `${v} ${unit}`;
+  };
   const fidEnc = (fidNum) => fidNum; // TODO
-  const fidDec = (fidNum) => fidNum; // TODO
+  const fidDec = (fidStr) => fidStr; // TODO
 
   const refreshFiles = async () => {
     const r = await fetch("/paste", {
       method: "POST",
-      headers: { op_: "list", token_: token },
+      headers: { op_: "list", token_: localStorage.token },
     });
     const type = r.headers.get("type_");
-    if (type !== "ok_default") throw msgbox(JSON.stringify(type));
+    if (type !== "ok_default") throw msgbox(type);
     let innerHTML = "";
     const handleEntry = (e) => {
       innerHTML += `
@@ -298,7 +308,7 @@
           <td><input type=checkbox></td>
           <td>${fidEnc(e.fid)}</td>
           <td>${e.desc}</td>
-          <td>${friendlySize(e.size)}</td>
+          <td>${readableSize(e.size)}</td>
         </tr>
       `;
     };
@@ -314,20 +324,39 @@
 
   const switchTab = (target) => {
     for (const el of [$tabLaunch, $tabFiles, $tabEdit, $tabSettings])
-      el.removeAttribute("in_");
-    target.toggleAttribute("in_");
+      hideEl(el);
+    unhideEl(target);
   };
 
   $login.onclick = async () => {
+    localStorage.uid = $uid.value;
+    localStorage.upw = await getUpw();
     await login();
-    $tabLaunch.toggleAttribute("in_");
-    $tabFiles.toggleAttribute("in_");
-    $info.textContent = "@ " + $uid.value;
+    switchTab($tabFiles);
     await refreshFiles();
   };
 
   $create.onclick = async () => {
+    $editText.value = "";
+    hideEl($fid);
     switchTab($tabEdit);
+  };
+
+  $delete.onclick = async () => {
+    const els = [...$filesContainer.querySelectorAll(":checked")];
+    // TODO: add confirm here
+    const fids = els.map((v) => v.parentNode.nextElementSibling.textContent);
+    for (const fidStr of fids) {
+      const fid = fidDec(fidStr);
+      const r = await fetch("/paste", {
+        method: "POST",
+        headers: { op_: "delete", token_: localStorage.token, fid_: fid },
+      });
+      const type = r.headers.get("type_");
+      if (type !== "ok_default") throw msgbox(type);
+    }
+    const task = refreshFiles();
+    await msgbox("Delete succeed");
   };
 
   $editText.oninput = () => {
@@ -336,51 +365,74 @@
   };
   $editText.oninput();
 
-  $cancel.onclick = async () => {
+  $back.onclick = async () => {
     switchTab($tabFiles);
   };
 
-  $editCreate.onclick = async () => {
+  $save.onclick = async () => {
     const enc = new TextEncoder();
     const body = new Uint8Array(enc.encode($editText.value));
-    const r = await fetch("/paste", {
-      method: "POST",
-      headers: {
-        op_: "create",
-        token_: token,
-        desc_: "default test",
-        mime_: "text/plain",
-        size_: body.length,
-      },
-      body,
-    });
-    const type = r.headers.get("type_");
-    if (type !== "ok_default") throw msgbox(type);
-    await refreshFiles();
-    switchTab($tabFiles);
+    if (isElHide($fid)) {
+      // create
+      const r = await fetch("/paste", {
+        method: "POST",
+        headers: {
+          op_: "create",
+          token_: localStorage.token,
+          desc_: "default test",
+          mime_: "text/plain",
+          size_: body.length,
+        },
+        body,
+      });
+      const type = r.headers.get("type_");
+      if (type !== "ok_default") throw msgbox(type);
+      await refreshFiles();
+      switchTab($tabFiles);
+    } else {
+      // replace
+      const fid = fidDec($fid.textContent);
+      const r = await fetch("/paste", {
+        method: "POST",
+        headers: {
+          op_: "replace",
+          token_: localStorage.token,
+          fid_: fid,
+          size_: body.length,
+        },
+        body,
+      });
+      const type = r.headers.get("type_");
+      if (type !== "ok_default") throw msgbox(type);
+      await refreshFiles(); // refresh size info
+    }
   };
 
   $filesContainer.onclick = async ({ target }) => {
-    if (target.childElementCount) return;
+    if (target.childElementCount || target instanceof HTMLInputElement) return;
     if (target instanceof HTMLTableCellElement) target = target.parentNode;
+    const fidStr = target.children[1].textContent;
+    const fid = fidDec(fidStr);
     const r = await fetch("/paste", {
       method: "POST",
-      headers: {
-        op_: "download",
-        token_: token,
-        fid_: fidDec(target.children[1].textContent),
-      },
+      headers: { op_: "download", token_: localStorage.token, fid_: fid },
     });
     const type = r.headers.get("type_");
     if (type !== "ok_default") throw msgbox(type);
-    const body = await r.text();
+    $fid.textContent = fidStr;
+    unhideEl($fid);
+    $editText.value = await r.text();
     switchTab($tabEdit);
-    $editText.value = body;
   };
-  // setTimeout(() => {
-  //   // location.reload();
-  // }, 3000);
-  // const p = $tr.parentNode;
-  // const el = $tr.cloneNode(true);
-  // for (let i = 0; i < 99; i++) p.appendChild(el.cloneNode(true));
+
+  // the Main
+  (async () => {
+    if (localStorage.upw) {
+      await login();
+      switchTab($tabFiles);
+      await refreshFiles();
+    } else {
+      switchTab($tabLaunch);
+    }
+  })();
 </script>

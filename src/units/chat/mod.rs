@@ -20,15 +20,24 @@ struct Room {
     tx: Sender<String>,
 }
 
-type SseStreamFuture = Pin<Box<dyn Future<Output = (Option<String>, Receiver<String>)> + Send>>;
-
-fn make_future(mut rx: Receiver<String>) -> SseStreamFuture {
-    Box::pin(async { (rx.recv().await.ok(), rx) })
-}
+type SseStreamFut = Pin<Box<dyn Future<Output = (Option<String>, Receiver<String>)> + Send>>;
 
 struct SseStream {
     id: u32,
-    fut: SseStreamFuture,
+    fut: SseStreamFut,
+}
+
+impl SseStream {
+    fn new(id: u32, rx: Receiver<String>) -> Self {
+        SseStream {
+            id,
+            fut: Self::make_fut(rx),
+        }
+    }
+
+    fn make_fut(mut rx: Receiver<String>) -> SseStreamFut {
+        Box::pin(async { (rx.recv().await.ok(), rx) })
+    }
 }
 
 impl Stream for SseStream {
@@ -37,7 +46,7 @@ impl Stream for SseStream {
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
         let (value, rx) = ready!(Pin::new(&mut this.fut).poll(cx));
-        this.fut = make_future(rx);
+        this.fut = Self::make_fut(rx);
         Poll::Ready(value.map(|v| Ok(Event::default().data(v))))
     }
 }
@@ -76,10 +85,7 @@ async fn sse_handler(Path(id): Path<u32>) -> impl IntoResponse {
     });
     room.user_count += 1;
     let rx = room.tx.subscribe();
-    Sse::new(SseStream {
-        id,
-        fut: make_future(rx),
-    })
+    Sse::new(SseStream::new(id, rx))
 }
 
 pub fn service() -> Router {

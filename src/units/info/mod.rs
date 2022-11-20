@@ -8,6 +8,15 @@ use axum::routing::{MethodRouter, Router};
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
+// use once_cell::sync::Lazy;
+// static SYS_VER: Lazy<String> = Lazy::new(|| {
+//     if cfg!(target_os = "linux") {
+//         std::fs::read_to_string("/proc/version").unwrap()
+//     } else {
+//         "unknown".into()
+//     }
+// });
+
 static START_TIME: AtomicI64 = AtomicI64::new(0);
 static LAST_REFRESH: AtomicI64 = AtomicI64::new(0);
 static LATENCY_BAIDU: AtomicI64 = AtomicI64::new(0);
