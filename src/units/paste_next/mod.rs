@@ -713,7 +713,7 @@ enum Op<'a> {
 
 async fn post_handler(mut op: Op<'static>) -> Result<Response, Response> {
     match op.init().cast_err(ERR_HEADER_INVALID)? {
-        Op::Uninit { .. } => unreachable!(),
+        Op::Uninit { .. } => panic!("op is uninit"),
 
         Op::Signup { uid, upw, mail } => {
             (uid.len() <= UID_LEN_LIMIT).cast_err(ERR_UID_TOO_LONG)?;
@@ -804,7 +804,6 @@ async fn post_handler(mut op: Op<'static>) -> Result<Response, Response> {
             if let Err(err) = { write_body_to_file(body, &mut file, size_limit).await }
                 .and_then(|size| (size as u64 == expect_size).cast_err(ERR_BODY_SIZE_CHECK))
             {
-                db::data_d(fid_u64);
                 file.set_len(0).await.ok();
                 file.shutdown().await.ok(); // or flush?
                 drop(file);
@@ -851,17 +850,15 @@ async fn post_handler(mut op: Op<'static>) -> Result<Response, Response> {
         Op::List { token } => {
             let (uid, _level) = token::vertify(token).cast_err(ERR_TOKEN)?;
             let list = db::data_r_by_user(uid);
-            let mut body = Vec::<u8>::new(); // TODO: set capacity for performance
+            let mut body = Vec::new(); // TODO: set capacity for performance
             for (fid, size, mut desc, mut mime) in list {
                 write!(body, "fid:{fid}\nsize:{size}\ndesc:").unwrap();
                 body.append(&mut desc);
                 body.extend(b"\nmime:");
                 body.append(&mut mime);
                 body.push(b'\n');
+                body.push(b':');
                 body.push(b'\n');
-            }
-            if body.last() == Some(&b'\n') {
-                body.pop(); // depends on a newline at the end of file!
             }
             let mut response = body.into_response();
             let headers = response.headers_mut();

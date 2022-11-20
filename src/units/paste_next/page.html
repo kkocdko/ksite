@@ -314,8 +314,7 @@
     };
     let e = {};
     for (const line of (await r.text()).split("\n")) {
-      // depends on a newline at the end of file!
-      if (!line) handleEntry(e), (e = {});
+      if (line === ":") handleEntry(e), (e = {});
       const [k, v] = line.split(":", 2);
       e[k] = v;
     }
@@ -419,7 +418,7 @@
     });
     const type = r.headers.get("type_");
     if (type !== "ok_default") throw msgbox(type);
-    $fid.textContent = fidStr;
+    $fid.textContent = `${fidStr} : ${r.headers.get("desc")}`;
     unhideEl($fid);
     $editText.value = await r.text();
     switchTab($tabEdit);
@@ -427,6 +426,15 @@
 
   // the Main
   (async () => {
+    const hashAttrs = {};
+    for (const entry of location.hash.slice(1).split("?")) {
+      const [k, v] = entry.split("=", 2);
+      hashAttrs[k] = v;
+    }
+    const fidStr = hashAttrs[""]; // https://kkocdko.site/paste#=abcds
+    if (fidStr) {
+    }
+
     if (localStorage.upw) {
       await login();
       switchTab($tabFiles);
