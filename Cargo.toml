@@ -31,7 +31,7 @@ opt-level = "z"
 [dependencies]
 anyhow = "1"
 askama_escape = "0.10"
-axum = "0.6.0-rc.4"
+axum = "0.6.0"
 flate2 = "1"
 futures-core = "0.3"
 httpdate = "1"
