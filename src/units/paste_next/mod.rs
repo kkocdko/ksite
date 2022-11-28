@@ -21,10 +21,21 @@ evolution:
 * 防止重放攻击
 * 修改用户名，不对称算力验证防攻击
 * 邮箱关联
+* 断点续传
 * 类似 git fork, 但不使用 cow
 * 增量更新
 * 页面缓存
 * 会员制
+
+todo:
+* [x] 数据库结构
+* [x] 账户登录
+* [x] 高性能 token 模块
+* [x] 基础界面
+* [x] 流式传输（后端）
+* [x] 全局加密化（后端）
+* [ ] 全局加密化（前端）
+* [ ] 完成零散的 todo 项目
 
 sessions?
 全部 public，未分享的用用户密码加密?
@@ -69,15 +80,14 @@ server: compare(token, target = hash(time + id)), ret(result)
 */
 use self::consts::*;
 use self::misc::*;
+use crate::include_page;
 use crate::ticker::Ticker;
-use crate::{care, include_page};
-use axum::body::{Body, Bytes, HttpBody, StreamBody};
+use axum::body::{Body, Bytes, HttpBody};
 use axum::extract::FromRequest;
 use axum::http::header::{HeaderMap, HeaderValue, CONTENT_LENGTH};
 use axum::http::Request;
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{MethodRouter, Router};
-use futures_core::Stream;
 use hyper::header::CACHE_CONTROL;
 use once_cell::sync::Lazy;
 use rand::{thread_rng, Fill};
@@ -92,7 +102,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::task::{Context, Poll};
 use std::time::UNIX_EPOCH;
 use tokio::fs::File;
-use tokio::io::{self, AsyncRead, AsyncWriteExt, ReadBuf};
+use tokio::io::{self, AsyncWriteExt};
 
 /// Token Module
 ///
@@ -100,11 +110,11 @@ use tokio::io::{self, AsyncRead, AsyncWriteExt, ReadBuf};
 /// pool, request renew on client should response the next token and the valid timestamp.
 ///
 /// ```norust
-/// timestamp: u32 = minutes, level: u8, uid: &[u8]
+/// timestamp: u32 = minutes, ulv: u8, uid: &[u8]
 /// token: &[u8] =
-///     hash(seed[timestamp] + level:u8 + uid)
+///     hash(seed[timestamp] + ulv:u8 + uid)
 ///     + timestamp:u32_le_bytes
-///     + level:u8
+///     + ulv:u8
 ///     + b'.'
 ///     + uid:&[u8]
 ///
@@ -120,11 +130,11 @@ mod token {
     static mut SEED_POOL: [[u8; 32]; 3] = [[0; 32]; 3];
     static CURRENT_TIMESTAMP: AtomicU32 = AtomicU32::new(0);
 
-    fn hash(seed_idx: usize, level: u8, uid: &[u8]) -> Digest {
+    fn hash(seed_idx: usize, ulv: u8, uid: &[u8]) -> Digest {
         let seed = unsafe { SEED_POOL[seed_idx] };
         let mut buf = Vec::new(); // TODO: avoid dynamic memory
         buf.extend(seed);
-        buf.push(level);
+        buf.push(ulv);
         buf.extend(uid);
         ring::digest::digest(&ring::digest::SHA256, &buf) // it's hardware accelerated!
     }
@@ -141,35 +151,35 @@ mod token {
     }
 
     /// Generate token in current time.
-    pub fn current(uid: &[u8], level: u8) -> String {
+    pub fn current(uid: &[u8], ulv: u8) -> String {
         let timestamp = CURRENT_TIMESTAMP.load(Ordering::Relaxed);
         let seed_idx = timestamp2idx(timestamp);
         let mut buf = Vec::new();
-        buf.extend(hash(seed_idx, level, uid).as_ref());
+        buf.extend(hash(seed_idx, ulv, uid).as_ref());
         buf.extend(timestamp.to_le_bytes());
-        buf.extend(level.to_le_bytes());
+        buf.extend(ulv.to_le_bytes());
         buf = bytes2hex(&buf);
         buf.push(b'.');
         buf.extend(uid);
         String::from_utf8(buf).unwrap()
     }
 
-    /// Extract (uid, level).
+    /// Extract (uid, ulv).
     pub fn vertify(token: &[u8]) -> Result<(&[u8], u8), ()> {
         if token.len() < 76 {
             return Err(()); // too short
         }
         let sha256: [u8; 32] = hex2bytes(&token[..64])?;
         let timestamp = u32::from_le_bytes(hex2bytes(&token[64..72])?);
-        let level = hex2bytes::<1>(&token[72..74])?[0];
+        let ulv = hex2bytes::<1>(&token[72..74])?[0];
         let uid = &token[75..];
         let seed_idx = timestamp2idx(timestamp);
-        match hash(seed_idx, level, uid).as_ref() == sha256 {
-            true => Ok((uid, level)),
+        match hash(seed_idx, ulv, uid).as_ref() == sha256 {
+            true => Ok((uid, ulv)),
             false => Err(()),
         }
-        // In export interface, we use (uid, level); in this module, due to the flexibility, we use
-        // the token format that uid is behind the level.
+        // In export interface, we use (uid, ulv); in this module, due to the flexibility, we use
+        // the token format that uid is behind the ulv.
     }
 
     pub fn renew_tick() {
@@ -203,33 +213,43 @@ mod db {
 
     use crate::db;
 
+    /*
+    d -> database, c -> client
+    d:uid = c:uid = user id text
+    d:mail = user email
+    d:ulv = user level (admin / vip / banned / normal)
+    upw_raw = raw user password text
+    c:upw = sha256(`paste` + c:uid + upw_raw)
+    salt = rand([u8; 32])
+    d:upw = sha256(salt + c:upw)
+    d:fid = u64 file id
+    c:fpw = rand([u8; 32])
+    file_raw = raw file data
+    file = file data storaged at server
+    file = file_raw.aes256(c:fpw)
+    d:cap = file.length
+    meta_inner = json { size = file_raw.length, desc, mime }
+    d:meta = json { fpw = c:fpw.aes256(c:upw), inner = meta_inner.aes256(c:fpw) }
+    */
     pub fn init() {
-        // uid: user id
-        // upw: user secret
-        // mail: user email address
-        // level: user level (admin / vip / banned / normal)
-        // fid: file id (u64, != 0)
-        // desc: file description
-        // mime: file mime, use this as the content-type, and is encrypted flag
         db! {"
             CREATE TABLE IF NOT EXISTS paste_user
-            (uid BLOB PRIMARY KEY, upw BLOB, mail BLOB, level INTEGER)
+            (uid BLOB PRIMARY KEY, upw BLOB, mail BLOB, ulv INTEGER)
         "}
         .unwrap();
         db! {"
             CREATE TABLE IF NOT EXISTS paste_data
-            (fid INTEGER PRIMARY KEY AUTOINCREMENT, size INTEGER, uid BLOB, desc BLOB, mime BLOB)
+            (fid INTEGER PRIMARY KEY AUTOINCREMENT, uid BLOB, cap INTEGER, meta BLOB)
         "}
         .unwrap();
-        // TODO: insert some entrys to skip id 0~32?
         // TODO: built in guest account?
     }
 
-    pub fn user_cu(uid: &[u8], upw: &[u8], mail: &[u8], level: u8) {
+    pub fn user_cu(uid: &[u8], upw: &[u8], mail: &[u8], ulv: u8) {
         db! {"
             REPLACE INTO paste_user
             VALUES (?1, ?2, ?3, ?4)
-        ",[uid, upw, mail, level as i64]}
+        ",[uid, upw, mail, ulv as i64]}
         .unwrap();
     }
 
@@ -241,6 +261,14 @@ mod db {
         .ok()
     }
 
+    pub fn user_r_ulv(uid: &[u8]) -> Option<(u8,)> {
+        db! {"
+            SELECT ulv FROM paste_user
+            WHERE uid = ?
+        ", [uid], ^(0)}
+        .ok()
+    }
+
     pub fn user_d(uid: &[u8]) {
         db! {"
             DELETE FROM paste_user
@@ -249,55 +277,37 @@ mod db {
         .unwrap();
     }
 
-    pub fn data_c(size: u64, uid: &[u8], desc: &[u8], mime: &[u8]) -> u64 {
+    pub fn data_c(uid: &[u8], cap: u64, meta: &[u8]) -> u64 {
         db! {"
             INSERT INTO paste_data
-            VALUES (NULL, ?1, ?2, ?3, ?4)
-        ", [size, uid, desc, mime], &}
+            VALUES (NULL, ?1, ?2, ?3)
+        ", [uid, cap, meta], &}
         .unwrap() as _
     }
 
-    pub fn data_u_size(fid: u64, size: u64) {
-        db! {"
-            UPDATE paste_data
-            SET size = ?2
-            WHERE fid = ?1
-        ", [fid, size]}
-        .unwrap();
-    }
-
-    pub fn data_u_desc(fid: u64, desc: &[u8]) {
-        db! {"
-            UPDATE paste_data
-            SET desc = ?2
-            WHERE fid = ?1
-        ", [fid, desc]}
-        .unwrap();
-    }
-
-    pub fn data_u_mime(fid: u64, mime: &[u8]) {
-        db! {"
-            UPDATE paste_data
-            SET mime = ?2
-            WHERE fid = ?1
-        ", [fid, mime]}
-        .unwrap();
-    }
-
-    pub fn data_r(fid: u64) -> Option<(u64, Vec<u8>, Vec<u8>, Vec<u8>)> {
+    pub fn data_r(fid: u64) -> Option<(Vec<u8>, u64, Vec<u8>)> {
         db! {"
             SELECT * FROM paste_data
             WHERE fid = ?
-        ", [fid], ^(1, 2, 3, 4)}
+        ", [fid], ^(1, 2, 3)}
         .ok()
     }
 
-    pub fn data_r_by_user(uid: &[u8]) -> Vec<(u64, u64, Vec<u8>, Vec<u8>)> {
+    pub fn data_r_by_user(uid: &[u8]) -> Vec<(u64, u64, Vec<u8>)> {
         db! {"
             SELECT * FROM paste_data
             WHERE uid = ?
-        ", [uid], (0, 1, 3, 4)}
+        ", [uid], (0, 2, 3)}
         .unwrap()
+    }
+
+    pub fn data_u(fid: u64, cap: u64, meta: &[u8]) {
+        db! {"
+            UPDATE paste_data
+            SET cap = ?2, meta = ?3
+            WHERE fid = ?1
+        ", [fid, cap, meta]}
+        .unwrap();
     }
 
     pub fn data_d(fid: u64) {
@@ -339,16 +349,16 @@ mod consts {
 
     // header names
     def_str!(OP_);
+    def_str!(TYPE_);
+    def_str!(TOKEN_);
     def_str!(UID_);
     def_str!(UPW_);
-    def_str!(TYPE_);
+    def_str!(ULV_);
     def_str!(MAIL_);
-    def_str!(TOKEN_);
-    def_str!(SIZE_);
-    def_str!(LEVEL_);
-    def_str!(DESC_);
-    def_str!(MIME_);
     def_str!(FID_);
+    def_str!(FPW_);
+    def_str!(META_);
+    def_str!(LIMIT_);
 
     // ok types
     def_str!(OK_DEFAULT);
@@ -356,18 +366,21 @@ mod consts {
     // err types
     def_str!(ERR_TOKEN);
     def_str!(ERR_UID_UPW);
+    def_str!(ERR_UID_EXISTS);
+    def_str!(ERR_UID_TOO_LONG);
     def_str!(ERR_UPW_DECODE);
     def_str!(ERR_HEADER_INVALID);
     def_str!(ERR_BODY_READ);
-    def_str!(ERR_BODY_SIZE_CHECK);
-    def_str!(ERR_BODY_SIZE_LIMIT);
-    def_str!(ERR_UID_EXISTS);
-    def_str!(ERR_UID_TOO_LONG);
+    def_str!(ERR_SIZE_LIMIT);
     def_str!(ERR_FILE_NOT_FOUND_OR_DENY);
     def_str!(ERR_SERVER_INNER);
 
     // others
-    pub const DEFAULT_USER_LEVEL: u8 = 64;
+    pub const ULV_DEACTIVED: u8 = 7;
+    pub const ULV_GUEST: u8 = 15;
+    pub const ULV_NORMAL: u8 = 31;
+    pub const ULV_VIP: u8 = 63;
+    pub const ULV_ADMIN: u8 = 255;
     pub const SHA256_LEN: usize = 32; // sha256 should be 32 bytes len
     pub const UID_LEN_LIMIT: usize = 32;
 }
@@ -410,11 +423,25 @@ mod misc {
         Ok(ret)
     }
 
-    pub const fn get_size_limit(level: u8) -> usize {
-        const MIB: usize = 1024 * 1024;
-        match level {
-            128 => 16 * MIB,
-            64 => 2 * MIB,
+    // increase a little, because AES will cause size inflate
+    // TODO: what is the best value of increasing?
+    // TODO: tweak limit bound.
+    const MIB_INFLATE: usize = 1024 * (1024 + 128);
+
+    pub const fn ulv_trans_limit(ulv: u8) -> usize {
+        match ulv {
+            ULV_GUEST => 16 * MIB_INFLATE,
+            ULV_NORMAL => 32 * MIB_INFLATE,
+            ULV_VIP => 512 * MIB_INFLATE,
+            ULV_ADMIN => usize::MAX,
+            _ => 0,
+        }
+    }
+
+    pub const fn ulv_share_limit(ulv: u8) -> usize {
+        match ulv {
+            ULV_VIP => 384 * MIB_INFLATE,
+            ULV_ADMIN => usize::MAX,
             _ => 0,
         }
     }
@@ -558,9 +585,7 @@ mod misc {
         while let Some(buf) = body.data().await {
             let buf = buf.cast_err(ERR_BODY_READ)?;
             let len = buf.len();
-            if remain < len {
-                false.cast_err(ERR_BODY_SIZE_LIMIT)?;
-            }
+            (remain >= len).cast_err(ERR_SIZE_LIMIT)?;
             remain -= len;
             file.write_all(&buf).await.unwrap();
         }
@@ -586,26 +611,26 @@ mod misc {
                 },
                 b"create" => Op::Create {
                     token: v(TOKEN_)?,
-                    size: v(SIZE_)?,
-                    desc: v(DESC_)?,
-                    mime: v(MIME_)?,
+                    meta: v(META_)?,
                     body,
                 },
                 b"replace" => Op::Replace {
                     token: v(TOKEN_)?,
                     fid: v(FID_)?,
-                    size: v(SIZE_)?,
+                    meta: v(META_)?,
                     body,
-                },
-                b"download" => Op::Download {
-                    token: v(TOKEN_)?,
-                    fid: v(FID_)?,
                 },
                 b"delete" => Op::Delete {
                     token: v(TOKEN_)?,
                     fid: v(FID_)?,
                 },
                 b"list" => Op::List { token: v(TOKEN_)? },
+                b"download" => Op::Download {
+                    token: v(TOKEN_)?,
+                    fid: v(FID_)?,
+                    meta: v(META_)?,
+                    limit: v(LIMIT_)?,
+                },
                 _ => return Err(()),
             })
             // hyper docs: Note: To read the full body, use body::to_bytes or body::aggregate.
@@ -669,46 +694,43 @@ mod misc {
 enum Op<'a> {
     /// Once the `Op` created, it's in `Uninit` state and needs a `op.init()`
     Uninit { req: Request<Body> },
-
     /// Create a new user.
     Signup {
         uid: &'a [u8],
         upw: &'a [u8],
         mail: &'a [u8],
     },
-
     /// User login or token renew.
     Login { uid: &'a [u8], upw: &'a [u8] },
-
     // TODO: Change user profile.
     // TODO: User volumn limit.
-    /// Get the files list.
-    List { token: &'a [u8] },
-
     /// Create a file.
     Create {
         token: &'a [u8],
-        size: &'a [u8],
-        desc: &'a [u8],
-        mime: &'a [u8],
+        meta: &'a [u8],
         body: Body,
     },
-
-    /// Download a file.
-    Download { token: &'a [u8], fid: &'a [u8] },
-
-    /// Delete a file.
-    Delete { token: &'a [u8], fid: &'a [u8] },
-
     /// Update a file by replace.
     Replace {
         token: &'a [u8],
         fid: &'a [u8],
-        size: &'a [u8],
+        meta: &'a [u8],
         body: Body,
     },
-    // /// Update a file by modify changes.
+    // Update a file by modify changes.
     // Modify {},
+    /// Delete a file.
+    Delete { token: &'a [u8], fid: &'a [u8] },
+    /// Get the files list.
+    List { token: &'a [u8] },
+    /// Download a file.
+    Download {
+        token: &'a [u8],
+        fid: &'a [u8],
+        meta: &'a [u8],
+        /// Size limit in bytes, desktop and mobile' s limit may be different.
+        limit: &'a [u8],
+    },
 }
 
 async fn post_handler(mut op: Op<'static>) -> Result<Response, Response> {
@@ -728,7 +750,7 @@ async fn post_handler(mut op: Op<'static>) -> Result<Response, Response> {
             db::user_cu(uid, &upw_buf, mail, 64); // TODO: mail vertify
             Ok([
                 (TYPE_, HeaderValue::from_static(OK_DEFAULT)),
-                (LEVEL_, HeaderValue::from(DEFAULT_USER_LEVEL as u16)), // u8 is ambiguity
+                (ULV_, HeaderValue::from(ULV_NORMAL as u16)), // u8 is ambiguity
             ]
             .into_response())
         }
@@ -736,46 +758,38 @@ async fn post_handler(mut op: Op<'static>) -> Result<Response, Response> {
         Op::Login { uid, upw } => {
             // TODO: uid length limit
             // TODO: avoid time-side attack?
-            let (upw_correct, _mail, level) = db::user_r(uid).cast_err(ERR_UID_UPW)?;
+            let (upw_correct, _mail, ulv) = db::user_r(uid).cast_err(ERR_UID_UPW)?;
             let mut upw_buf = [0u8; SHA256_LEN * 2];
             upw_buf[..SHA256_LEN].copy_from_slice(&upw_correct[..SHA256_LEN]); // salt
             let upw_decoded = hex2bytes::<SHA256_LEN>(upw).cast_err(ERR_UPW_DECODE)?;
             upw_buf[SHA256_LEN..].copy_from_slice(&upw_decoded);
             let upw_req = ring::digest::digest(&ring::digest::SHA256, &upw_buf);
             (upw_req.as_ref() == &upw_correct[SHA256_LEN..]).cast_err(ERR_UID_UPW)?;
-            let token = token::current(uid, level);
+            let token = token::current(uid, ulv);
             Ok([
                 (TYPE_, HeaderValue::from_static(OK_DEFAULT)),
                 (TOKEN_, HeaderValue::from_buf(token)),
-                (LEVEL_, HeaderValue::from(level as u16)),
+                (ULV_, HeaderValue::from(ulv as u16)),
             ]
             .into_response())
         }
 
-        Op::Create {
-            token,
-            size,
-            desc,
-            mime,
-            body,
-        } => {
-            let (uid, level) = token::vertify(token).cast_err(ERR_TOKEN)?;
-            // prevent big file in front end, just make a later limit here
-            let size_limit = get_size_limit(level);
-            let expect_size = parse_slice::<u64>(size).cast_err(ERR_HEADER_INVALID)?;
-            let fid_u64 = db::data_c(expect_size, uid, desc, mime);
+        Op::Create { token, meta, body } => {
+            let (uid, ulv) = token::vertify(token).cast_err(ERR_TOKEN)?;
+            let fid_u64 = db::data_c(uid, 0, b"");
             let p = fid_to_path(fid_u64.to_string().as_bytes());
             let mut file = tokio::fs::File::create(&p).await.unwrap();
-            if let Err(err) = { write_body_to_file(body, &mut file, size_limit).await }
-                .and_then(|size| (size as u64 == expect_size).cast_err(ERR_BODY_SIZE_CHECK))
-            {
+            let limit_by_ulv = ulv_trans_limit(ulv); // prevent big file in front end, just a later limit here
+            if let Err(err) = write_body_to_file(body, &mut file, limit_by_ulv).await {
                 db::data_d(fid_u64);
                 file.set_len(0).await.ok();
                 file.shutdown().await.ok(); // or flush?
                 drop(file);
-                care!(tokio::fs::remove_file(&p).await).ok(); // ignore inner error?
+                tokio::fs::remove_file(&p).await.unwrap(); // ignore inner error?
                 return Err(err);
             }
+            // TODO: use buffer len?
+            db::data_u(fid_u64, file.metadata().await.unwrap().len(), meta);
             Ok([
                 (TYPE_, HeaderValue::from_static(OK_DEFAULT)),
                 (FID_, HeaderValue::from(fid_u64)),
@@ -786,14 +800,12 @@ async fn post_handler(mut op: Op<'static>) -> Result<Response, Response> {
         Op::Replace {
             token,
             fid,
-            size,
+            meta,
             body,
         } => {
-            let (uid, level) = token::vertify(token).cast_err(ERR_TOKEN)?;
-            let size_limit = get_size_limit(level);
-            let expect_size = parse_slice::<u64>(size).cast_err(ERR_HEADER_INVALID)?;
+            let (uid, ulv) = token::vertify(token).cast_err(ERR_TOKEN)?;
             let fid_u64 = parse_slice::<u64>(fid).cast_err(ERR_HEADER_INVALID)?;
-            let (_size, owner_uid, _desc, _mime) =
+            let (owner_uid, cap, _meta) =
                 db::data_r(fid_u64).cast_err(ERR_FILE_NOT_FOUND_OR_DENY)?;
             (uid == owner_uid).cast_err(ERR_FILE_NOT_FOUND_OR_DENY)?;
             let p = fid_to_path(fid);
@@ -801,26 +813,27 @@ async fn post_handler(mut op: Op<'static>) -> Result<Response, Response> {
                 .await
                 .unwrap();
             let mut file = tokio::fs::File::create(&p).await.unwrap();
-            if let Err(err) = { write_body_to_file(body, &mut file, size_limit).await }
-                .and_then(|size| (size as u64 == expect_size).cast_err(ERR_BODY_SIZE_CHECK))
-            {
+            let limit_by_ulv = ulv_trans_limit(ulv);
+            if let Err(err) = write_body_to_file(body, &mut file, limit_by_ulv).await {
+                db::data_d(fid_u64);
                 file.set_len(0).await.ok();
                 file.shutdown().await.ok(); // or flush?
                 drop(file);
-                care!(tokio::fs::remove_file(&p).await).ok(); // ignore inner error?
+                tokio::fs::remove_file(&p).await.unwrap(); // ignore inner error?
                 tokio::fs::rename(&p.with_extension("bak"), &p)
                     .await
                     .unwrap();
                 return Err(err);
             }
-            db::data_u_size(fid_u64, expect_size);
+            // TODO: use buffer len?
+            db::data_u(fid_u64, file.metadata().await.unwrap().len(), meta);
             Ok([(TYPE_, HeaderValue::from_static(OK_DEFAULT))].into_response())
         }
 
         Op::Delete { token, fid } => {
-            let (uid, _level) = token::vertify(token).cast_err(ERR_TOKEN)?;
+            let (uid, _ulv) = token::vertify(token).cast_err(ERR_TOKEN)?;
             let fid_u64 = parse_slice::<u64>(fid).cast_err(ERR_HEADER_INVALID)?;
-            let (_size, owner_uid, _desc, _mime) =
+            let (owner_uid, _cap, _meta) =
                 db::data_r(fid_u64).cast_err(ERR_FILE_NOT_FOUND_OR_DENY)?;
             (uid == owner_uid).cast_err(ERR_FILE_NOT_FOUND_OR_DENY)?;
             let p = fid_to_path(fid);
@@ -829,33 +842,47 @@ async fn post_handler(mut op: Op<'static>) -> Result<Response, Response> {
             Ok([(TYPE_, HeaderValue::from_static(OK_DEFAULT))].into_response())
         }
 
-        Op::Download { token, fid } => {
-            let (uid, _level) = token::vertify(token).cast_err(ERR_TOKEN)?;
+        Op::Download {
+            token,
+            fid,
+            limit,
+            meta,
+        } => {
+            let (uid, ulv) = token::vertify(token).cast_err(ERR_TOKEN)?;
             let fid_u64 = parse_slice::<u64>(fid).cast_err(ERR_HEADER_INVALID)?;
-            let (size, owner_uid, desc, mime) =
+            let (owner_uid, cap, meta) =
                 db::data_r(fid_u64).cast_err(ERR_FILE_NOT_FOUND_OR_DENY)?;
-            (uid == owner_uid).cast_err(ERR_FILE_NOT_FOUND_OR_DENY)?;
-            let p = fid_to_path(fid);
-            let file = File::open(p).await.unwrap();
-            let body = FileStream::new(file);
-            let mut response = body.into_response();
+            // allow all user to download any file?
+            // (uid == owner_uid).cast_err(ERR_FILE_NOT_FOUND_OR_DENY)?;
+            if cap <= ulv_trans_limit(ulv) as u64 {
+                true
+            } else {
+                // if the file is big, query the owner's ulv
+                let owner_ulv = db::user_r_ulv(uid).unwrap().0;
+                cap <= ulv_share_limit(owner_ulv) as u64
+            }
+            .cast_err(ERR_SIZE_LIMIT)?;
+            let limit = parse_slice::<u64>(limit).cast_err(ERR_HEADER_INVALID)?;
+            let (mut response, len) = if cap <= limit {
+                let file = File::open(fid_to_path(fid)).await.unwrap();
+                (FileStream::new(file).into_response(), cap)
+            } else {
+                (().into_response(), 0)
+            };
             let headers = response.headers_mut();
-            headers.insert(CONTENT_LENGTH, HeaderValue::from(size));
+            headers.insert(CONTENT_LENGTH, HeaderValue::from(len));
             headers.insert(TYPE_, HeaderValue::from_static(OK_DEFAULT));
-            headers.insert(DESC_, HeaderValue::from_buf(desc));
-            headers.insert(MIME_, HeaderValue::from_buf(mime));
+            headers.insert(META_, HeaderValue::from_buf(meta));
             Ok(response)
         }
 
         Op::List { token } => {
-            let (uid, _level) = token::vertify(token).cast_err(ERR_TOKEN)?;
+            let (uid, _ulv) = token::vertify(token).cast_err(ERR_TOKEN)?;
             let list = db::data_r_by_user(uid);
             let mut body = Vec::new(); // TODO: set capacity for performance
-            for (fid, size, mut desc, mut mime) in list {
-                write!(body, "fid:{fid}\nsize:{size}\ndesc:").unwrap();
-                body.append(&mut desc);
-                body.extend(b"\nmime:");
-                body.append(&mut mime);
+            for (fid, cap, mut meta) in list {
+                write!(body, "fid:{fid}\nmeta:").unwrap();
+                body.append(&mut meta);
                 body.push(b'\n');
                 body.push(b':');
                 body.push(b'\n');

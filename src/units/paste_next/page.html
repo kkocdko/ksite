@@ -7,22 +7,35 @@
 </head>
 
 <style>
+  :root {
+    --fg: #000;
+    --bg: #fff;
+    --btn-bg-hover: #f2f2f2;
+    --btn-bg-active: #e5e5e5;
+    --border-color: #adadad;
+    --border-lite-color: #cfcfcf;
+    --border: 1px solid var(--border-color);
+    --border-lite: 1px solid var(--border-lite-color);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fg: #fff;
+      --bg: #000;
+      --btn-bg-hover: #232323;
+      --btn-bg-active: #464646;
+      --border-color: #5d5d5d;
+      --border-lite-color: #444;
+    }
+  }
+
   * {
     box-sizing: border-box;
     margin: 0;
-    transition: 0.2s cubic-bezier(0, 0, 0, 1);
+    /* transition: 0.2s cubic-bezier(0, 0, 0, 1); */
     font: 14px / 18px sans-serif;
+    color: var(--fg);
+    background: var(--bg);
   }
-  * {
-    color: #000;
-    background: #fff;
-  }
-  /* @media (prefers-color-scheme: dark) {
-      * {
-        color: #fff;
-        background: #000;
-      }
-    } */
 
   [hide_] {
     display: none;
@@ -41,37 +54,39 @@
 
   input,
   button {
-    border: 1px solid #888b; /* def: default_border */
+    border: var(--border);
     border-width: 0 0 1px 0;
-    padding: 6px 12px;
+    padding: 5px 11px;
     min-width: 0;
   }
   input:hover,
   button:hover,
   input:focus {
-    background: #bbb3; /* def: button_hover_color */
+    background: var(--btn-bg-hover);
   }
   button {
     border-radius: 6px;
     border-width: 1px;
   }
   button:active {
-    background: #bbb6; /* def: button_active_color */
+    background: var(--btn-bg-active);
   }
   input[type="checkbox"] {
     height: 16px;
     width: 16px;
-    box-shadow: inset 0 0 0 1px #ccc, inset 0 0 0 9px #fff, inset 0 0 0 9px #999;
+    box-shadow: inset 0 0 0 1px var(--border-lite-color),
+      inset 0 0 0 9px var(--bg), inset 0 0 0 9px var(--border-color);
   }
   input[type="checkbox"]:checked {
-    box-shadow: inset 0 0 0 1px #ccc, inset 0 0 0 4px #fff, inset 0 0 0 9px #999;
+    box-shadow: inset 0 0 0 1px var(--border-lite-color),
+      inset 0 0 0 4px var(--bg), inset 0 0 0 9px var(--border-color);
   }
 
   top_bar_ {
     display: flex;
     gap: 8px;
     padding: 8px;
-    border-bottom: 1px solid #8885; /* def: lite_border */
+    border-bottom: var(--border-lite); /* def: lite_border */
   }
   top_bar_ span {
     flex-grow: 1;
@@ -89,7 +104,7 @@
     margin-top: 80px;
     padding: 24px;
     border-radius: 8px;
-    border: 1px solid #888b; /* ref: default_border */
+    border: var(--border);
   }
   tab_launch_ > input {
     grid-column: 1 / 3;
@@ -105,15 +120,6 @@
     width: 100%;
     height: 100%;
     grid: auto auto 1fr / auto;
-  }
-  files_list_ div {
-    box-shadow: -8px 0 4px -4px #000;
-    padding: 1px 10px 1px 0;
-    display: flex;
-    gap: 8px;
-    position: absolute;
-    right: 0;
-    top: 0;
   }
   files_list_ table {
     border-spacing: 0;
@@ -160,6 +166,12 @@
   }
   tab_edit_ textarea[blank_]::before {
     content: "Input text or upload file";
+  }
+  tab_edit_ #\$fid {
+    max-width: 12em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 </style>
 
@@ -237,10 +249,23 @@
   const hideEl = (el) => el.toggleAttribute("hide_", true);
   const unhideEl = (el) => el.removeAttribute("hide_");
   const isElHide = (el) => el.hasAttribute("hide_");
+  const fidEnc = (fidNum) => fidNum; // TODO
+  const fidDec = (fidStr) => fidStr; // TODO
+  const readableSize = (v /* bytes */) => {
+    let unit = "Bytes";
+    if (v >= 2 ** 40 * 1e3) throw "too big";
+    else if (v >= 2 ** 30 * 1e3) (unit = "TiB"), (v /= 2 ** 40);
+    else if (v >= 2 ** 20 * 1e3) (unit = "GiB"), (v /= 2 ** 30);
+    else if (v >= 2 ** 10 * 1e3) (unit = "MiB"), (v /= 2 ** 20);
+    else if (v >= 2 ** 00 * 1e3) (unit = "KiB"), (v /= 2 ** 10);
+    v = ("" + v).slice(0, 4);
+    if (v.endsWith(".")) v = v.slice(0, 3);
+    return `${v} ${unit}`;
+  };
 
   const getUpw = async () => {
     const enc = new TextEncoder();
-    const data = enc.encode(`paste_${$uid.value}_${$upw.value}`);
+    const data = enc.encode("paste" + uid.value + $upw.value);
     const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", data));
     return hash.reduce((s, v) => s + v.toString(16).padStart(2, "0"), "");
   };
@@ -275,24 +300,6 @@
     $info.textContent = "@ " + localStorage.uid;
     localStorage.token = r.headers.get("token_");
   };
-
-  // setInterval(() => {
-  //   login();
-  // }, 30 * 60 * 1000);
-
-  const readableSize = (v /* bytes */) => {
-    let unit = "Bytes";
-    if (v >= 2 ** 40 * 1e3) throw "too big";
-    else if (v >= 2 ** 30 * 1e3) (unit = "TiB"), (v /= 2 ** 40);
-    else if (v >= 2 ** 20 * 1e3) (unit = "GiB"), (v /= 2 ** 30);
-    else if (v >= 2 ** 10 * 1e3) (unit = "MiB"), (v /= 2 ** 20);
-    else if (v >= 2 ** 00 * 1e3) (unit = "KiB"), (v /= 2 ** 10);
-    v = ("" + v).slice(0, 4);
-    if (v.endsWith(".")) v = v.slice(0, 3);
-    return `${v} ${unit}`;
-  };
-  const fidEnc = (fidNum) => fidNum; // TODO
-  const fidDec = (fidStr) => fidStr; // TODO
 
   const refreshFiles = async () => {
     const r = await fetch("/paste", {
@@ -365,6 +372,10 @@
   $editText.oninput();
 
   $back.onclick = async () => {
+    if (location.hash.startsWith("#=")) {
+      location.hash = "";
+      await refreshFiles();
+    }
     switchTab($tabFiles);
   };
 
@@ -391,6 +402,7 @@
     } else {
       // replace
       const fid = fidDec($fid.textContent);
+      // console.log(fid)
       const r = await fetch("/paste", {
         method: "POST",
         headers: {
@@ -407,10 +419,7 @@
     }
   };
 
-  $filesContainer.onclick = async ({ target }) => {
-    if (target.childElementCount || target instanceof HTMLInputElement) return;
-    if (target instanceof HTMLTableCellElement) target = target.parentNode;
-    const fidStr = target.children[1].textContent;
+  const loadFile = async (fidStr) => {
     const fid = fidDec(fidStr);
     const r = await fetch("/paste", {
       method: "POST",
@@ -418,29 +427,45 @@
     });
     const type = r.headers.get("type_");
     if (type !== "ok_default") throw msgbox(type);
-    $fid.textContent = `${fidStr} : ${r.headers.get("desc")}`;
+    // r.body.getReader
+    $fid.textContent = fidStr;
+    // $fid.textContent = `${fidStr} : ${r.headers.get("desc_")}`;
     unhideEl($fid);
     $editText.value = await r.text();
     switchTab($tabEdit);
   };
 
+  $filesContainer.onclick = async ({ target }) => {
+    if (target.childElementCount || target instanceof HTMLInputElement) return;
+    if (target instanceof HTMLTableCellElement) target = target.parentNode;
+    const fidStr = target.children[1].textContent;
+    await loadFile(fidStr);
+    location.hash = `#=${fidStr}`;
+  };
+
   // the Main
   (async () => {
-    const hashAttrs = {};
-    for (const entry of location.hash.slice(1).split("?")) {
-      const [k, v] = entry.split("=", 2);
-      hashAttrs[k] = v;
-    }
-    const fidStr = hashAttrs[""]; // https://kkocdko.site/paste#=abcds
-    if (fidStr) {
-    }
-
     if (localStorage.upw) {
       await login();
-      switchTab($tabFiles);
-      await refreshFiles();
+
+      const hashAttrs = {};
+      for (const entry of location.hash.slice(1).split("?")) {
+        const [k, v] = entry.split("=", 2);
+        hashAttrs[k] = v;
+      }
+      const fidStr = hashAttrs[""]; // https://127.0.0.1:9304/paste#=fc3s2a
+      if (fidStr) {
+        await loadFile(fidStr);
+      } else {
+        await refreshFiles();
+        switchTab($tabFiles);
+      }
     } else {
       switchTab($tabLaunch);
     }
+
+    // setInterval(() => {
+    //   login();
+    // }, 30 * 60 * 1000);
   })();
 </script>
