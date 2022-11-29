@@ -8,13 +8,11 @@ features:
 * 轻量，快速，不使用框架的界面
 
 details:
-* fid 经过优化的自增 （保留前 32 个 ID？）
 * fid 不要超过 i64（测试 u64 的可能性？）
 * fid 在前端从 str 转成 int
-* fid 生成完美哈希
+* fid 生成完美哈希，防止用户争抢短 id
 * 写入原始内容，前端预览时自行处理转义
-* 不要做服务端解密，前端做边解密边下载
-* 默认使用用户密码加密，可自定义加密。用 mime 来存储是否自定义加密的信息
+* 不作服务端解密，前端边解密边下载
 
 evolution:
 * 防止基于时间的侧信道攻击
@@ -35,6 +33,7 @@ todo:
 * [x] 流式传输（后端）
 * [x] 全局加密化（后端）
 * [ ] 全局加密化（前端）
+* [ ] 限制每个用户创建的文件数量
 * [ ] 完成零散的 todo 项目
 
 sessions?
@@ -47,9 +46,6 @@ sessions?
 账户创建 file 的速度限制。
 区分创建与插入？评估性能影响
 
-protobuf?
-webdav?
-
 https://github.com/lettre/lettre
 https://www.runoob.com/sqlite/sqlite-intro.html
 https://github.com/su18/wooyun-drops/blob/b2a5416/papers/%E5%8A%A0%E7%9B%90hash%E4%BF%9D%E5%AD%98%E5%AF%86%E7%A0%81%E7%9A%84%E6%AD%A3%E7%A1%AE%E6%96%B9%E5%BC%8F.md
@@ -57,13 +53,7 @@ https://docs.rs/rustls/latest/rustls/internal/msgs/enums/enum.HashAlgorithm.html
 https://docs.rs/ring/latest/ring/digest/fn.digest.html
 file:///home/kkocdko/misc/Markdown_1666085837234.html
 
-密码hash加盐
-
-/paste/raw/:id
-
 -----
-/ksite
-/ksite.db
 
 * ===== SIGNUP
 client: post(id, h = hash(id + password))
@@ -598,6 +588,7 @@ mod misc {
             let mut body = Body::empty(); // TODO: optimize unnecessary body extact
             swap(req.body_mut(), &mut body);
             let headers = req.headers();
+            // TODO: limit the length of META?
             let v = |k: &str| headers.get(k).map_or(Err(()), |o| Ok(o.as_bytes()));
             Ok(match v(OP_)? {
                 b"signup" => Op::Signup {
@@ -778,7 +769,7 @@ async fn post_handler(mut op: Op<'static>) -> Result<Response, Response> {
             let (uid, ulv) = token::vertify(token).cast_err(ERR_TOKEN)?;
             let fid_u64 = db::data_c(uid, 0, b"");
             let p = fid_to_path(fid_u64.to_string().as_bytes());
-            let mut file = tokio::fs::File::create(&p).await.unwrap();
+            let mut file = File::create(&p).await.unwrap();
             let limit_by_ulv = ulv_trans_limit(ulv); // prevent big file in front end, just a later limit here
             if let Err(err) = write_body_to_file(body, &mut file, limit_by_ulv).await {
                 db::data_d(fid_u64);
@@ -812,7 +803,7 @@ async fn post_handler(mut op: Op<'static>) -> Result<Response, Response> {
             tokio::fs::rename(&p, &p.with_extension("bak"))
                 .await
                 .unwrap();
-            let mut file = tokio::fs::File::create(&p).await.unwrap();
+            let mut file = File::create(&p).await.unwrap();
             let limit_by_ulv = ulv_trans_limit(ulv);
             if let Err(err) = write_body_to_file(body, &mut file, limit_by_ulv).await {
                 db::data_d(fid_u64);

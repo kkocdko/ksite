@@ -469,3 +469,24 @@
     // }, 30 * 60 * 1000);
   })();
 </script>
+
+<script type="module">
+  const AES128 = { name: "AES-CBC", length: 128 };
+  const ENCDEC = ["encrypt", "decrypt"];
+  const key = await crypto.subtle.generateKey(AES128, true, ENCDEC);
+  const keyData = new Uint8Array(await crypto.subtle.exportKey("raw", key));
+  await crypto.subtle.importKey("raw", keyData, AES128, true, ENCDEC);
+  const toBase64 = (arrbuf) => {
+    // https://stackoverflow.com/a/66046176/11338291
+    const reader = new FileReader();
+    const promise = new Promise((r) => (reader.onload = r));
+    reader.readAsDataURL(new Blob([arrbuf]));
+    return promise.then(() => reader.result.split(",", 2)[1]);
+  };
+</script>
+
+<!--
+流式下载/上传/加密/解密
+https://developer.mozilla.org/zh-CN/docs/Web/API/ReadableStreamDefaultReader#%E7%A4%BA%E4%BE%8B
+
+-->
