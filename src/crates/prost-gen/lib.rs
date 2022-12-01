@@ -733,7 +733,9 @@ fn translate(package: &Package) -> Vec<u8> {
             Entry::Enum(inner) => {
                 ctx.insert(inner.name, (b"enum", depth));
             }
-            Entry::Message(_) => {}
+            Entry::Message(inner) => {
+                ctx.insert(inner.name, (b"message", depth));
+            }
             _ => unreachable!(),
         }
     }
