@@ -4,7 +4,7 @@ version = "0.6.0-alpha-31"
 edition = "2021"
 
 [profile.release]
-# panic = "abort" # DO NOT USE THIS! cause tokio worker abort
+panic = "abort" # CAUTIONS! cause tokio worker abort
 strip = true
 lto = "fat"
 codegen-units = 1
@@ -31,7 +31,7 @@ opt-level = "z"
 [dependencies]
 anyhow = "1"
 askama_escape = "0.10"
-axum = "0.6.0"
+axum = "0.6"
 flate2 = "1"
 futures-core = "0.3"
 httpdate = "1"
@@ -48,9 +48,8 @@ tokio-rustls = "0.23"
 tower = "0.4"
 tower-http = { version = "0.3", features = ["auth"] }
 webpki-roots = "0.22"
-ring = "0.16"
 
 [patch.crates-io]
-ricq = { rev = "87ca76f", git = "https://github.com/lz1998/ricq" }
+ricq = { rev = "823f19b", git = "https://github.com/lz1998/ricq" }
 prost-build = { path = "src/crates/prost-gen" } # for `ricq-core`
 tracing = { path = "src/crates/tracing-fake" }
