@@ -4,16 +4,6 @@ All in one solution for my server.
 
 ## TODO
 
-### 0.6.0
-
-- `crate::auth`: auth from database.
-
-- `units::paste`: auth.
-
-- `units::admin`: database backup.
-
-- `crate::database`: sqlite `WAL` mode.
-
 ### 0.7.0
 
 - `crate`: proactive traffic restriction.

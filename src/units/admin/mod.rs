@@ -7,7 +7,6 @@ use axum::response::Html;
 use axum::routing::{MethodRouter, Router};
 
 fn db_init() {
-    // db!("VACUUM");
     db! {"
         CREATE TABLE IF NOT EXISTS admin
         (k TEXT PRIMARY KEY, v BLOB)
@@ -28,16 +27,28 @@ pub fn db_get(k: &str) -> Option<(Vec<u8>,)> {
     ", [k], ^(0)}
     .ok()
 }
-// pub fn db_del(k: &str) {
-//     db! {"
-//         DELETE FROM admin
-//         WHERE k = ?
-//     ", [k]}
-//     .unwrap();
-// }
+pub fn db_del(k: &str) {
+    db! {"
+        DELETE FROM admin
+        WHERE k = ?
+    ", [k]}
+    .unwrap();
+}
 
 async fn post_handler(q: RawQuery, body: Bytes) {
-    db_set(&q.0.unwrap(), body.into());
+    match q.0.unwrap().as_str() {
+        "noop" => {}
+        "reset_auth_key" => {
+            db_del("auth_key");
+        }
+        "backup_database" => {
+            crate::database::backup();
+        }
+        k @ ("ssl_cert" | "ssl_key") => {
+            db_set(k, body.into());
+        }
+        _ => {}
+    }
 }
 
 pub fn service() -> Router {

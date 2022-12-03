@@ -1,11 +1,17 @@
 use once_cell::sync::Lazy;
 use rusqlite::Connection;
+use std::mem;
+use std::mem::MaybeUninit;
+use std::path::PathBuf;
 use std::sync::Mutex;
+use std::time::UNIX_EPOCH;
 
-/// # Use `db!()` macro instead of access directly!
-pub static DB_: Lazy<Mutex<Connection>> = Lazy::new(|| {
-    let path = std::env::current_exe().unwrap().with_extension("db");
-    let db = Connection::open(path).unwrap();
+fn get_db_file_path() -> PathBuf {
+    std::env::current_exe().unwrap().with_extension("db")
+}
+
+fn load_db() -> Connection {
+    let db = Connection::open(get_db_file_path()).unwrap();
 
     // Optimize for Performance
     // https://www.sqlite.org/speed.html
@@ -22,8 +28,37 @@ pub static DB_: Lazy<Mutex<Connection>> = Lazy::new(|| {
     // We don't need to touch db file during program execution.
     db.pragma_update(None, "locking_mode", "EXCLUSIVE").unwrap();
 
-    Mutex::new(db)
-});
+    db
+}
+
+/// # Use `db!()` macro instead of access directly!
+pub static DB_: Lazy<Mutex<Connection>> = Lazy::new(|| Mutex::new(load_db()));
+
+pub fn backup() {
+    let mut db = DB_.lock().unwrap();
+    db.execute("VACUUM", []).unwrap();
+    db.pragma_update(None, "journal_mode", "TRUNCATE").unwrap();
+    unsafe {
+        // safety: we don't touch the uninit data
+        #[allow(invalid_value, clippy::uninit_assumed_init)]
+        let mut current_db = MaybeUninit::uninit().assume_init();
+        // Connection::open_in_memory().unwrap()
+
+        // db = uninit, the `DB_` still locked
+        mem::swap(&mut *db, &mut current_db);
+        current_db.close().unwrap();
+
+        std::fs::copy(
+            get_db_file_path(),
+            get_db_file_path()
+                .with_extension(format!("{}.db", UNIX_EPOCH.elapsed().unwrap().as_secs())),
+        )
+        .unwrap();
+
+        // swap out and drop the uninit data now
+        mem::swap(&mut *db, &mut load_db());
+    };
+}
 
 #[macro_export]
 macro_rules! db {

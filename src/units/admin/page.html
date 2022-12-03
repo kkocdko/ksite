@@ -45,18 +45,20 @@
 
 <body>
   <header>
-    <button onclick="set().catch(alert)">Set</button>
+    <button onclick="send().catch(alert)">Send</button>
   </header>
   <select id="$k">
-    <option value="auth_key">auth_key</option>
-    <option value="ssl_cert">ssl_cert</option>
-    <option value="ssl_key">ssl_key</option>
+    <option value="noop" selected>(trigger) noop</option>
+    <option value="reset_auth_key">(trigger) reset_auth_key</option>
+    <option value="backup_database">(trigger) backup_database</option>
+    <option value="ssl_cert">(set) ssl_cert</option>
+    <option value="ssl_key">(set) ssl_key</option>
   </select>
   <textarea id="$v" placeholder="VALUE"></textarea>
 </body>
 
 <script>
-  const set = async () => {
+  const send = async () => {
     let body;
     if ($k.value.startsWith("ssl_")) {
       if (!$v.value.startsWith("-----")) throw alert("must be PEM format");
