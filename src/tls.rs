@@ -1,5 +1,5 @@
 //! TLS & HTTPS support for the server.
-use crate::db;
+use crate::units::admin::db_get;
 use axum::routing::{IntoMakeService, Router};
 use hyper::server::accept::Accept;
 use hyper::server::conn::{AddrIncoming, Http};
@@ -54,18 +54,12 @@ pub async fn serve(addr: &SocketAddr, mut app: IntoMakeService<Router>) {
     assert!(IS_FIRST_CALL.load(Ordering::SeqCst), "called twice");
     IS_FIRST_CALL.store(false, Ordering::SeqCst);
 
-    fn db_get(k: &str) -> (Vec<u8>,) {
-        db!("SELECT v FROM admin WHERE k = ?", [k], ^(0))
-            .map_err(|_| format!("query '{k}' in table 'admin' failed"))
-            .unwrap()
-    }
-
     let mut tls_cfg = ServerConfig::builder()
         .with_safe_defaults()
         .with_no_client_auth()
         .with_single_cert(
-            vec![Certificate(db_get("ssl_cert").0)],
-            PrivateKey(db_get("ssl_key").0),
+            vec![Certificate(db_get("ssl_cert").unwrap().0)],
+            PrivateKey(db_get("ssl_key").unwrap().0),
         )
         .unwrap();
     // enable http2, needs hyper feature "http2"

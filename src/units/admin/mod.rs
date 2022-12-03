@@ -14,29 +14,37 @@ fn db_init() {
     "}
     .unwrap();
 }
-fn db_set(k: &str, v: Vec<u8>) {
+pub fn db_set(k: &str, v: Vec<u8>) {
     db! {"
         REPLACE INTO admin
         VALUES (?1, ?2)
     ", [k, v]}
     .unwrap();
 }
-fn _db_get(k: &str) -> Option<(Vec<u8>,)> {
+pub fn db_get(k: &str) -> Option<(Vec<u8>,)> {
     db! {"
         SELECT v FROM admin
         WHERE k = ?
     ", [k], ^(0)}
     .ok()
 }
+// pub fn db_del(k: &str) {
+//     db! {"
+//         DELETE FROM admin
+//         WHERE k = ?
+//     ", [k]}
+//     .unwrap();
+// }
 
 async fn post_handler(q: RawQuery, body: Bytes) {
-    let q = q.0.unwrap();
-    let k = q.split_once('=').unwrap().1;
-    db_set(k, body.into());
+    db_set(&q.0.unwrap(), body.into());
 }
 
 pub fn service() -> Router {
     db_init();
+    if db_get("auth_key").is_none() {
+        db_set("auth_key", crate::auth::AUTH_KEY.to_owned().into_bytes());
+    }
     Router::new().route(
         "/admin",
         MethodRouter::new()

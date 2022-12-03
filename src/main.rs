@@ -16,7 +16,7 @@ async fn main() {
     // return units::paste_next::dev().await;
     println!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
     println!("enter :q to quit");
-    println!("authorization token = {}", *auth::TOKEN);
+    println!("auth key = {}", *auth::AUTH_KEY);
 
     // db_upgrade(); // uncomment this if we need to upgrade database
 
