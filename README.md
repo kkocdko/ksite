@@ -4,15 +4,15 @@ All in one solution for my server.
 
 ## TODO
 
-### 0.6.0-beta
-
-- `units::paste_next`: basic functions like create and delete file.
+### 0.6.0
 
 - `crate::auth`: auth from database.
 
-### 0.6.0
+- `units::paste`: auth.
 
-- `units::paste_next`: (see the comments in its code).
+- `units::admin`: database backup.
+
+- `crate::database`: sqlite `WAL` mode.
 
 ### 0.7.0
 
@@ -20,15 +20,13 @@ All in one solution for my server.
 
 - `crate`: no out-of-service updates.
 
-- `crate::database`: sqlite `WAL` mode.
-
-- `units::admin`: database backup.
-
 - `units::throw`: tiny 2D game, with webrtc, ai.
 
 - `units::record`: record evidence picture, audio and video in real-time.
 
 ### 0.8.0
+
+- `units::paste_next`: (see the comments in its code).
 
 - `units::?`: convert office files to PDF by ms office rpc.
 
