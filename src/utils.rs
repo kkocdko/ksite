@@ -62,7 +62,12 @@ pub fn encode_uri(i: &str) -> String {
 ///
 /// `[a"foo\nbar]` into `[a&quot;foo\\nbar]`
 pub fn log_escape(s: &str) -> String {
-    askama_escape::escape(&s.replace('\n', "\\n"), askama_escape::Html).to_string()
+    html_escape(&s.replace('\n', "\\n"))
+}
+
+/// Escape to HTML safe string.
+pub fn html_escape(v: &str) -> String {
+    askama_escape::escape(v, askama_escape::Html).to_string()
 }
 
 /// Read `hyper::Body` into `Vec<u8>`, returns emply if reached the limit size (2 MiB).
@@ -397,3 +402,25 @@ pub fn _detect_str_in_binary() {
         }
     }
 }
+
+// pub trait InServerErr<T> {
+//     /// Produce `Result<T, Response>` for handlers.
+//     fn ise(self) -> Result<T, Response>;
+// }
+
+// impl<T, E> InServerErr<T> for Result<T, E> {
+//     fn ise(self) -> Result<T, Response> {
+//         self.map_err(|_| "SERVER INNER ERROR".into_response())
+//     }
+// }
+
+// type MyResult<T> = std::result::Result<T, std::boxed::Box<dyn std::fmt::Debug>>;
+
+// MethodRouter::new().get(
+//     |u: WebSocketUpgrade, c: ConnectInfo<SocketAddr>| async move {
+//         if c.0.ip() != IpAddr::V4(Ipv4Addr::LOCALHOST) {
+//             return "only allowed for localhost".into_response();
+//         }
+//         u.on_upgrade(ws_handler)
+//     },
+// )

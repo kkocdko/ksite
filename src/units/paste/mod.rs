@@ -1,31 +1,24 @@
 //! Online clipboard.
 
+use crate::utils::html_escape;
 use crate::{db, include_page};
-use axum::extract::{Form, Path};
+use axum::extract::Path;
 use axum::response::{Html, Redirect};
 use axum::routing::MethodRouter;
 use axum::Router;
-use serde::Deserialize;
 
 fn db_init() {
     db! {"
         CREATE TABLE IF NOT EXISTS paste
-        (id INTEGER PRIMARY KEY AUTOINCREMENT, data BLOB)
+        (id INTEGER PRIMARY KEY, data TEXT)
     "}
     .unwrap();
 }
-fn db_insert(data: &str) -> u64 {
+fn db_set(id: u64, data: String) {
     db! {"
-        INSERT INTO paste
-        VALUES (NULL, ?)
-    ", [data], &}
-    .unwrap() as _
-}
-fn db_update(id: u64, data: &str) {
-    db! {"
-        UPDATE paste SET data = ?1
-        WHERE id = ?2
-    ", [data, id]}
+        REPLACE INTO paste
+        VALUES (?1, ?2)
+    ", [id, data]}
     .unwrap();
 }
 fn db_get(id: u64) -> Option<(String,)> {
@@ -36,30 +29,17 @@ fn db_get(id: u64) -> Option<(String,)> {
     .ok()
 }
 
-fn escape(v: &str) -> String {
-    askama_escape::escape(v, askama_escape::Html).to_string()
-}
-
-async fn read(id: Option<u64>) -> Html<String> {
-    let value = id.and_then(db_get);
-    let value = value.unwrap_or_else(|| ("New entry".to_string(),));
+async fn get_handler(Path(id): Path<u64>) -> Html<String> {
+    let value = db_get(id).unwrap_or_else(|| ("New entry".into(),));
     const PAGE: [&str; 2] = include_page!("page.html");
-    Html([PAGE[0], &value.0, PAGE[1]].join(""))
+    let mut body = PAGE[0].to_owned();
+    body.push_str(&value.0);
+    body.push_str(PAGE[1]);
+    Html(body)
 }
 
-#[derive(Deserialize)]
-struct Data {
-    value: String,
-}
-
-async fn insert(form: Form<Data>) -> Redirect {
-    let id = db_insert(&escape(&form.value));
-    Redirect::to(&format!("/paste/{id}"))
-}
-
-async fn update((Path(id), form): (Path<u64>, Form<Data>)) -> Redirect {
-    db_update(id, &escape(&form.value));
-    Redirect::to(&format!("/paste/{id}"))
+async fn post_handler(Path(id): Path<u64>, body: String) {
+    db_set(id, html_escape(&body));
 }
 
 pub fn service() -> Router {
@@ -67,12 +47,13 @@ pub fn service() -> Router {
     Router::new()
         .route(
             "/paste",
-            MethodRouter::new().get(|| read(None)).post(insert),
+            MethodRouter::new().get(|| async { Redirect::to("/paste/1") }),
         )
         .route(
             "/paste/:id",
             MethodRouter::new()
-                .get(|Path(id): Path<u64>| read(Some(id)))
-                .post(update),
+                .get(get_handler)
+                .post(post_handler)
+                .layer(crate::auth::auth_layer()),
         )
 }

@@ -10,8 +10,15 @@
   * {
     margin: 0;
     font: 14px / 1.4 sans-serif;
+    background: #fff;
   }
-  form {
+  @media (prefers-color-scheme: dark) {
+    * {
+      color: #fff;
+      background: #000;
+    }
+  }
+  body {
     display: grid;
     grid: auto 1fr / none;
     height: 100vh;
@@ -19,8 +26,7 @@
   header > *,
   header ~ * {
     padding: 8px 10px;
-    background: none;
-    border: 0 solid #777;
+    border: 0 solid #888;
     outline: none;
   }
   header > * {
@@ -35,32 +41,20 @@
     white-space: pre;
     border-top-width: 1px;
   }
-  @media (prefers-color-scheme: dark) {
-    * {
-      color: #fff;
-      background: #000;
-    }
+  #\$v:fullscreen {
+    border-top-width: 0;
   }
 </style>
 
-<form method="post">
+<body>
   <header>
-    <input type="submit" value="Save" />
-    <input
-      type="button"
-      value="Copy"
-      onclick="$v.select();document.execCommand('copy')"
-    />
-    <input
-      type="button"
-      value="Zen mode"
-      onclick="$v.style.border=0,$v.requestFullscreen()"
-    />
-    <input
-      type="button"
-      value="Encrypt"
-      onclick="alert('crypto function is still in developing...')"
-    />
+    <button
+      onclick="fetch(location,{method:'POST',body:$v.value}).catch(alert)"
+    >
+      Save
+    </button>
+    <button onclick="$v.select();document.execCommand('copy')">Copy</button>
+    <button onclick="$v.requestFullscreen()">Fullscreen</button>
   </header>
-  <textarea name="value" id="$v" spellcheck="false">/*{slot}*/</textarea>
-</form>
+  <textarea id="$v">/*{slot}*/</textarea>
+</body>
