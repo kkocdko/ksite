@@ -10,8 +10,15 @@
   * {
     margin: 0;
     font: 14px / 1.4 sans-serif;
+    background: #fff;
   }
-  form {
+  @media (prefers-color-scheme: dark) {
+    * {
+      color: #fff;
+      background: #000;
+    }
+  }
+  body {
     display: grid;
     grid: repeat(4, auto) 1fr / none;
     height: 100vh;
@@ -19,8 +26,7 @@
   header > *,
   header ~ * {
     padding: 8px 10px;
-    background: none;
-    border: 0 solid #777;
+    border: 0 solid #888;
     outline: none;
   }
   header > * {
@@ -35,17 +41,15 @@
     white-space: pre;
     border-top-width: 1px;
   }
-  @media (prefers-color-scheme: dark) {
-    * {
-      color: #fff;
-      background: #000;
-    }
-  }
 </style>
 
-<form onsubmit="onSubmit(event)">
+<body>
   <header>
-    <input type="submit" value="Set" />
+    <button
+      onclick="fetch(`/qqbot?${$k.value}`,{method:'post',body:$v.value}).catch(alert)"
+    >
+      Set
+    </button>
   </header>
   <select id="$k">
     <option value="device_json">device_json</option>
@@ -53,15 +57,11 @@
   </select>
   <input id="$v" placeholder="VALUE" />
   <div><img src="/qqbot/qr" onerror="outerHTML='(@_@)'" /></div>
-  <textarea id="$log" readonly spellcheck="false">/*{slot}*/</textarea>
-</form>
+  <textarea id="$log" readonly>/*{slot}*/</textarea>
+</body>
 
 <script>
-  const stamp2str = (v) => new Date(v * 1e3).toLocaleString("uk");
-  $log.value = $log.value.replace(/(?<=\n|^)\d+/g, stamp2str);
-  const onSubmit = async (event) => {
-    event.preventDefault();
-    await fetch(`/qqbot?k=${$k.value}`, { method: "post", body: $v.value });
-    alert(`Set ${$k.value} succeeded`);
-  };
+  $log.value = $log.value.replace(/(?<=\n|^)\d+/g, (v) =>
+    new Date(v * 1000).toLocaleString("uk")
+  );
 </script>

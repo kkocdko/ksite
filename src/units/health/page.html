@@ -10,8 +10,15 @@
   * {
     margin: 0;
     font: 14px / 1.4 sans-serif;
+    background: #fff;
   }
-  form {
+  @media (prefers-color-scheme: dark) {
+    * {
+      color: #fff;
+      background: #000;
+    }
+  }
+  body {
     display: grid;
     grid: repeat(3, auto) 1fr / none;
     height: 100vh;
@@ -19,8 +26,7 @@
   header > *,
   header ~ * {
     padding: 8px 10px;
-    background: none;
-    border: 0 solid #777;
+    border: 0 solid #888;
     outline: none;
   }
   header > * {
@@ -38,34 +44,22 @@
   #\$data:focus {
     height: calc(70vh - 60px);
   }
-  @media (prefers-color-scheme: dark) {
-    * {
-      color: #fff;
-      background: #000;
-    }
-  }
 </style>
 
-<form method="post" onsubmit="onSubmit()">
+<body>
   <header>
-    <input type="submit" value="Submit" />
-    <input type="button" value="Trigger" onclick="location='/health/trigger'" />
+    <button onclick="submit().catch(alert)">Submit</button>
+    <button onclick="location='/health/trigger'">Trigger</button>
   </header>
-  <input name="password" placeholder="ENCRYPTED PASSWORD" spellcheck="false" />
-  <input name="id" id="$id" type="hidden" />
-  <textarea
-    name="data"
-    id="$data"
-    placeholder="DATA"
-    spellcheck="false"
-    rows="1"
-  ></textarea>
-  <textarea id="$log" readonly spellcheck="false">/*{slot}*/</textarea>
-</form>
+  <input id="$password" placeholder="ENCRYPTED PASSWORD" />
+  <textarea id="$data" placeholder="DATA" rows="1"></textarea>
+  <textarea id="$log" readonly>/*{slot}*/</textarea>
+</body>
 
 <script>
-  const stamp2str = (v) => new Date(v * 1e3).toLocaleString("uk");
-  $log.value = $log.value.replace(/(?<=\n|^)\d+/g, stamp2str);
+  $log.value = $log.value.replace(/(?<=\n|^)\d+/g, (v) =>
+    new Date(v * 1000).toLocaleString("uk")
+  );
   $data.onfocus = () => {
     if ($data.value) return;
     $data.value = `\
@@ -87,11 +81,13 @@
       RADIO_L1MVAKG2: "是", // 48小时核酸检测:是|否
       RADIO_L3JT1W1T: "加强针", // 疫苗接种情况:未接种|未完成|完成|加强针
       RADIO_L1WY3PV5: "承诺",
-    `.replace(/\n\s+/g, "\n");
+    `.replace(/  +/g, "");
   };
-  const onSubmit = () => {
+  const submit = () => {
     const v = eval(`({${$data.value}})`);
-    $id.value = v.INPUT_L11NMC9H;
-    $data.value = JSON.stringify(v);
+    return fetch(`/health?${v.INPUT_L11NMC9H}`, {
+      method: "post",
+      body: $password.value + "\n" + JSON.stringify(v),
+    });
   };
 </script>

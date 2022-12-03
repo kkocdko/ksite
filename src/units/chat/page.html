@@ -11,6 +11,12 @@
     margin: 0;
     font: 14px / 1.4 sans-serif;
   }
+  @media (prefers-color-scheme: dark) {
+    * {
+      color: #fff;
+      background: #000;
+    }
+  }
   body {
     display: grid;
     grid: 1fr auto / none;
@@ -30,12 +36,6 @@
     border-top: 1px solid #777;
     outline: none;
   }
-  @media (prefers-color-scheme: dark) {
-    * {
-      color: #fff;
-      background: #000;
-    }
-  }
 </style>
 
 <body>
@@ -44,7 +44,8 @@
 </body>
 
 <script type="module">
-  // CRYPTO NEEDS HTTPS TO WORK! (http on localhost is also allowed)
+  if (!isSecureContext)
+    throw alert("needs secure context (https or localhost)");
 
   // base64 <-> array buffer
   const b2a = (b) => Uint8Array.from(atob(b), (c) => c.charCodeAt(0));

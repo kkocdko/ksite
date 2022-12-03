@@ -6,12 +6,11 @@ use crate::ticker::Ticker;
 use crate::utils::{fetch, fetch_json, fetch_text, log_escape, OptionResult};
 use crate::{care, db, include_page};
 use anyhow::Result;
-use axum::extract::Form;
+use axum::extract::RawQuery;
 use axum::http::header::{HeaderName, CONTENT_TYPE, USER_AGENT};
 use axum::response::{Html, IntoResponse, Redirect};
 use axum::routing::{MethodRouter, Router};
 use once_cell::sync::Lazy;
-use serde::Deserialize;
 use std::fmt::Write;
 mod cryptojs;
 
@@ -27,7 +26,7 @@ fn db_init() {
     "}
     .unwrap();
 }
-fn db_list_set(id: u64, password: String, data: String) {
+fn db_list_set(id: u64, password: &str, data: &str) {
     db! {"
         REPLACE INTO health_list
         VALUES (?1, ?2, ?3)
@@ -63,13 +62,6 @@ fn db_log_clean() {
     .unwrap();
 }
 
-#[derive(Deserialize)]
-struct Member {
-    id: u64,
-    password: String,
-    data: String,
-}
-
 async fn get_handler() -> impl IntoResponse {
     const PAGE: [&str; 2] = include_page!("page.html");
     let mut body = PAGE[0].to_string();
@@ -80,9 +72,10 @@ async fn get_handler() -> impl IntoResponse {
     Html(body)
 }
 
-async fn post_handler(Form(Member { id, password, data }): Form<Member>) -> Redirect {
+async fn post_handler(q: RawQuery, body: String) {
+    let id = q.0.unwrap().parse().unwrap();
+    let (password, data) = body.split_once('\n').unwrap();
     db_list_set(id, password, data);
-    Redirect::to("/health")
 }
 
 async fn check_in() -> Result<()> {
