@@ -328,6 +328,9 @@
     $filesContainer.innerHTML = innerHTML;
   };
 
+  /**
+   * @return {a}
+   */
   const switchTab = (target) => {
     for (const el of [$tabLaunch, $tabFiles, $tabEdit, $tabSettings])
       hideEl(el);
