@@ -4,7 +4,7 @@ All in one solution for my server.
 
 ## TODO
 
-### 0.6.3
+### 0.6.7
 
 - `crate::protect` protect and auto restart the process, log storage and more.
 
@@ -36,7 +36,3 @@ If you prefer musl libc, try [cargo-zigbuild](https://github.com/messense/cargo-
 # dnf install zig # for fedora
 cargo zigbuild --release --target=x86_64-unknown-linux-musl
 ```
-
-## License
-
-![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fkkocdko%2Fksite.svg?type=large)

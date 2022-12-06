@@ -38,7 +38,10 @@ pub fn db_del(k: &str) {
 }
 
 async fn post_handler(q: RawQuery, body: Bytes) {
-    match q.0.unwrap().as_str() {
+    let q = q.0.unwrap();
+    let k = q.as_str();
+    println!("received admin op {k}");
+    match k {
         "noop" => {}
         "reset_auth_key" => {
             db_del("auth_key");
@@ -50,11 +53,11 @@ async fn post_handler(q: RawQuery, body: Bytes) {
         "backup_database" => {
             crate::database::backup();
         }
-        k @ ("ssl_cert" | "ssl_key") => {
+        "ssl_cert" | "ssl_key" => {
             db_set(k, body.into());
         }
-        op => {
-            println!("unknown op {op}");
+        _ => {
+            println!("unknown op {k}");
         }
     }
 }

@@ -1,4 +1,5 @@
 //! QQ robot for fun.
+
 mod base;
 use crate::auth::auth_layer;
 use crate::care;
