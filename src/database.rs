@@ -1,7 +1,6 @@
 use once_cell::sync::Lazy;
 use rusqlite::Connection;
-use std::mem;
-use std::mem::MaybeUninit;
+use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::UNIX_EPOCH;
@@ -39,24 +38,18 @@ pub fn backup() {
     db.execute("VACUUM", []).unwrap();
     db.pragma_update(None, "journal_mode", "TRUNCATE").unwrap();
     unsafe {
-        // safety: we don't touch the uninit data
-        #[allow(invalid_value, clippy::uninit_assumed_init)]
-        let mut current_db = MaybeUninit::uninit().assume_init();
-        // Connection::open_in_memory().unwrap()
+        // safety: we held the mutex in the whole period
+        let db_ptr = std::ptr::addr_of_mut!(*db);
+        db_ptr.drop_in_place();
 
-        // db = uninit, the `DB_` still locked
-        mem::swap(&mut *db, &mut current_db);
-        current_db.close().unwrap();
-
-        std::fs::copy(
+        fs::copy(
             get_db_file_path(),
             get_db_file_path()
                 .with_extension(format!("{}.db", UNIX_EPOCH.elapsed().unwrap().as_secs())),
         )
         .unwrap();
 
-        // swap out and drop the uninit data now
-        mem::swap(&mut *db, &mut load_db());
+        db_ptr.write(load_db());
     };
 }
 
