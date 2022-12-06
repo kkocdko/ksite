@@ -1,5 +1,6 @@
 //! QQ robot for fun.
 mod base;
+use crate::auth::auth_layer;
 use crate::care;
 use crate::ticker::Ticker;
 use crate::utils::{elapse, fetch_json, fetch_text, OptionResult};
@@ -144,7 +145,7 @@ pub fn service() -> Router {
             "/qqbot/qr",
             MethodRouter::new().get(|| async { get_login_qr() }),
         )
-        .layer(middleware::from_fn(crate::auth::auth_layer))
+        .layer(middleware::from_fn(auth_layer))
 }
 
 struct UpNotify {

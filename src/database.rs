@@ -1,6 +1,5 @@
 use once_cell::sync::Lazy;
 use rusqlite::Connection;
-use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::UNIX_EPOCH;
@@ -17,9 +16,7 @@ fn load_db() -> Connection {
     // https://www.sqlite.org/pragma.html
 
     // The `WAL` mode will improve writing but slow down reading a little.
-    db.pragma_update(None, "journal_mode", "TRUNCATE").unwrap();
-    // db.pragma_update(None, "journal_mode", "WAL").unwrap();
-    // TODO: use WAL mode, switch to TRUNCATE before backup
+    db.pragma_update(None, "journal_mode", "WAL").unwrap();
 
     // Sync less often than `FULL` and still safe enough.
     db.pragma_update(None, "synchronous", "NORMAL").unwrap();
@@ -35,14 +32,19 @@ pub static DB_: Lazy<Mutex<Connection>> = Lazy::new(|| Mutex::new(load_db()));
 
 pub fn backup() {
     let mut db = DB_.lock().unwrap();
-    db.execute("VACUUM", []).unwrap();
+
+    // merge wal file
     db.pragma_update(None, "journal_mode", "TRUNCATE").unwrap();
+
+    // shrink size
+    db.execute("VACUUM", []).unwrap();
+
     unsafe {
         // safety: we held the mutex in the whole period
         let db_ptr = std::ptr::addr_of_mut!(*db);
-        db_ptr.drop_in_place();
+        db_ptr.drop_in_place(); // run Drop::drop but don't free memory
 
-        fs::copy(
+        std::fs::copy(
             get_db_file_path(),
             get_db_file_path()
                 .with_extension(format!("{}.db", UNIX_EPOCH.elapsed().unwrap().as_secs())),

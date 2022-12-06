@@ -2,6 +2,7 @@
 //!
 //! The prototype is https://github.com/kkocdko/user-scripts/blob/master/scripts/just-kit/health-check-in.js
 
+use crate::auth::auth_layer;
 use crate::ticker::Ticker;
 use crate::utils::{fetch, fetch_json, fetch_text, log_escape, OptionResult};
 use crate::{care, db, include_page};
@@ -126,7 +127,7 @@ pub fn service() -> Router {
             "/health",
             MethodRouter::new()
                 .post(post_handler)
-                .layer(middleware::from_fn(crate::auth::auth_layer)) // require auth only for post
+                .layer(middleware::from_fn(auth_layer)) // require auth only for post
                 .get(get_handler),
         )
         .route(
@@ -136,7 +137,7 @@ pub fn service() -> Router {
                     care!(check_in().await).ok();
                     Redirect::to("/health")
                 })
-                .layer(middleware::from_fn(crate::auth::auth_layer)),
+                .layer(middleware::from_fn(auth_layer)),
         )
 }
 

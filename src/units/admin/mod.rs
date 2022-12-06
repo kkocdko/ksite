@@ -1,5 +1,6 @@
 //! Admin console.
 
+use crate::auth::auth_layer;
 use crate::{db, include_page};
 use axum::body::Bytes;
 use axum::extract::RawQuery;
@@ -68,6 +69,6 @@ pub fn service() -> Router {
         MethodRouter::new()
             .get(|| async { Html((include_page!("page.html") as [_; 1])[0]) })
             .post(post_handler)
-            .layer(middleware::from_fn(crate::auth::auth_layer)),
+            .layer(middleware::from_fn(auth_layer)),
     )
 }

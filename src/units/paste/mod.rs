@@ -1,5 +1,6 @@
 //! Online clipboard.
 
+use crate::auth::auth_layer;
 use crate::utils::html_escape;
 use crate::{db, include_page};
 use axum::extract::Path;
@@ -55,6 +56,6 @@ pub fn service() -> Router {
             MethodRouter::new()
                 .get(get_handler)
                 .post(post_handler)
-                .layer(middleware::from_fn(crate::auth::auth_layer)),
+                .layer(middleware::from_fn(auth_layer)),
         )
 }

@@ -4,6 +4,12 @@ All in one solution for my server.
 
 ## TODO
 
+### 0.6.3
+
+- `crate::protect` protect and auto restart the process, log storage and more.
+
+- `units::qqbot` storage log into database.
+
 ### 0.7.0
 
 - `crate`: proactive traffic restriction.
