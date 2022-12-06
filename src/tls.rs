@@ -1,6 +1,6 @@
 //! TLS & HTTPS support for the server.
 use crate::units::admin::db_get;
-use axum::routing::{IntoMakeService, Router};
+use axum::routing::Router;
 use hyper::server::accept::Accept;
 use hyper::server::conn::{AddrIncoming, Http};
 use std::future::poll_fn;
@@ -13,7 +13,6 @@ use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio_rustls::rustls::{Certificate, PrivateKey, ServerConfig};
 use tokio_rustls::TlsAcceptor;
-use tower::MakeService;
 
 /// Serve the services over TLS.
 ///
@@ -23,8 +22,7 @@ use tower::MakeService;
 /// use axum::{routing::get, Router};
 /// let addr = SocketAddr::from(([0, 0, 0, 0], 9304));
 /// let app = Router::new()
-///     .route("/", get(|| async { "hi" }))
-///     .into_make_service();
+///     .route("/", get(|| async { "hi" }));
 /// tls::serve(&addr, app).await;
 /// ```
 ///
@@ -49,10 +47,13 @@ use tower::MakeService;
 /// * https://github.com/hyperium/hyper/blob/v0.14.20/src/server/server.rs#L176
 /// * https://github.com/tokio-rs/axum/tree/axum-v0.5.15/examples/low-level-rustls
 /// * https://github.com/programatik29/axum-server
-pub async fn serve(addr: &SocketAddr, mut app: IntoMakeService<Router>) {
+pub async fn serve(addr: &SocketAddr, mut app: Router) {
     static IS_FIRST_CALL: AtomicBool = AtomicBool::new(true);
     assert!(IS_FIRST_CALL.load(Ordering::SeqCst), "called twice");
     IS_FIRST_CALL.store(false, Ordering::SeqCst);
+
+    // make the clone() cheaper. https://docs.rs/axum/0.6.1/src/axum/routing/mod.rs.html#538-542
+    app = app.with_state(());
 
     let mut tls_cfg = ServerConfig::builder()
         .with_safe_defaults()
@@ -66,12 +67,16 @@ pub async fn serve(addr: &SocketAddr, mut app: IntoMakeService<Router>) {
     tls_cfg.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
 
     // safety: this fn called only once, so we don't need once_cell::sync::Lazy.
-    static mut _TLS_ACCEPTOR: MaybeUninit<TlsAcceptor> = MaybeUninit::uninit();
-    static mut _PROTOCOL: MaybeUninit<Http> = MaybeUninit::uninit();
-    unsafe { _TLS_ACCEPTOR.write(TlsAcceptor::from(Arc::new(tls_cfg))) };
-    unsafe { _PROTOCOL.write(Http::new()) };
-    static TLS_ACCEPTOR: &TlsAcceptor = unsafe { _TLS_ACCEPTOR.assume_init_ref() };
-    static PROTOCOL: &Http = unsafe { _PROTOCOL.assume_init_ref() };
+    let tls_acceptor = unsafe {
+        static mut TLS_ACCEPTOR: MaybeUninit<TlsAcceptor> = MaybeUninit::uninit();
+        TLS_ACCEPTOR.write(TlsAcceptor::from(Arc::new(tls_cfg)));
+        TLS_ACCEPTOR.assume_init_ref()
+    };
+    let protocol = unsafe {
+        static mut PROTOCOL: MaybeUninit<Http> = MaybeUninit::uninit();
+        PROTOCOL.write(Http::new());
+        PROTOCOL.assume_init_ref()
+    };
 
     let mut listener = AddrIncoming::bind(addr).unwrap();
 
@@ -81,7 +86,7 @@ pub async fn serve(addr: &SocketAddr, mut app: IntoMakeService<Router>) {
             _ => continue, // ignore error here
         };
 
-        let svc = app.make_service(&stream);
+        let svc = app.clone();
         tokio::spawn(tokio::time::timeout(TIMEOUT, async move {
             // redirect HTTP to HTTPS
             let mut flag = [0]; // expect 0x16, TLS handshake
@@ -93,8 +98,8 @@ pub async fn serve(addr: &SocketAddr, mut app: IntoMakeService<Router>) {
                 return;
             }
 
-            if let (Ok(tls_stream), Ok(svc)) = (TLS_ACCEPTOR.accept(stream).await, svc.await) {
-                PROTOCOL
+            if let Ok(tls_stream) = tls_acceptor.accept(stream).await {
+                protocol
                     .serve_connection(tls_stream, svc)
                     // .with_upgrades() // allow WebSocket
                     .await

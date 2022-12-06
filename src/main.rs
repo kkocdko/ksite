@@ -1,10 +1,10 @@
+mod protect;
 mod auth;
 mod database;
 mod ticker;
 mod tls;
 mod units;
 mod utils;
-use axum::Router;
 use std::io;
 use std::net::SocketAddr;
 use std::process;
@@ -16,7 +16,7 @@ async fn main() {
     // return units::paste_next::dev().await;
     println!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
     println!("enter :q to quit");
-    println!("auth key = {}", *auth::AUTH_KEY);
+    println!("auth key = {}", auth::auth_key());
 
     // db_upgrade(); // uncomment this if we need to upgrade database
 
@@ -33,7 +33,7 @@ async fn main() {
         let addr = SocketAddr::from(([0, 0, 0, 0], 9304));
         println!("server address = {addr}");
 
-        let app = Router::new()
+        let app = axum::Router::new()
             .merge(units::admin::service())
             .merge(units::chat::service())
             .merge(units::health::service())
@@ -41,11 +41,10 @@ async fn main() {
             .merge(units::magazine::service())
             .merge(units::paste::service())
             // .merge(units::paste_next::service())
-            .merge(units::qqbot::service())
-            .into_make_service();
-        // .into_make_service_with_connect_info::<SocketAddr>();
+            .merge(units::qqbot::service());
 
-        // axum::Server::bind(&addr).serve(app).await.unwrap();
+        // .into_make_service_with_connect_info::<SocketAddr>();
+        // axum::Server::bind(&addr).serve(app.into_make_service()).await.unwrap();
         tls::serve(&addr, app).await;
     };
 
