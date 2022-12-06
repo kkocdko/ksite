@@ -1,6 +1,6 @@
 [package]
 name = "ksite"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2021"
 
 [profile.release]
@@ -8,7 +8,7 @@ panic = "abort" # CAUTIONS! cause tokio worker abort
 strip = true
 lto = "fat"
 codegen-units = 1
-# opt-level = "z"
+opt-level = "z"
 
 # Best check speed, `cargo check --profile=ci`
 [profile.ci]
@@ -45,8 +45,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs"] }
 tokio-rustls = "0.23"
-tower = "0.4"
-tower-http = { version = "0.3", features = ["auth"] }
 webpki-roots = "0.22"
 
 [patch.crates-io]

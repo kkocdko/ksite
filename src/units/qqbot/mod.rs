@@ -4,6 +4,7 @@ use crate::care;
 use crate::ticker::Ticker;
 use crate::utils::{elapse, fetch_json, fetch_text, OptionResult};
 use anyhow::Result;
+use axum::middleware;
 use axum::routing::{MethodRouter, Router};
 use base::{db_groups_insert, get_handler, get_login_qr, notify, post_handler};
 use once_cell::sync::Lazy;
@@ -143,7 +144,7 @@ pub fn service() -> Router {
             "/qqbot/qr",
             MethodRouter::new().get(|| async { get_login_qr() }),
         )
-        .layer(crate::auth::auth_layer())
+        .layer(middleware::from_fn(crate::auth::auth_layer))
 }
 
 struct UpNotify {

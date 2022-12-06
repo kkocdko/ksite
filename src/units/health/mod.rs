@@ -8,6 +8,7 @@ use crate::{care, db, include_page};
 use anyhow::Result;
 use axum::extract::RawQuery;
 use axum::http::header::{HeaderName, CONTENT_TYPE, USER_AGENT};
+use axum::middleware;
 use axum::response::{Html, IntoResponse, Redirect};
 use axum::routing::{MethodRouter, Router};
 use once_cell::sync::Lazy;
@@ -125,7 +126,7 @@ pub fn service() -> Router {
             "/health",
             MethodRouter::new()
                 .post(post_handler)
-                .layer(crate::auth::auth_layer()) // require auth only for post
+                .layer(middleware::from_fn(crate::auth::auth_layer)) // require auth only for post
                 .get(get_handler),
         )
         .route(
@@ -135,7 +136,7 @@ pub fn service() -> Router {
                     care!(check_in().await).ok();
                     Redirect::to("/health")
                 })
-                .layer(crate::auth::auth_layer()),
+                .layer(middleware::from_fn(crate::auth::auth_layer)),
         )
 }
 

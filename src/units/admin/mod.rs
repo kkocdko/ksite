@@ -3,6 +3,7 @@
 use crate::{db, include_page};
 use axum::body::Bytes;
 use axum::extract::RawQuery;
+use axum::middleware;
 use axum::response::Html;
 use axum::routing::{MethodRouter, Router};
 
@@ -41,26 +42,32 @@ async fn post_handler(q: RawQuery, body: Bytes) {
         "reset_auth_key" => {
             db_del("auth_key");
         }
+        "restart_process" => {
+            println!("restart_process");
+            std::process::exit(0);
+        }
         "backup_database" => {
             crate::database::backup();
         }
         k @ ("ssl_cert" | "ssl_key") => {
             db_set(k, body.into());
         }
-        _ => {}
+        op => {
+            println!("unknown op {op}");
+        }
     }
 }
 
 pub fn service() -> Router {
     db_init();
     if db_get("auth_key").is_none() {
-        db_set("auth_key", crate::auth::AUTH_KEY.to_owned().into_bytes());
+        db_set("auth_key", crate::auth::auth_key().to_owned().into_bytes());
     }
     Router::new().route(
         "/admin",
         MethodRouter::new()
             .get(|| async { Html((include_page!("page.html") as [_; 1])[0]) })
             .post(post_handler)
-            .layer(crate::auth::auth_layer()),
+            .layer(middleware::from_fn(crate::auth::auth_layer)),
     )
 }

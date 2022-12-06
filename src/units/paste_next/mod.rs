@@ -154,7 +154,7 @@ mod token {
     }
 
     /// Extract (uid, ulv).
-    pub fn vertify(token: &[u8]) -> Result<(&[u8], u8), ()> {
+    pub fn verify(token: &[u8]) -> Result<(&[u8], u8), ()> {
         if token.len() < 76 {
             return Err(()); // too short
         }
@@ -737,7 +737,7 @@ async fn post_handler(mut op: Op<'static>) -> Result<Response, Response> {
             upw_buf[SHA256_LEN..].copy_from_slice(&upw);
             let sha256 = ring::digest::digest(&ring::digest::SHA256, &upw_buf);
             upw_buf[SHA256_LEN..].copy_from_slice(sha256.as_ref());
-            db::user_cu(uid, &upw_buf, mail, 64); // TODO: mail vertify
+            db::user_cu(uid, &upw_buf, mail, 64); // TODO: mail verify
             Ok([
                 (TYPE_, HeaderValue::from_static(OK_DEFAULT)),
                 (ULV_, HeaderValue::from(ULV_NORMAL as u16)), // u8 is ambiguity
@@ -765,7 +765,7 @@ async fn post_handler(mut op: Op<'static>) -> Result<Response, Response> {
         }
 
         Op::Create { token, meta, body } => {
-            let (uid, ulv) = token::vertify(token).cast_err(ERR_TOKEN)?;
+            let (uid, ulv) = token::verify(token).cast_err(ERR_TOKEN)?;
             let fid_u64 = db::data_c(uid, 0, b"");
             let p = fid_to_path(fid_u64.to_string().as_bytes());
             let mut file = File::create(&p).await.unwrap();
@@ -793,7 +793,7 @@ async fn post_handler(mut op: Op<'static>) -> Result<Response, Response> {
             meta,
             body,
         } => {
-            let (uid, ulv) = token::vertify(token).cast_err(ERR_TOKEN)?;
+            let (uid, ulv) = token::verify(token).cast_err(ERR_TOKEN)?;
             let fid_u64 = parse_slice::<u64>(fid).cast_err(ERR_HEADER_INVALID)?;
             let (owner_uid, cap, _meta) =
                 db::data_r(fid_u64).cast_err(ERR_FILE_NOT_FOUND_OR_DENY)?;
@@ -821,7 +821,7 @@ async fn post_handler(mut op: Op<'static>) -> Result<Response, Response> {
         }
 
         Op::Delete { token, fid } => {
-            let (uid, _ulv) = token::vertify(token).cast_err(ERR_TOKEN)?;
+            let (uid, _ulv) = token::verify(token).cast_err(ERR_TOKEN)?;
             let fid_u64 = parse_slice::<u64>(fid).cast_err(ERR_HEADER_INVALID)?;
             let (owner_uid, _cap, _meta) =
                 db::data_r(fid_u64).cast_err(ERR_FILE_NOT_FOUND_OR_DENY)?;
@@ -838,7 +838,7 @@ async fn post_handler(mut op: Op<'static>) -> Result<Response, Response> {
             limit,
             meta,
         } => {
-            let (uid, ulv) = token::vertify(token).cast_err(ERR_TOKEN)?;
+            let (uid, ulv) = token::verify(token).cast_err(ERR_TOKEN)?;
             let fid_u64 = parse_slice::<u64>(fid).cast_err(ERR_HEADER_INVALID)?;
             let (owner_uid, cap, meta) =
                 db::data_r(fid_u64).cast_err(ERR_FILE_NOT_FOUND_OR_DENY)?;
@@ -867,7 +867,7 @@ async fn post_handler(mut op: Op<'static>) -> Result<Response, Response> {
         }
 
         Op::List { token } => {
-            let (uid, _ulv) = token::vertify(token).cast_err(ERR_TOKEN)?;
+            let (uid, _ulv) = token::verify(token).cast_err(ERR_TOKEN)?;
             let list = db::data_r_by_user(uid);
             let mut body = Vec::new(); // TODO: set capacity for performance
             for (fid, cap, mut meta) in list {
@@ -886,7 +886,7 @@ async fn post_handler(mut op: Op<'static>) -> Result<Response, Response> {
 }
 
 pub fn service() -> Router {
-    // TODO: vertify if the trigger fn not register!
+    // TODO: verify if the trigger fn not register!
     // TODO: user may make request immediately after the server launch, is this sound?
     // dbg!(STORAGE_ROOT.to_str());
     db::init();

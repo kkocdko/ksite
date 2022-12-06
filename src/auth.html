@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+
+<head>
+  <meta name="viewport" content="width=device-width" />
+  <link rel="icon" href="data:" />
+  <title>Auth - ksite</title>
+</head>
+
+<style>
+  * {
+    margin: 0;
+    font: 14px / 1.4 sans-serif;
+    background: #fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    * {
+      color: #fff;
+      background: #000;
+    }
+  }
+  body {
+    display: grid;
+    grid: auto auto 1fr / none;
+    height: 100vh;
+  }
+  header > *,
+  header ~ * {
+    padding: 8px 10px;
+    border: 0 solid #888;
+    outline: none;
+  }
+  header > * {
+    float: left;
+    border-right-width: 1px;
+  }
+  header > :active {
+    background: #8887;
+  }
+  header ~ * {
+    font-family: monospace;
+    white-space: pre;
+    border-top-width: 1px;
+  }
+</style>
+
+<body>
+  <header>
+    <button onclick="document.cookie=`auth=${$v.value}`;location.reload()">
+      Authorize
+    </button>
+  </header>
+  <input id="$v" placeholder="AUTH KEY" />
+  <div></div>
+</body>

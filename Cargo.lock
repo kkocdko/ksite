@@ -105,12 +105,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "349a06037c7bf932dd7e7d1f653678b2038b9ad46a74102f1fc7bd7872678cce"
 
 [[package]]
-name = "base64"
-version = "0.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e1b586273c5702936fe7b7d6896644d8be71e6314cfe09d3167c95f712589e8"
-
-[[package]]
 name = "bitflags"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -540,7 +534,7 @@ dependencies = [
 
 [[package]]
 name = "ksite"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "anyhow",
  "askama_escape",
@@ -558,8 +552,6 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-rustls",
- "tower",
- "tower-http",
  "webpki-roots",
 ]
 
@@ -1115,7 +1107,6 @@ version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f873044bf02dd1e8239e9c1293ea39dad76dc594ec16185d0a1bf31d8dc8d858"
 dependencies = [
- "base64",
  "bitflags",
  "bytes",
  "futures-core",

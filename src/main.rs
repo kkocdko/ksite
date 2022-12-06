@@ -1,6 +1,6 @@
-mod protect;
 mod auth;
 mod database;
+mod protect;
 mod ticker;
 mod tls;
 mod units;
