@@ -9,7 +9,7 @@
 <style>
   * {
     margin: 0;
-    font: 14px / 1.4 sans-serif;
+    font: 14px / 20px sans-serif;
     background: #fff;
   }
   @media (prefers-color-scheme: dark) {
@@ -20,8 +20,6 @@
   }
   body {
     display: grid;
-    grid: auto auto 1fr / none;
-    height: 100vh;
   }
   header > *,
   header ~ * {
@@ -30,7 +28,6 @@
     outline: none;
   }
   header > * {
-    float: left;
     border-right-width: 1px;
   }
   header > :active {
@@ -38,14 +35,15 @@
   }
   header ~ * {
     font-family: monospace;
-    white-space: pre;
     border-top-width: 1px;
   }
 </style>
 
 <body>
   <header>
-    <button onclick="document.cookie=`auth=${$v.value}`;location.reload()">
+    <button
+      onclick="document.cookie=`auth=${$v.value};max-age=94608000;path=/`;location.reload()"
+    >
       Authorize
     </button>
   </header>

@@ -285,7 +285,7 @@ pub mod str_const_ops_ {
             ret[i] = unsafe {
                 // this's safe certainly, we don't touch any part of str, and the
                 // split edge is `MARK` which only includes ASCII chars
-                core::str::from_utf8_unchecked(ret_b[i])
+                std::str::from_utf8_unchecked(ret_b[i])
             };
             i += 1;
         }
@@ -350,9 +350,10 @@ macro_rules! strip_str {
         {
             use $crate::utils::str_const_ops_::*;
             // thanks: https://docs.rs/const-str/0.4.3/const_str/macro.replace.html
-            const S: &[u8] = $s.as_bytes();
-            const BUF: [u8; strip_get_len(S)] = strip_do(S);
-            unsafe { std::str::from_utf8_unchecked(&BUF) }
+            const RAW: &[u8] = $s.as_bytes();
+            const BUF: [u8; strip_get_len(RAW)] = strip_do(RAW);
+            const RET: &str = unsafe { std::str::from_utf8_unchecked(&BUF) };
+            RET
         }
     }};
 }

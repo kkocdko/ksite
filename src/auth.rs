@@ -4,7 +4,7 @@ use axum::body::Bytes;
 use axum::http::header::{HeaderValue, COOKIE};
 use axum::http::{Request, StatusCode};
 use axum::middleware::Next;
-use axum::response::{Html, IntoResponse, Response};
+use axum::response::{Html, IntoResponse};
 use once_cell::sync::Lazy;
 use std::io::Write;
 
@@ -23,7 +23,7 @@ pub fn auth_key() -> &'static str {
     AUTH_COOKIE.to_str().unwrap().split_once('=').unwrap().1
 }
 
-pub async fn auth_layer<B>(req: Request<B>, next: Next<B>) -> Result<Response, Response> {
+pub async fn auth_layer<B>(req: Request<B>, next: Next<B>) -> impl IntoResponse {
     const AUTH_PAGE: &str = (include_page!("auth.html") as [_; 1])[0];
     match req
         .headers()
@@ -31,8 +31,8 @@ pub async fn auth_layer<B>(req: Request<B>, next: Next<B>) -> Result<Response, R
         .into_iter()
         .any(|v| v == *AUTH_COOKIE)
     {
-        true => Ok(next.run(req).await),
-        false => Err((StatusCode::UNAUTHORIZED, Html(AUTH_PAGE)).into_response()),
+        true => next.run(req).await,
+        false => (StatusCode::UNAUTHORIZED, Html(AUTH_PAGE)).into_response(),
     }
 }
 

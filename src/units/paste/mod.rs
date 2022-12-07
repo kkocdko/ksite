@@ -32,10 +32,13 @@ fn db_get(id: u64) -> Option<(String,)> {
 }
 
 async fn get_handler(Path(id): Path<u64>) -> Html<String> {
-    let value = db_get(id).unwrap_or_else(|| ("New entry".into(),));
     const PAGE: [&str; 2] = include_page!("page.html");
-    let mut body = PAGE[0].to_owned();
-    body.push_str(&value.0);
+    let mut body = String::new();
+    body.push_str(PAGE[0]);
+    body.push_str(match &db_get(id) {
+        Some(v) => &v.0,
+        None => "New entry",
+    });
     body.push_str(PAGE[1]);
     Html(body)
 }
