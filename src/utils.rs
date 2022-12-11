@@ -138,14 +138,20 @@ pub async fn fetch(request: impl ToRequest) -> Result<Response<Body>> {
     Ok(CLIENT.request(request.into_request()).await?)
 }
 
-/// Fetch a URI, returns as text.
-pub async fn fetch_text(request: impl ToRequest) -> Result<String> {
+/// Fetch a URI, returns as `Vec<u8>`.
+pub async fn fetch_data(request: impl ToRequest) -> Result<Vec<u8>> {
     // let request = request.into_request();
     // let a = format!("{}", request.uri());
     // println!("begin:  {a}");
     let response = fetch(request).await?;
     let body = read_body(response.into_body()).await;
     // println!("finish: {a}");
+    Ok(body)
+}
+
+/// Fetch a URI, returns as text.
+pub async fn fetch_text(request: impl ToRequest) -> Result<String> {
+    let body = fetch_data(request).await?;
     Ok(String::from_utf8(body)?)
 }
 

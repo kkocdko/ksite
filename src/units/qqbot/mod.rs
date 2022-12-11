@@ -1,188 +1,374 @@
 //! QQ robot for fun.
 
-mod base;
+mod command;
 use crate::auth::auth_layer;
 use crate::care;
+use crate::include_page;
 use crate::ticker::Ticker;
-use crate::utils::{elapse, fetch_json, fetch_text, OptionResult};
+use crate::utils::{fetch_text, log_escape, OptionResult};
 use anyhow::Result;
+use axum::body::Bytes;
+use axum::extract::RawQuery;
 use axum::middleware;
+use axum::response::Html;
 use axum::routing::{MethodRouter, Router};
-use base::{db_groups_insert, get_handler, get_login_qr, notify, post_handler};
 use once_cell::sync::Lazy;
-use rand::{thread_rng, Rng};
-use std::collections::HashMap;
-use std::sync::Mutex;
+use ricq::client::{Connector as _, DefaultConnector, NetworkStatus};
+use ricq::handler::QEvent;
+use ricq::msg::MessageChain;
+use ricq::{Client, Device, LoginResponse, Protocol, QRCodeState};
+use std::fmt::Write;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, UNIX_EPOCH};
 
-/// Generate reply from message parts
-async fn gen_reply(msg_parts: Vec<&str>) -> Result<String> {
-    static REPLIES: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(|| {
-        Mutex::new(HashMap::from([
-            ("呜".into(), "呜".into()),
-            ("你说对吧".into(), "啊对对对".into()),
-            (
-                "运行平台".into(),
-                concat!(
-                    env!("CARGO_PKG_NAME"),
-                    " v",
-                    env!("CARGO_PKG_VERSION"),
-                    " with ricq and axum"
-                )
-                .into(),
-            ),
-        ]))
-    });
-    Ok(match msg_parts[..] {
-        ["kk单身多久了"] => format!("kk已连续单身 {:.3} 天了", elapse(10485432e2)),
-        // ["开学倒计时"] => format!("距 开学 仅 {:.3} 天", -elapse(16617312e2)),
-        ["高考倒计时"] => format!("距 2023 高考仅 {:.3} 天", -elapse(16860996e2)),
-        ["驶向深蓝"] => {
-            let url = "https://api.lovelive.tools/api/SweetNothings?genderType=M";
-            fetch_text(url).await?
-        }
-        ["吟诗"] => {
-            let url = "https://v1.jinrishici.com/all.json";
-            fetch_json(url, "/content").await?
-        }
-        ["新闻"] => {
-            let i = thread_rng().gen_range(3..20);
-            let r = fetch_text("https://m.cnbeta.com/wap").await?;
-            let r = r.split("htm\">").nth(i).e()?.split_once('<').e()?;
-            r.0.into()
-        }
-        ["RAND", from, to] | ["随机数", from, to] => {
-            let range = from.parse::<i64>()?..=to.parse()?;
-            let v = thread_rng().gen_range(range);
-            format!("{v} in range [{from},{to}]")
-        }
-        ["BTC"] | ["比特币"] => {
-            let url = "https://chain.so/api/v2/get_info/BTC";
-            let price = fetch_json(url, "/data/price").await?;
-            format!("1 BTC = {} USD", price.trim_end_matches('0'))
-        }
-        ["ETH"] | ["以太坊"] | ["以太币"] => {
-            let url = "https://api.blockchair.com/ethereum/stats";
-            let price = fetch_json(url, "/data/market_price_usd").await?;
-            format!("1 ETH = {} USD", price.trim_end_matches('0'))
-        }
-        ["DOGE"] | ["狗狗币"] => {
-            let url = "https://api.blockchair.com/dogecoin/stats";
-            let price = fetch_json(url, "/data/market_price_usd").await?;
-            format!("1 DOGE = {} USD", price.trim_end_matches('0'))
-        }
-        ["垃圾分类", i] => {
-            let url = format!("https://api.muxiaoguo.cn/api/lajifl?m={i}");
-            match fetch_json(&url, "/data/type").await {
-                Ok(v) => format!("{i} {v}"),
-                Err(_) => format!("鬼知道 {i} 是什么垃圾呢"),
-            }
-        }
-        ["聊天", i, ..] => {
-            let url = format!("https://api.ownthink.com/bot?spoken={i}");
-            fetch_json(&url, "/data/info/text").await?
-        }
-        ["订阅通知", v] => {
-            db_groups_insert(v.parse()?);
-            format!("已为群 {v} 订阅通知")
-        }
-        ["取消订阅通知", _v] => {
-            "鉴权还没弄好呢".into()
-            // db_groups_insert(v.parse()?);
-            // format!("已为群 {v} 取消订阅通知")
-        }
-        ["设置回复", k, v] => {
-            REPLIES.lock().unwrap().insert(k.into(), v.into());
-            "记住啦".into()
-        }
-        [k, ..] => match REPLIES.lock().unwrap().get(k) {
-            Some(v) => v.clone(),
-            None => "指令有误".into(),
-        },
-        [] => "你没有附加任何指令呢".into(),
-    })
+mod db {
+    use crate::db;
+
+    pub fn init() {
+        db!("CREATE TABLE qqbot_log (time INTEGER, content TEXT)").ok();
+        db!("CREATE TABLE qqbot_cfg (k TEXT PRIMARY KEY, v BLOB)").ok();
+        db!("CREATE TABLE qqbot_groups (group_id INTEGER PRIMARY KEY)").ok();
+    }
+
+    pub fn log_insert(content: String) {
+        db! {"
+            INSERT INTO qqbot_log
+            VALUES (strftime('%s','now'), ?1)
+        ", [content]}
+        .unwrap();
+    }
+
+    pub fn log_get() -> Vec<(u64, String)> {
+        db! {"
+            SELECT * FROM qqbot_log
+            WHERE strftime('%s','now') - time <= 3600 * 24 * 5
+        ", [], (0, 1)}
+        .unwrap()
+    }
+
+    pub fn log_clean() {
+        db! {"
+            DELETE FROM qqbot_log
+            WHERE strftime('%s','now') - time > 3600 * 24 * 7
+        "}
+        .unwrap();
+    }
+
+    pub fn cfg_set(k: &str, v: Vec<u8>) {
+        db! {"
+            REPLACE INTO qqbot_cfg
+            VALUES (?1, ?2)
+        ", [k, v]}
+        .unwrap();
+    }
+
+    pub fn cfg_get(k: &str) -> Option<(Vec<u8>,)> {
+        db! {"
+            SELECT v FROM qqbot_cfg
+            WHERE k = ?
+        ", [k], ^(0)}
+        .ok()
+    }
+
+    pub fn cfg_get_text(k: &str) -> Option<String> {
+        Some(String::from_utf8(cfg_get(k)?.0).unwrap())
+    }
+
+    pub fn groups_get() -> Vec<(i64,)> {
+        db! {"
+            SELECT * FROM qqbot_groups
+        ", [], (0)}
+        .unwrap()
+    }
+
+    pub fn groups_insert(group_id: i64) {
+        db! {"
+            REPLACE INTO qqbot_groups
+            VALUES (?)
+        ", [group_id]}
+        .unwrap();
+    }
+
+    // pub fn _groups_delete(group_id: i64) -> bool {
+    //     db! {"
+    //         DELETE FROM qqbot_groups
+    //         WHERE group_id = ?
+    //     ", [group_id]}
+    //     .is_ok()
+    // }
 }
 
-fn judge(msg: &str, list: &[&str], sensitivity: f64) -> bool {
-    let len: usize = list.len();
-    let expect = ((1.0 - sensitivity) * (len as f64)) as usize;
-    let mut matched = 0;
-    for (i, entry) in list.iter().enumerate() {
-        if msg.contains(entry) {
-            matched += 1;
+fn push_log_(v: &str) {
+    db::log_insert(log_escape(v));
+}
+macro_rules! push_log {
+    ($($arg:tt)*) => {{
+        push_log_(&format!($($arg)*));
+    }};
+}
+
+const K_DEVICE: &str = "device_json";
+const K_TOKEN: &str = "token_json";
+
+static QR: Mutex<Bytes> = Mutex::new(Bytes::new());
+static CLIENT: Lazy<Arc<Client>> = Lazy::new(|| {
+    push_log!("init client");
+    let device = match db::cfg_get_text(K_DEVICE) {
+        Some(v) => serde_json::from_str(&v).unwrap(),
+        None => {
+            let device = Device::random();
+            db::cfg_set(
+                K_DEVICE,
+                serde_json::to_string(&device).unwrap().into_bytes(),
+            );
+            device
         }
-        if matched > expect {
-            return true;
-        } else if len - i - 1 + matched <= expect {
-            return false;
+    };
+    let client = Arc::new(Client::new(device, Protocol::MacOS.into(), MyHandler));
+    tokio::spawn(async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let mut last = UNIX_EPOCH.elapsed().unwrap().as_secs();
+        loop {
+            tokio::select! {
+                _ = async {
+                    CLIENT.start(DefaultConnector.connect(&CLIENT).await?).await;
+                    push_log!("offline, fn start returned");
+                    anyhow::Ok(())
+                } => {}
+                _ = async {
+                    launch().await?;
+                    CLIENT.do_heartbeat().await;
+                    push_log!("offline, fn do_heartbeat returned");
+                    anyhow::Ok(())
+                } => {}
+            };
+            CLIENT.stop(NetworkStatus::Unknown);
+            let now = UNIX_EPOCH.elapsed().unwrap().as_secs();
+            if now - last < 30 {
+                push_log!("reconnection was stopped, overfrequency");
+                return;
+            }
+            last = now;
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
+    });
+    client
+});
+
+async fn launch() -> Result<()> {
+    // waiting for connected
+    while CLIENT.get_status() != NetworkStatus::Unknown as u8 {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    push_log!("server connected");
+
+    // # Tips about Login
+    // 1. Run on local host, login by qrcode.
+    // 2. Run on remote, copy device_json and token_json to database.
+    // 3. Restart remote server.
+    if let Some(v) = db::cfg_get_text(K_TOKEN) {
+        let token = serde_json::from_str(&v)?;
+        CLIENT.token_login(token).await?;
+        push_log!("login by token");
+    } else {
+        let mut qr_resp = CLIENT.fetch_qrcode().await?;
+        let mut img_sig = Vec::new();
+        loop {
+            match qr_resp {
+                QRCodeState::ImageFetch(inner) => {
+                    push_log!("qrcode fetched");
+                    *QR.lock().unwrap() = inner.image_data;
+                    img_sig = inner.sig.to_vec();
+                }
+                QRCodeState::Timeout => {
+                    push_log!("qrcode timeout");
+                    qr_resp = CLIENT.fetch_qrcode().await?;
+                    continue;
+                }
+                QRCodeState::Confirmed(inner) => {
+                    push_log!("qrcode confirmed");
+                    let login_resp = CLIENT
+                        .qrcode_login(&inner.tmp_pwd, &inner.tmp_no_pic_sig, &inner.tgt_qr)
+                        .await?;
+                    if let LoginResponse::DeviceLockLogin { .. } = login_resp {
+                        CLIENT.device_lock_login().await?;
+                    }
+                    push_log!("login by qrcode");
+                    break;
+                }
+                QRCodeState::WaitingForScan => push_log!("qrcode waiting for scan"),
+                QRCodeState::WaitingForConfirm => push_log!("qrcode waiting for confirm"),
+                QRCodeState::Canceled => push_log!("qrcode canceled"),
+            }
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            qr_resp = CLIENT.query_qrcode_result(&img_sig).await?;
+            tokio::time::sleep(Duration::from_secs(3)).await;
         }
     }
-    false
+    // instead of `ricq::ext::common::after_login`
+    CLIENT.register_client().await?;
+    CLIENT.refresh_status().await?;
+
+    // clear qr code (the `clear()` will not release capacity)
+    std::mem::take(&mut *QR.lock().unwrap());
+
+    // save new token
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    let token = CLIENT.gen_token().await;
+    db::cfg_set(K_TOKEN, serde_json::to_string(&token)?.into_bytes());
+
+    Ok(())
 }
 
-#[allow(unused)]
-fn judge_spam(msg: &str) -> bool {
-    const LIST: &[&str] = &[
-        "重要",
-        "通知",
-        "群",
-        "后果自负",
-        "二维码",
-        "同学",
-        "免费",
-        "资料",
-    ];
-    const SENSITIVITY: f64 = 0.7;
-    judge(msg, LIST, SENSITIVITY)
+fn text_msg(content: String) -> ricq::msg::elem::Text {
+    ricq::msg::elem::Text::new(content)
+}
+
+fn bot_msg(content: &str) -> MessageChain {
+    MessageChain::new(text_msg(format!("[BOT] {content}")))
+}
+
+async fn prefix_matched(i: &str) -> bool {
+    static PREFIX: Mutex<String> = Mutex::new(String::new());
+    let is_prefix_uninit = { PREFIX.lock().unwrap().is_empty() };
+    let prefix = if is_prefix_uninit {
+        let v = format!("[@{}]", CLIENT.account_info.read().await.nickname);
+        let mut prefix = PREFIX.lock().unwrap();
+        *prefix = v;
+        prefix
+    } else {
+        PREFIX.lock().unwrap()
+    };
+    i.starts_with(&*prefix)
+}
+
+async fn on_event(event: QEvent) -> Result<()> {
+    #[allow(clippy::type_complexity)]
+    static RECENT: Mutex<Vec<(i32, Vec<i32>, String, String, String)>> = Mutex::new(Vec::new());
+    match event {
+        QEvent::GroupMessage(e) => {
+            let e = e.inner;
+            let msg = e.elements.to_string();
+            if prefix_matched(&msg).await {
+                let msg_parts = msg.split_whitespace().skip(1).collect();
+                if let Ok(reply) =
+                    care!(command::on_group_msg(e.group_code, msg_parts, &CLIENT).await)
+                {
+                    let reply = bot_msg(&reply);
+                    let result = CLIENT.send_group_message(e.group_code, reply).await;
+                    care!(result).ok();
+                }
+            }
+            // println!("\n\x1b[93m[ksite]\x1b[0m {}", e.inner.elements);
+            let mut recent = RECENT.lock().unwrap();
+            recent.push((e.time, e.seqs, e.group_name, e.group_card, msg));
+            let len = recent.len();
+            // size % 8 == 0, throttling while extreme scene
+            if len >= 64 && len % 8 == 0 {
+                // can't be recalled after 2 minutes
+                recent.retain(|v| e.time - v.0 <= 120);
+                // push_log!("cleaned {} expired messages", len - recent.len());
+            }
+        }
+        // the AndroidWatch protocol will not receive recall event
+        QEvent::GroupMessageRecall(e) => {
+            let recent = RECENT.lock().unwrap();
+            if let Some((_, _, group, user, content)) =
+                recent.iter().find(|v| v.1.contains(&e.inner.msg_seq))
+            {
+                push_log!(
+                    "recalled message = {{ group: '{group}', user: '{user}', content: '{content}' }}",
+                );
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+struct MyHandler;
+impl ricq::handler::Handler for MyHandler {
+    fn handle<'a: 'b, 'b>(&'a self, e: QEvent) -> Pin<Box<dyn Future<Output = ()> + Send + 'b>> {
+        Box::pin(async {
+            // add timeout here?
+            care!(on_event(e).await).ok();
+        })
+    }
+}
+
+pub async fn notify(msg: String) -> Result<()> {
+    let msg_chain = bot_msg(&msg);
+    for (group,) in db::groups_get() {
+        CLIENT.send_group_message(group, msg_chain.clone()).await?;
+    }
+    Ok(())
 }
 
 pub fn service() -> Router {
-    get_login_qr(); // init client
+    db::init();
+    CLIENT.get_status(); // init client
+
+    async fn post_handler(q: RawQuery, body: Bytes) {
+        let q = q.0.unwrap();
+        let k = q.split_once('=').unwrap().1;
+        db::cfg_set(k, body.into());
+    }
+
+    async fn get_handler() -> Html<String> {
+        const PAGE: [&str; 2] = include_page!("page.html");
+        let mut body = String::new();
+        body += PAGE[0];
+        for (time, content) in db::log_get().into_iter().rev() {
+            writeln!(&mut body, "{time} | {content}").unwrap();
+        }
+        body += PAGE[1];
+        Html(body)
+    }
+
     Router::new()
         .route(
             "/qqbot",
-            MethodRouter::new().get(get_handler).post(post_handler),
+            MethodRouter::new().post(post_handler).get(get_handler),
         )
         .route(
             "/qqbot/qr",
-            MethodRouter::new().get(|| async { get_login_qr() }),
+            MethodRouter::new().get(|| async { QR.lock().unwrap().clone() }),
         )
         .layer(middleware::from_fn(auth_layer))
 }
 
 struct UpNotify {
-    name: &'static str,
     query_url: &'static str,
     last: Mutex<String>,
 }
 
 impl UpNotify {
-    async fn query(&self) -> Result<String> {
-        let ret = fetch_text(self.query_url).await?;
-        let ret = ret.rsplit_once(".nupkg").e()?.0.rsplit_once('/').e()?.1;
-        Ok(ret.split_once('.').e()?.1.to_string())
-    }
-
+    // https://github.com/rust-lang/rust-clippy/issues/6446
+    #[allow(clippy::await_holding_lock)]
     async fn trigger(&self) {
-        let v = care!(self.query().await, return);
-        // https://github.com/rust-lang/rust-clippy/issues/6446
-        {
-            let mut last = self.last.lock().unwrap();
-            if !last.is_empty() && *last != v {
-                *last = v.clone();
-            } else {
-                // store the latest value regardless of whether the notify succeeded or not
-                *last = v;
-                return; // thanks NLL!
-            };
+        let v = care!(fetch_text(self.query_url).await, return);
+        let v = v
+            .rsplit_once(".nupkg")
+            .and_then(|v| v.0.rsplit_once('/'))
+            .and_then(|v| v.1.split_once('.'));
+        let v = care!(v.e(), return).1;
+        let mut last = self.last.lock().unwrap();
+        if *last == v {
+        } else if last.is_empty() {
+            *last = v.to_string();
+        } else {
+            *last = v.to_string();
+            drop(last);
+            care!(notify(v.to_lowercase()).await, ());
         }
-        care!(notify(format!("{} {v} released!", self.name)).await).ok();
     }
 }
 
 macro_rules! up_notify {
-    ($name:literal, $pkg_id:literal) => {
+    ($pkg_id:literal) => {
         UpNotify {
-            name: $name,
             query_url: concat!("https://community.chocolatey.org/api/v2/package/", $pkg_id),
             last: Mutex::new(String::new()),
         }
@@ -195,9 +381,11 @@ pub async fn tick() {
         return;
     }
 
-    static UP_CHROME: UpNotify = up_notify!("Chrome", "googlechrome");
-    static UP_VSCODE: UpNotify = up_notify!("VSCode", "vscode");
-    static UP_RUST: UpNotify = up_notify!("Rust", "rust");
+    db::log_clean();
+
+    static UP_CHROME: UpNotify = up_notify!("googlechrome");
+    static UP_VSCODE: UpNotify = up_notify!("vscode");
+    static UP_RUST: UpNotify = up_notify!("rust");
     let _ = tokio::join!(
         // needless to spawn
         UP_CHROME.trigger(),

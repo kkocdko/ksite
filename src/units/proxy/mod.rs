@@ -1,3 +1,10 @@
 //! Primitive proxy over http(s).
 
-use axum;
+/*
+
+* Page mode: browser iframe <-> service worker <-> server. Save data mode.
+* Raw mode: tcp and udp -> http -> browser -> client.
+
+*/
+
+// use axum;
