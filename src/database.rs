@@ -13,11 +13,9 @@ fn load() -> Connection {
 
     // Optimize for Performance
     // https://www.sqlite.org/speed.html
-    // https://www.sqlite.org/pragma.html#pragma_optimize
     // https://www.sqlite.org/pragma.html#pragma_journal_mode
     // https://www.sqlite.org/withoutrowid.html
-
-    // SQLITE_LIMIT_LENGTH
+    // https://www.sqlite.org/pragma.html#pragma_optimize
 
     // The `WAL` mode will improve writing but slow down reading a little.
     db.pragma_update(None, "journal_mode", "WAL").unwrap();
@@ -36,6 +34,8 @@ pub fn backup() {
 
     // merge wal file
     db.pragma_update(None, "journal_mode", "TRUNCATE").unwrap();
+
+    // db.pragma_update(None, "optimize", "").unwrap();
 
     // shrink size
     db.execute_batch("VACUUM").unwrap();
@@ -73,13 +73,12 @@ pub mod inner_ {
         Ok(())
     }
 
-    #[allow(unused)]
-    pub fn exec_param_lastid(sql: &str, params: &[&dyn ToSql]) -> rusqlite::Result<i64> {
-        let db = DB.lock().unwrap();
-        let mut stmd = db.prepare_cached(sql)?;
-        stmd.execute(params)?;
-        Ok(db.last_insert_rowid())
-    }
+    // pub fn exec_param_lastid(sql: &str, params: &[&dyn ToSql]) -> rusqlite::Result<i64> {
+    //     let db = DB.lock().unwrap();
+    //     let mut stmd = db.prepare_cached(sql)?;
+    //     stmd.execute(params)?;
+    //     Ok(db.last_insert_rowid())
+    // }
 
     pub fn query_row<T, F>(sql: &str, params: &[&dyn ToSql], f: F) -> rusqlite::Result<T>
     where
@@ -87,7 +86,6 @@ pub mod inner_ {
     {
         let db = DB.lock().unwrap();
         let mut stmd = db.prepare_cached(sql)?;
-        stmd.execute(params)?;
         stmd.query_row(params, f)
     }
 
@@ -97,7 +95,6 @@ pub mod inner_ {
     {
         let db = DB.lock().unwrap();
         let mut stmd = db.prepare_cached(sql)?;
-        stmd.execute(params)?;
         let mut rows = stmd.query(params)?;
         let mut ret = Vec::new();
         while let Ok(Some(r)) = rows.next() {
@@ -124,14 +121,14 @@ macro_rules! db {
         )
     }};
     // execute and returns `last_insert_rowid()`
-    ( $sql:literal, [ $($param:expr),* ], & ) => {{
-        $crate::database::inner_::exec_param_lastid(
-            $crate::strip_str!($sql),
-            rusqlite::params![$($param),*]
-        )
-    }};
-    // query and return the first row, the symbol '^' means "first" in regexp
-    ( $sql:literal, [ $($param:expr),* ], ^$f:expr ) => {{
+    // ( $sql:literal, [ $($param:expr),* ], & ) => {{
+    //     $crate::database::inner_::exec_param_lastid(
+    //         $crate::strip_str!($sql),
+    //         rusqlite::params![$($param),*]
+    //     )
+    // }};
+    // query and return the first row
+    ( $sql:literal, [ $($param:expr),* ], &$f:expr ) => {{
         $crate::database::inner_::query_row(
             $crate::strip_str!($sql),
             rusqlite::params![$($param),*],

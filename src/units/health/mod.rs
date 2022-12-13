@@ -17,50 +17,60 @@ use std::fmt::Write;
 mod cryptojs;
 
 fn db_init() {
-    db! {"
+    // this is a legacy module, so we keep the database struct not change
+    db!("
         CREATE TABLE IF NOT EXISTS health_list
-        (id INTEGER PRIMARY KEY, password TEXT, data TEXT)
-    "}
-    .unwrap();
-    db! {"
+        (id INTEGER PRIMARY KEY, password TEXT, data TEXT);
         CREATE TABLE IF NOT EXISTS health_log
-        (time INTEGER, id INTEGER, ret TEXT)
-    "}
+        (time INTEGER, id INTEGER, ret TEXT);
+    ")
     .unwrap();
 }
 fn db_list_set(id: u64, password: &str, data: &str) {
-    db! {"
+    db!(
+        "
         REPLACE INTO health_list
         VALUES (?1, ?2, ?3)
-    ", [id, password, data]}
+        ",
+        [id, password, data]
+    )
     .unwrap();
 }
 fn db_list_get() -> Vec<(u64, String, String)> {
-    db! {"
+    db!(
+        "
         SELECT * FROM health_list
-    ", [], (0, 1, 2)}
+        ",
+        [],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+    )
     .unwrap()
 }
 fn db_log_insert(id: u64, ret: String) {
-    db! {"
+    db!(
+        "
         INSERT INTO health_log
         VALUES (strftime('%s', 'now'), ?1, ?2)
-    ", [id, ret]}
+        ",
+        [id, ret]
+    )
     .unwrap();
 }
 fn db_log_get() -> Vec<(u64, u64, String)> {
-    db! {"
+    db!(
+        "
         SELECT * FROM health_log
-        WHERE strftime('%s', 'now') - time <= 3600 * 24 * 5
-        ORDER BY time DESC
-    ", [], (0, 1, 2)}
+        ",
+        [],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+    )
     .unwrap()
 }
 fn db_log_clean() {
-    db! {"
+    db!("
         DELETE FROM health_log
         WHERE strftime('%s', 'now') - time > 3600 * 24 * 7
-    "}
+    ")
     .unwrap();
 }
 

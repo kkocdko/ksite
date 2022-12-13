@@ -59,8 +59,8 @@ pub async fn serve(addr: &SocketAddr, mut app: Router) {
         .with_safe_defaults()
         .with_no_client_auth()
         .with_single_cert(
-            vec![Certificate(db_get("ssl_cert").unwrap().0)],
-            PrivateKey(db_get("ssl_key").unwrap().0),
+            vec![Certificate(db_get("ssl_cert").unwrap())],
+            PrivateKey(db_get("ssl_key").unwrap()),
         )
         .unwrap();
     // enable http2, needs hyper feature "http2"

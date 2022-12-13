@@ -6,13 +6,13 @@ use axum::http::{Request, StatusCode};
 use axum::middleware::Next;
 use axum::response::{Html, IntoResponse};
 use once_cell::sync::Lazy;
-use std::io::Write;
+use std::io::Write as _;
 
 static AUTH_COOKIE: Lazy<HeaderValue> = Lazy::new(|| {
     let mut inner = Vec::new();
     inner.extend(b"auth=");
     match db_get("auth_key") {
-        Some((v,)) => inner.extend(v.as_slice()),
+        Some(v) => inner.extend(v.as_slice()),
         None => write!(&mut inner, "{:x}", rand::random::<u128>()).unwrap(),
     }
     HeaderValue::from_maybe_shared(Bytes::from(inner)).unwrap()
