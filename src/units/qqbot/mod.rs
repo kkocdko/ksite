@@ -2,10 +2,9 @@
 
 mod command;
 use crate::auth::auth_layer;
-use crate::care;
-use crate::include_page;
 use crate::ticker::Ticker;
 use crate::utils::{fetch_text, log_escape, OptionResult};
+use crate::{care, include_page};
 use anyhow::Result;
 use axum::body::Bytes;
 use axum::extract::RawQuery;
@@ -17,7 +16,7 @@ use ricq::client::{Connector as _, DefaultConnector, NetworkStatus};
 use ricq::handler::QEvent;
 use ricq::msg::MessageChain;
 use ricq::{Client, Device, LoginResponse, Protocol, QRCodeState};
-use std::fmt::Write;
+use std::fmt::Write as _;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, UNIX_EPOCH};
 
@@ -29,57 +28,78 @@ mod db {
     pub const K_NOTIFY_GROUPS: &str = "notify_groups";
 
     pub fn init() {
-        db!("CREATE TABLE IF NOT EXISTS qqbot_log (time INTEGER, content TEXT)").unwrap();
-        db!("CREATE TABLE IF NOT EXISTS qqbot_cfg (k TEXT PRIMARY KEY, v BLOB)").unwrap();
-        db!("INSERT INTO OR IGNORE qqbot_cfg VALUES ('notify_groups', '')").unwrap();
+        db!("
+            CREATE TABLE IF NOT EXISTS qqbot_log
+            (time INTEGER, content BLOB);
+            CREATE TABLE IF NOT EXISTS qqbot_cfg
+            (k BLOB PRIMARY KEY, v BLOB);
+            INSERT OR IGNORE INTO qqbot_cfg VALUES
+            (cast('notify_groups' as BLOB), X'');
+        ")
+        .unwrap();
+        // format: notify_groups = b"7652318,17931963,123132"
     }
 
-    pub fn log_insert(content: String) {
-        db! {"
+    pub fn log_insert(content: &str) {
+        db!(
+            "
             INSERT INTO qqbot_log
             VALUES (strftime('%s', 'now'), ?1)
-        ", [content]}
+            ",
+            [content.as_bytes()]
+        )
         .unwrap();
     }
 
     pub fn log_get() -> Vec<(u64, String)> {
-        db! {"
+        db!(
+            "
             SELECT * FROM qqbot_log
-        ", [], (0, 1)}
+            ",
+            [],
+            |r| Ok((r.get(0)?, String::from_utf8(r.get(1)?).unwrap()))
+        )
         .unwrap()
     }
 
     pub fn log_clean() {
-        db! {"
+        db!("
             DELETE FROM qqbot_log
-            WHERE strftime('%s', 'now') - time > 3600 * 24 * 7
-        "}
+            WHERE strftime('%s', 'now') - time > 3600 * 24 * 3
+        ")
         .unwrap();
     }
 
-    pub fn cfg_set(k: &str, v: Vec<u8>) {
-        db! {"
+    pub fn cfg_set(k: &str, v: &[u8]) {
+        db!(
+            "
             REPLACE INTO qqbot_cfg
             VALUES (?1, ?2)
-        ", [k, v]}
+            ",
+            [k.as_bytes(), v]
+        )
         .unwrap();
     }
 
-    pub fn cfg_get(k: &str) -> Option<(Vec<u8>,)> {
-        db! {"
+    pub fn cfg_get(k: &str) -> Option<Vec<u8>> {
+        db!(
+            "
             SELECT v FROM qqbot_cfg
             WHERE k = ?
-        ", [k], ^(0)}
+            ",
+            [k.as_bytes()],
+            &|r| r.get(0)
+        )
         .ok()
     }
 
     pub fn cfg_get_str(k: &str) -> Option<String> {
-        Some(String::from_utf8(cfg_get(k)?.0).unwrap())
+        Some(String::from_utf8(cfg_get(k)?).unwrap())
     }
 }
 
 fn push_log_(v: &str) {
-    db::log_insert(log_escape(v));
+    db::log_insert(&log_escape(v));
 }
 macro_rules! push_log {
     ($($arg:tt)*) => {{
@@ -96,7 +116,7 @@ static CLIENT: Lazy<Arc<Client>> = Lazy::new(|| {
             let device = Device::random();
             db::cfg_set(
                 db::K_DEVICE,
-                serde_json::to_string(&device).unwrap().into_bytes(),
+                serde_json::to_string(&device).unwrap().as_bytes(),
             );
             device
         }
@@ -154,13 +174,13 @@ async fn launch() -> Result<()> {
         push_log!("login by token");
     } else {
         let mut qr_resp = CLIENT.fetch_qrcode().await?;
-        let mut img_sig = Vec::new();
+        let mut img_sig = Bytes::new();
         loop {
             match qr_resp {
                 QRCodeState::ImageFetch(inner) => {
                     push_log!("qrcode fetched");
                     *QR.lock().unwrap() = inner.image_data;
-                    img_sig = inner.sig.to_vec();
+                    img_sig = inner.sig;
                 }
                 QRCodeState::Timeout => {
                     push_log!("qrcode timeout");
@@ -197,17 +217,13 @@ async fn launch() -> Result<()> {
     // save new token
     tokio::time::sleep(Duration::from_secs(1)).await;
     let token = CLIENT.gen_token().await;
-    db::cfg_set(db::K_TOKEN, serde_json::to_string(&token)?.into_bytes());
+    db::cfg_set(db::K_TOKEN, serde_json::to_string(&token)?.as_bytes());
 
     Ok(())
 }
 
-fn text_msg(content: String) -> ricq::msg::elem::Text {
-    ricq::msg::elem::Text::new(content)
-}
-
 fn bot_msg(content: &str) -> MessageChain {
-    MessageChain::new(text_msg(format!("[BOT] {content}")))
+    MessageChain::new(ricq::msg::elem::Text::new(format!("[BOT] {content}")))
 }
 
 async fn prefix_matched(i: &str) -> bool {
@@ -248,7 +264,7 @@ async fn on_event(event: QEvent) {
             // size % 8 == 0, throttling while extreme scene
             if len >= 64 && len % 8 == 0 {
                 // can't be recalled after 2 minutes
-                recent.retain(|v| e.time - v.0 <= 120);
+                recent.retain(|v| e.time - v.0 <= 120 + 5);
                 // push_log!("cleaned {} expired messages", len - recent.len());
             }
         }
@@ -258,9 +274,7 @@ async fn on_event(event: QEvent) {
             if let Some((_, _, group, user, content)) =
                 recent.iter().find(|v| v.1.contains(&e.inner.msg_seq))
             {
-                push_log!(
-                    "recalled message = {{ group: '{group}', user: '{user}', content: '{content}' }}",
-                );
+                push_log!("recalled {group}>{user} {content}");
             }
         }
         _ => {}
@@ -269,10 +283,10 @@ async fn on_event(event: QEvent) {
 
 pub async fn notify(msg: String) -> Result<()> {
     let msg_chain = bot_msg(&msg);
-    let groups = db::cfg_get_str(db::K_NOTIFY_GROUPS).unwrap();
-    for group in groups.trim().split(' ') {
-        let group = group.parse().unwrap();
-        CLIENT.send_group_message(group, msg_chain.clone()).await?;
+    for part in db::cfg_get_str(db::K_NOTIFY_GROUPS).unwrap().split(',') {
+        if let Ok(group) = part.parse() {
+            CLIENT.send_group_message(group, msg_chain.clone()).await?;
+        }
     }
     Ok(())
 }
@@ -283,8 +297,8 @@ pub fn service() -> Router {
 
     async fn post_handler(q: RawQuery, body: Bytes) {
         let q = q.0.unwrap();
-        let k = q.split_once('=').unwrap().1;
-        db::cfg_set(k, body.into());
+        let k = q.as_str();
+        db::cfg_set(k, &body);
     }
 
     async fn get_handler() -> Html<String> {

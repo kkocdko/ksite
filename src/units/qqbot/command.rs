@@ -1,4 +1,3 @@
-use super::db;
 use crate::utils::{elapse, fetch_json, fetch_text};
 use anyhow::Result;
 use flate2::write::ZlibEncoder;
@@ -105,17 +104,6 @@ pub async fn on_group_msg(
         ["聊天", i, ..] => {
             let url = format!("https://api.ownthink.com/bot?spoken={i}");
             fetch_json(&url, "/data/info/text").await?
-        }
-        ["订阅通知", v] => {
-            // TODO
-            // db::cfg_get("notify_groups");
-            // db::cfg_set(v.parse()?);
-            format!("已为群 {v} 订阅通知")
-        }
-        ["取消订阅通知", _v] => {
-            "鉴权还没弄好呢".into()
-            // db_groups_insert(v.parse()?);
-            // format!("已为群 {v} 取消订阅通知")
         }
         ["设置回复", k, v] => {
             REPLIES.lock().unwrap().insert(k.into(), v.into());
