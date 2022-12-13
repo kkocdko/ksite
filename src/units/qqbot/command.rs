@@ -1,19 +1,20 @@
 use super::db;
-use crate::units::qqbot::text_msg;
-use crate::utils::{elapse, fetch_json, fetch_text, OptionResult};
+use crate::utils::{elapse, fetch_json, fetch_text};
 use anyhow::Result;
+use flate2::write::ZlibEncoder;
+use flate2::Compression;
 use once_cell::sync::Lazy;
 use rand::{thread_rng, Rng};
-use ricq::Client;
+use ricq::msg::{MessageChain, MessageElem};
 use std::collections::HashMap;
+use std::io::Write as _;
 use std::sync::Mutex;
-use std::time::UNIX_EPOCH;
 
 /// Generate reply from message parts
 pub async fn on_group_msg(
     group_code: i64,
     msg_parts: Vec<&str>,
-    client: &Client,
+    client: &ricq::Client,
 ) -> Result<String> {
     static REPLIES: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(|| {
         Mutex::new(HashMap::from([(
@@ -30,7 +31,7 @@ pub async fn on_group_msg(
     Ok(match msg_parts[..] {
         ["kk单身多久了"] => format!("kk已连续单身 {:.3} 天了", elapse(10485432e2)),
         // ["开学倒计时"] => format!("距 开学 仅 {:.3} 天", -elapse(16617312e2)),
-        ["高考倒计时"] => format!("距 2023 高考仅 {:.3} 天", -elapse(16860996e2)),
+        // ["高考倒计时"] => format!("距 2023 高考仅 {:.3} 天", -elapse(16860996e2)),
         ["驶向深蓝"] => {
             let url = "https://api.lovelive.tools/api/SweetNothings?genderType=M";
             fetch_text(url).await?
@@ -39,12 +40,12 @@ pub async fn on_group_msg(
             let url = "https://v1.jinrishici.com/all.json";
             fetch_json(url, "/content").await?
         }
-        ["新闻"] => {
-            let i = thread_rng().gen_range(3..20);
-            let r = fetch_text("https://m.cnbeta.com/wap").await?;
-            let r = r.split("htm\">").nth(i).e()?.split_once('<').e()?;
-            r.0.into()
-        }
+        // ["新闻"] => {
+        //     let i = thread_rng().gen_range(3..20);
+        //     let r = fetch_text("https://m.cnbeta.com/wap").await?;
+        //     let r = r.split("htm\">").nth(i).e()?.split_once('<').e()?;
+        //     r.0.into()
+        // }
         ["RAND", from, to] | ["随机数", from, to] => {
             let range = from.parse::<i64>()?..=to.parse()?;
             let v = thread_rng().gen_range(range);
@@ -69,19 +70,29 @@ pub async fn on_group_msg(
             let price = fetch_json(url, "/data/market_price_usd").await?;
             format!("1 DOGE = {} USD", price.trim_end_matches('0'))
         }
-        ["我有个朋友", name, "说", says] => {
-            client
-                .send_group_forward_message(
-                    group_code,
-                    vec![ricq::structs::MessageNode {
-                        sender_id: 123456789,
-                        sender_name: name.to_string(),
-                        time: UNIX_EPOCH.elapsed().unwrap().as_secs() as _,
-                        elements: says.split('/').map(|p| text_msg(p.to_string())).collect(),
-                    }
-                    .into()],
-                )
-                .await?;
+        ["我有个朋友", name, "说", content] => {
+            let mut message_chain = MessageChain::default();
+
+            let mut rich_msg = MessageElem::RichMsg(Default::default());
+            if let MessageElem::RichMsg(v) = &mut rich_msg {
+                let body = format!(
+                    r#"<msg serviceID="35" templateID="1" action="viewMultiMsg" brief="[聊天记录]" tSum="1" flag="3"><item layout="1"><title>群聊的聊天记录</title><title>{name}: {content}</title><hr/><summary>查看1条转发消息</summary></item></msg>"#
+                );
+                let mut encoder = ZlibEncoder::new(vec![1], Compression::none());
+                encoder.write_all(body.as_bytes()).ok();
+                v.template1 = Some(encoder.finish().unwrap());
+                v.service_id = Some(35);
+            }
+            message_chain.0.push(rich_msg);
+
+            let mut general_flags = MessageElem::GeneralFlags(Default::default());
+            if let MessageElem::GeneralFlags(v) = &mut general_flags {
+                v.pb_reserve = Some([120, 0, 248, 1, 0, 200, 2, 0].into());
+                v.pendant_id = Some(0);
+            }
+            message_chain.0.push(general_flags);
+
+            client.send_group_message(group_code, message_chain).await?;
             "你朋友确实是这么说的".into()
         }
         ["垃圾分类", i] => {
@@ -96,7 +107,9 @@ pub async fn on_group_msg(
             fetch_json(&url, "/data/info/text").await?
         }
         ["订阅通知", v] => {
-            db::groups_insert(v.parse()?);
+            // TODO
+            // db::cfg_get("notify_groups");
+            // db::cfg_set(v.parse()?);
             format!("已为群 {v} 订阅通知")
         }
         ["取消订阅通知", _v] => {
@@ -116,25 +129,7 @@ pub async fn on_group_msg(
     })
 }
 
-fn judge(msg: &str, list: &[&str], sensitivity: f64) -> bool {
-    let len: usize = list.len();
-    let expect = ((1.0 - sensitivity) * (len as f64)) as usize;
-    let mut matched = 0;
-    for (i, entry) in list.iter().enumerate() {
-        if msg.contains(entry) {
-            matched += 1;
-        }
-        if matched > expect {
-            return true;
-        } else if len - i - 1 + matched <= expect {
-            return false;
-        }
-    }
-    false
-}
-
-#[allow(unused)]
-fn judge_spam(msg: &str) -> bool {
+fn _judge_spam(msg: &str) -> bool {
     const LIST: &[&str] = &[
         "重要",
         "通知",
@@ -146,5 +141,21 @@ fn judge_spam(msg: &str) -> bool {
         "资料",
     ];
     const SENSITIVITY: f64 = 0.7;
+    fn judge(msg: &str, list: &[&str], sensitivity: f64) -> bool {
+        let len: usize = list.len();
+        let expect = ((1.0 - sensitivity) * (len as f64)) as usize;
+        let mut matched = 0;
+        for (i, entry) in list.iter().enumerate() {
+            if msg.contains(entry) {
+                matched += 1;
+            }
+            if matched > expect {
+                return true;
+            } else if len - i - 1 + matched <= expect {
+                return false;
+            }
+        }
+        false
+    }
     judge(msg, LIST, SENSITIVITY)
 }

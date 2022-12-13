@@ -18,24 +18,26 @@ use ricq::handler::QEvent;
 use ricq::msg::MessageChain;
 use ricq::{Client, Device, LoginResponse, Protocol, QRCodeState};
 use std::fmt::Write;
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, UNIX_EPOCH};
 
 mod db {
     use crate::db;
 
+    pub const K_DEVICE: &str = "device_json";
+    pub const K_TOKEN: &str = "token_json";
+    pub const K_NOTIFY_GROUPS: &str = "notify_groups";
+
     pub fn init() {
-        db!("CREATE TABLE qqbot_log (time INTEGER, content TEXT)").ok();
-        db!("CREATE TABLE qqbot_cfg (k TEXT PRIMARY KEY, v BLOB)").ok();
-        db!("CREATE TABLE qqbot_groups (group_id INTEGER PRIMARY KEY)").ok();
+        db!("CREATE TABLE IF NOT EXISTS qqbot_log (time INTEGER, content TEXT)").unwrap();
+        db!("CREATE TABLE IF NOT EXISTS qqbot_cfg (k TEXT PRIMARY KEY, v BLOB)").unwrap();
+        db!("INSERT INTO OR IGNORE qqbot_cfg VALUES ('notify_groups', '')").unwrap();
     }
 
     pub fn log_insert(content: String) {
         db! {"
             INSERT INTO qqbot_log
-            VALUES (strftime('%s','now'), ?1)
+            VALUES (strftime('%s', 'now'), ?1)
         ", [content]}
         .unwrap();
     }
@@ -43,7 +45,6 @@ mod db {
     pub fn log_get() -> Vec<(u64, String)> {
         db! {"
             SELECT * FROM qqbot_log
-            WHERE strftime('%s','now') - time <= 3600 * 24 * 5
         ", [], (0, 1)}
         .unwrap()
     }
@@ -51,7 +52,7 @@ mod db {
     pub fn log_clean() {
         db! {"
             DELETE FROM qqbot_log
-            WHERE strftime('%s','now') - time > 3600 * 24 * 7
+            WHERE strftime('%s', 'now') - time > 3600 * 24 * 7
         "}
         .unwrap();
     }
@@ -72,32 +73,9 @@ mod db {
         .ok()
     }
 
-    pub fn cfg_get_text(k: &str) -> Option<String> {
+    pub fn cfg_get_str(k: &str) -> Option<String> {
         Some(String::from_utf8(cfg_get(k)?.0).unwrap())
     }
-
-    pub fn groups_get() -> Vec<(i64,)> {
-        db! {"
-            SELECT * FROM qqbot_groups
-        ", [], (0)}
-        .unwrap()
-    }
-
-    pub fn groups_insert(group_id: i64) {
-        db! {"
-            REPLACE INTO qqbot_groups
-            VALUES (?)
-        ", [group_id]}
-        .unwrap();
-    }
-
-    // pub fn _groups_delete(group_id: i64) -> bool {
-    //     db! {"
-    //         DELETE FROM qqbot_groups
-    //         WHERE group_id = ?
-    //     ", [group_id]}
-    //     .is_ok()
-    // }
 }
 
 fn push_log_(v: &str) {
@@ -109,24 +87,25 @@ macro_rules! push_log {
     }};
 }
 
-const K_DEVICE: &str = "device_json";
-const K_TOKEN: &str = "token_json";
-
 static QR: Mutex<Bytes> = Mutex::new(Bytes::new());
 static CLIENT: Lazy<Arc<Client>> = Lazy::new(|| {
     push_log!("init client");
-    let device = match db::cfg_get_text(K_DEVICE) {
+    let device = match db::cfg_get_str(db::K_DEVICE) {
         Some(v) => serde_json::from_str(&v).unwrap(),
         None => {
             let device = Device::random();
             db::cfg_set(
-                K_DEVICE,
+                db::K_DEVICE,
                 serde_json::to_string(&device).unwrap().into_bytes(),
             );
             device
         }
     };
-    let client = Arc::new(Client::new(device, Protocol::MacOS.into(), MyHandler));
+    let client = Arc::new(Client::new(
+        device,
+        Protocol::MacOS.into(),
+        on_event as fn(_) -> _,
+    ));
     tokio::spawn(async {
         tokio::time::sleep(Duration::from_millis(100)).await;
         let mut last = UNIX_EPOCH.elapsed().unwrap().as_secs();
@@ -169,7 +148,7 @@ async fn launch() -> Result<()> {
     // 1. Run on local host, login by qrcode.
     // 2. Run on remote, copy device_json and token_json to database.
     // 3. Restart remote server.
-    if let Some(v) = db::cfg_get_text(K_TOKEN) {
+    if let Some(v) = db::cfg_get_str(db::K_TOKEN) {
         let token = serde_json::from_str(&v)?;
         CLIENT.token_login(token).await?;
         push_log!("login by token");
@@ -218,7 +197,7 @@ async fn launch() -> Result<()> {
     // save new token
     tokio::time::sleep(Duration::from_secs(1)).await;
     let token = CLIENT.gen_token().await;
-    db::cfg_set(K_TOKEN, serde_json::to_string(&token)?.into_bytes());
+    db::cfg_set(db::K_TOKEN, serde_json::to_string(&token)?.into_bytes());
 
     Ok(())
 }
@@ -245,7 +224,7 @@ async fn prefix_matched(i: &str) -> bool {
     i.starts_with(&*prefix)
 }
 
-async fn on_event(event: QEvent) -> Result<()> {
+async fn on_event(event: QEvent) {
     #[allow(clippy::type_complexity)]
     static RECENT: Mutex<Vec<(i32, Vec<i32>, String, String, String)>> = Mutex::new(Vec::new());
     match event {
@@ -286,21 +265,13 @@ async fn on_event(event: QEvent) -> Result<()> {
         }
         _ => {}
     }
-    Ok(())
-}
-struct MyHandler;
-impl ricq::handler::Handler for MyHandler {
-    fn handle<'a: 'b, 'b>(&'a self, e: QEvent) -> Pin<Box<dyn Future<Output = ()> + Send + 'b>> {
-        Box::pin(async {
-            // add timeout here?
-            care!(on_event(e).await).ok();
-        })
-    }
 }
 
 pub async fn notify(msg: String) -> Result<()> {
     let msg_chain = bot_msg(&msg);
-    for (group,) in db::groups_get() {
+    let groups = db::cfg_get_str(db::K_NOTIFY_GROUPS).unwrap();
+    for group in groups.trim().split(' ') {
+        let group = group.parse().unwrap();
         CLIENT.send_group_message(group, msg_chain.clone()).await?;
     }
     Ok(())

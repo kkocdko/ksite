@@ -44,14 +44,14 @@ fn db_list_get() -> Vec<(u64, String, String)> {
 fn db_log_insert(id: u64, ret: String) {
     db! {"
         INSERT INTO health_log
-        VALUES (strftime('%s','now'), ?1, ?2)
+        VALUES (strftime('%s', 'now'), ?1, ?2)
     ", [id, ret]}
     .unwrap();
 }
 fn db_log_get() -> Vec<(u64, u64, String)> {
     db! {"
         SELECT * FROM health_log
-        WHERE strftime('%s','now') - time <= 3600 * 24 * 5
+        WHERE strftime('%s', 'now') - time <= 3600 * 24 * 5
         ORDER BY time DESC
     ", [], (0, 1, 2)}
     .unwrap()
@@ -59,7 +59,7 @@ fn db_log_get() -> Vec<(u64, u64, String)> {
 fn db_log_clean() {
     db! {"
         DELETE FROM health_log
-        WHERE strftime('%s','now') - time > 3600 * 24 * 7
+        WHERE strftime('%s', 'now') - time > 3600 * 24 * 7
     "}
     .unwrap();
 }

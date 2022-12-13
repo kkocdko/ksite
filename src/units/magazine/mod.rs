@@ -10,7 +10,7 @@ use axum::http::header::{CACHE_CONTROL, CONTENT_ENCODING, EXPIRES, REFRESH};
 use axum::response::Html;
 use axum::routing::{MethodRouter, Router};
 use once_cell::sync::Lazy;
-use std::io::Read as _;
+use std::io::Write as _;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
@@ -116,10 +116,9 @@ async fn refresh() -> Result<()> {
         r.4.map(|v| generate(&v, &mut o, 9)).ok();
         r.5.map(|v| generate(&v, &mut o, 5)).ok();
         o += PAGE[1];
-        let mut buf = Vec::new();
-        let mut enc = flate2::read::GzEncoder::new(o.as_bytes(), Default::default());
-        enc.read_to_end(&mut buf).unwrap();
-        buf
+        let mut enc = flate2::write::GzEncoder::new(Vec::new(), Default::default());
+        enc.write_all(o.as_bytes()).unwrap();
+        enc.finish().unwrap()
     })
     .await?;
     *CACHE.lock().unwrap() = (

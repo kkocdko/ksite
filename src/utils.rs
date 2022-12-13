@@ -431,3 +431,17 @@ pub fn _detect_str_in_binary() {
 //         u.on_upgrade(ws_handler)
 //     },
 // )
+
+// fn _explore(body: String) {
+//     let mut encoder = ZlibEncoder::new(vec![1], Compression::none());
+//     encoder.write_all(body.as_bytes()).ok();
+//     let v = encoder.finish().unwrap();
+//     let mut crc = flate2::Crc::new();
+//     crc.update(body.as_bytes());
+//     println!(
+//         "{:02x?}\n{:02x?}\n{:02x?}\n",
+//         crc.sum().to_be_bytes(),
+//         &v[..12],
+//         &v[v.len() - 12..]
+//     );
+// }
