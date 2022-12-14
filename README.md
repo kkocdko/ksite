@@ -6,23 +6,25 @@ All in one solution for my server.
 
 ### 0.7.0
 
+- `crate::tls` run server with default cert and key.
+
 - `crate::protect` protect and auto restart the process, log storage and more.
 
 ### 0.8.0
 
-- `crate`: proactive traffic restriction.
+- `crate` proactive traffic restriction.
 
-- `crate`: no out-of-service updates.
+- `crate` no out-of-service updates.
 
-- `units::throw`: tiny 2D game, with webrtc, ai.
+- `units::throw` tiny 2D game, with webrtc, ai.
 
-- `units::record`: record evidence picture, audio and video in real-time.
+- `units::record` record evidence picture, audio and video in real-time.
 
 ### 0.9.0
 
-- `units::paste_next`: (see the comments in its code).
+- `units::paste_next` (see the comments in its code).
 
-- `units::?`: convert office files to PDF by ms office rpc.
+- `units::?` convert office files to PDF by ms office rpc.
 
 ## Build
 

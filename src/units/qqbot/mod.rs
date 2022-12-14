@@ -34,9 +34,10 @@ mod db {
             CREATE TABLE IF NOT EXISTS qqbot_cfg
             (k BLOB PRIMARY KEY, v BLOB);
             INSERT OR IGNORE INTO qqbot_cfg VALUES
-            (cast('notify_groups' as BLOB), X'');
+            (X'6e6f746966795f67726f757073', X'');
         ")
         .unwrap();
+        // javascript: [...'abc'].map(v=>v.charCodeAt(0).toString(16).padStart(2,'0')).join('')
         // format: notify_groups = b"7652318,17931963,123132"
     }
 
@@ -274,15 +275,18 @@ async fn on_event(event: QEvent) {
             if let Some((_, _, group, user, content)) =
                 recent.iter().find(|v| v.1.contains(&e.inner.msg_seq))
             {
-                push_log!("recalled {group}>{user} {content}");
+                push_log!("recalled message = {group} : {user} : {content}");
             }
+        }
+        QEvent::Login(uin) => {
+            push_log!("current account = {uin}");
         }
         _ => {}
     }
 }
 
-pub async fn notify(msg: String) -> Result<()> {
-    let msg_chain = bot_msg(&msg);
+pub async fn notify(msg: &str) -> Result<()> {
+    let msg_chain = bot_msg(msg);
     for part in db::cfg_get_str(db::K_NOTIFY_GROUPS).unwrap().split(',') {
         if let Ok(group) = part.parse() {
             CLIENT.send_group_message(group, msg_chain.clone()).await?;
@@ -334,19 +338,17 @@ impl UpNotify {
     #[allow(clippy::await_holding_lock)]
     async fn trigger(&self) {
         let v = care!(fetch_text(self.query_url).await, return);
-        let v = v
-            .rsplit_once(".nupkg")
-            .and_then(|v| v.0.rsplit_once('/'))
-            .and_then(|v| v.1.split_once('.'));
+        let v = v.rsplit_once(".nupkg").and_then(|v| v.0.rsplit_once('/'));
         let v = care!(v.e(), return).1;
         let mut last = self.last.lock().unwrap();
         if *last == v {
+            // do nothing
         } else if last.is_empty() {
             *last = v.to_string();
         } else {
             *last = v.to_string();
-            drop(last);
-            care!(notify(v.to_lowercase()).await, ());
+            drop(last); // avoid the mutex guard alive cross await point
+            care!(notify(&v.to_lowercase()).await, ());
         }
     }
 }

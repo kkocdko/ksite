@@ -76,8 +76,9 @@ fn db_log_clean() {
 
 async fn get_handler() -> impl IntoResponse {
     const PAGE: [&str; 2] = include_page!("page.html");
-    let mut body = PAGE[0].to_string();
-    for (time, id, ret) in db_log_get() {
+    let mut body = String::new();
+    body += PAGE[0];
+    for (time, id, ret) in db_log_get().into_iter().rev() {
         writeln!(&mut body, "{time} | {id} | {ret}").unwrap();
     }
     body += PAGE[1];

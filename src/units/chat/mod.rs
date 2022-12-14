@@ -4,7 +4,7 @@ use crate::include_page;
 use anyhow::Result;
 use axum::extract::Path;
 use axum::http::header::CACHE_CONTROL;
-use axum::response::sse::{Event, Sse};
+use axum::response::sse::{Event as SseEvent, Sse};
 use axum::response::{Html, IntoResponse};
 use axum::routing::{MethodRouter, Router};
 use futures_core::{ready, Stream};
@@ -42,13 +42,13 @@ impl SseStream {
 }
 
 impl Stream for SseStream {
-    type Item = Result<Event>;
+    type Item = Result<SseEvent>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
         let (value, rx) = ready!(Pin::new(&mut this.fut).poll(cx));
         this.fut = Self::make_fut(rx);
-        Poll::Ready(value.map(|v| Ok(Event::default().data(v))))
+        Poll::Ready(value.map(|v| Ok(SseEvent::default().data(v))))
     }
 }
 

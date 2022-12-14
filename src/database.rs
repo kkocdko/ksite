@@ -11,7 +11,7 @@ fn file_path() -> PathBuf {
 fn load() -> Connection {
     let db = Connection::open(file_path()).unwrap();
 
-    // Optimize for Performance
+    // Optimization
     // https://www.sqlite.org/speed.html
     // https://www.sqlite.org/pragma.html#pragma_journal_mode
     // https://www.sqlite.org/withoutrowid.html
@@ -66,6 +66,8 @@ pub mod inner_ {
         db.execute_batch(sqls)
     }
 
+    // cast type using `rusqlite::params` macro to avoid binary inflation caused by generics
+    // TODO: but, is this useful?
     pub fn exec_param(sql: &str, params: &[&dyn ToSql]) -> rusqlite::Result<()> {
         let db = DB.lock().unwrap();
         let mut stmd = db.prepare_cached(sql)?;
