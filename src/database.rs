@@ -17,13 +17,13 @@ fn load() -> Connection {
     // https://www.sqlite.org/withoutrowid.html
     // https://www.sqlite.org/pragma.html#pragma_optimize
 
-    // The `WAL` mode will improve writing but slow down reading a little.
+    // improve writing by `WAL` mode, the `TRUNCATE` is alternative
     db.pragma_update(None, "journal_mode", "WAL").unwrap();
 
-    // Sync less often than `FULL` and still safe enough.
-    db.pragma_update(None, "synchronous", "NORMAL").unwrap();
+    // safe for app crashes, but might become corrupted if the os crashes
+    db.pragma_update(None, "synchronous", "OFF").unwrap();
 
-    // We don't need to touch db file during program execution.
+    // we don't need to touch db file during program execution
     db.pragma_update(None, "locking_mode", "EXCLUSIVE").unwrap();
 
     db
@@ -32,10 +32,10 @@ fn load() -> Connection {
 pub fn backup() {
     let mut db = DB.lock().unwrap();
 
-    // merge wal file
-    db.pragma_update(None, "journal_mode", "TRUNCATE").unwrap();
-
     // db.pragma_update(None, "optimize", "").unwrap();
+
+    // merge wal file
+    db.pragma_update(None, "journal_mode", "DELETE").unwrap();
 
     // shrink size
     db.execute_batch("VACUUM").unwrap();
@@ -61,6 +61,7 @@ pub mod inner_ {
 
     pub static DB: Lazy<Mutex<Connection>> = Lazy::new(|| Mutex::new(load()));
 
+    #[inline(never)]
     pub fn exec_batch(sqls: &str) -> rusqlite::Result<()> {
         let db = DB.lock().unwrap();
         db.execute_batch(sqls)
