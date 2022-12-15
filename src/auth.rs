@@ -1,10 +1,13 @@
+// Provide auth middleware.
+
 use crate::include_page;
 use crate::units::admin::db_get;
+use axum::body::Body;
 use axum::body::Bytes;
 use axum::http::header::{HeaderValue, COOKIE};
 use axum::http::{Request, StatusCode};
 use axum::middleware::Next;
-use axum::response::{Html, IntoResponse};
+use axum::response::{Html, IntoResponse, Response};
 use once_cell::sync::Lazy;
 use std::io::Write as _;
 
@@ -23,7 +26,7 @@ pub fn auth_key() -> &'static str {
     AUTH_COOKIE.to_str().unwrap().split_once('=').unwrap().1
 }
 
-pub async fn auth_layer<B>(req: Request<B>, next: Next<B>) -> impl IntoResponse {
+pub async fn auth_layer(req: Request<Body>, next: Next<Body>) -> Response {
     const AUTH_PAGE: &str = (include_page!("auth.html") as [_; 1])[0];
     match req
         .headers()
