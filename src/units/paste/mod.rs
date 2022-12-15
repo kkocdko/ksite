@@ -43,7 +43,7 @@ async fn get_handler(Path(id): Path<u64>) -> Html<String> {
     let mut body = String::new();
     body += PAGE[0];
     body += match &db_get(id) {
-        Some(v) => &v,
+        Some(v) => v,
         None => "New entry",
     };
     body += PAGE[1];

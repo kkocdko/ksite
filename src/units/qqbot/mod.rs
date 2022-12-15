@@ -380,3 +380,9 @@ pub async fn tick() {
         UP_RUST.trigger()
     );
 }
+
+/*
+https://api.winget.run/v2/packages/Google/Chrome
+https://github.com/ScoopInstaller/Extras/blob/master/bucket/vscode.json
+https://github.com/ScoopInstaller/Main/blob/master/bucket/rust.json
+*/

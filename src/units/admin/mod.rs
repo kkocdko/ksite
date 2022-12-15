@@ -52,12 +52,14 @@ async fn post_handler(q: RawQuery, body: Bytes) {
     let k = q.as_str();
     println!("received admin op {k}");
     match k {
-        "noop" => {}
+        "noop" => {
+            // do nothing
+        }
         "reset_auth_key" => {
             db_del("auth_key");
+            // need restart to take effect
         }
         "restart_process" => {
-            println!("restart_process");
             std::process::exit(0);
         }
         "backup_database" => {
@@ -67,7 +69,7 @@ async fn post_handler(q: RawQuery, body: Bytes) {
             db_set(k, &body);
         }
         _ => {
-            println!("unknown op {k}");
+            println!("unknown op");
         }
     }
 }
