@@ -4,13 +4,9 @@ All in one solution for my server.
 
 ## TODO
 
-### 0.7.0
+### 0.8.0
 
 - `crate::tls` run server with default cert and key.
-
-- `crate::protect` protect and auto restart the process, log storage and more.
-
-### 0.8.0
 
 - `crate` proactive traffic restriction.
 

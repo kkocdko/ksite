@@ -5,10 +5,7 @@ mod ticker;
 mod tls;
 mod units;
 mod utils;
-use std::io;
 use std::net::SocketAddr;
-use std::process;
-use std::thread;
 use std::time::Duration;
 
 fn main() {
@@ -17,20 +14,9 @@ fn main() {
 
 async fn run() {
     // return units::paste_next::dev().await;
-    println!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
-    println!("enter :q to quit");
-    println!("auth key = {}", auth::auth_key());
+    println!("crate::run\nauth key = {}", auth::auth_key());
 
     // db_upgrade(); // uncomment this if we need to upgrade database
-
-    thread::spawn(|| loop {
-        let buf = &mut String::new();
-        if io::stdin().read_line(buf).is_ok() && buf.trim() == ":q" {
-            println!("quit");
-            process::exit(0);
-        }
-        thread::sleep(Duration::from_secs(1));
-    });
 
     let server = async {
         let addr = SocketAddr::from(([0, 0, 0, 0], 9304));
