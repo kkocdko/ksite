@@ -6,14 +6,13 @@ use std::future::Future;
 use std::io::Write as _;
 use std::process::Command;
 
-#[inline(always)]
 pub fn launch<F, Fut>(main: F)
 where
     F: FnOnce() -> Fut,
     Fut: Future<Output = ()>,
 {
-    const WRAPPED_FLAG: &str = "KSITE_WRAPPED";
-    if env::var(WRAPPED_FLAG).is_ok() {
+    const BARE_SWITCH: &str = "--bare";
+    if env::args_os().any(|v| v == BARE_SWITCH) {
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
@@ -25,8 +24,7 @@ where
         env!("CARGO_PKG_NAME"),
         " v",
         env!("CARGO_PKG_VERSION"),
-        " with launcher"
-    ),);
+    ));
     let mut log_file = File::options()
         .append(true)
         .create(true)
@@ -42,13 +40,12 @@ where
     //     // tail -n16 ksite.log
     // });
     loop {
-        let mut child = Command::new(env::current_exe().unwrap())
-            .env(WRAPPED_FLAG, "1")
+        let exit_status = Command::new(env::current_exe().unwrap())
+            .arg(BARE_SWITCH)
             .stdout(log_file.try_clone().unwrap())
             .stderr(log_file.try_clone().unwrap())
-            .spawn()
+            .status()
             .unwrap();
-        let exit_status = child.wait().unwrap();
         writeln!(&mut log_file, "{exit_status}").unwrap();
     }
 }

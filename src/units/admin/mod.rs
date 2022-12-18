@@ -52,21 +52,24 @@ async fn post_handler(q: RawQuery, body: Bytes) {
     let k = q.as_str();
     println!("received admin op {k}");
     match k {
-        "noop" => {
+        "trigger_noop" => {
             // do nothing
         }
-        "reset_auth_key" => {
+        "trigger_reset_auth_key" => {
             db_del("auth_key");
             // need restart to take effect
         }
-        "restart_process" => {
+        "trigger_restart_process" => {
             std::process::exit(0);
         }
-        "backup_database" => {
+        "trigger_backup_database" => {
             crate::database::backup();
         }
-        "ssl_cert" | "ssl_key" => {
-            db_set(k, &body);
+        "set_ssl_cert" => {
+            db_set("ssl_cert", &body);
+        }
+        "set_ssl_key" => {
+            db_set("ssl_key", &body);
         }
         _ => {
             println!("unknown op");

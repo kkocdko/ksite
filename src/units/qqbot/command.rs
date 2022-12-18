@@ -15,19 +15,15 @@ pub async fn on_group_msg(
     msg_parts: Vec<&str>,
     client: &ricq::Client,
 ) -> Result<String> {
-    static REPLIES: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(|| {
-        Mutex::new(HashMap::from([(
-            "运行平台".into(),
-            concat!(
-                env!("CARGO_PKG_NAME"),
-                " v",
-                env!("CARGO_PKG_VERSION"),
-                " with ricq and axum"
-            )
-            .into(),
-        )]))
-    });
+    static REPLIES: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(|| Default::default());
     Ok(match msg_parts[..] {
+        ["运行平台"] => concat!(
+            env!("CARGO_PKG_NAME"),
+            " v",
+            env!("CARGO_PKG_VERSION"),
+            " with ricq and axum"
+        )
+        .into(),
         ["kk单身多久了"] => format!("kk已连续单身 {:.3} 天了", elapse(10485432e2)),
         // ["开学倒计时"] => format!("距 开学 仅 {:.3} 天", -elapse(16617312e2)),
         // ["高考倒计时"] => format!("距 2023 高考仅 {:.3} 天", -elapse(16860996e2)),
