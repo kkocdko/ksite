@@ -1,9 +1,10 @@
+<!-- This is the page example for each units -->
 <!DOCTYPE html>
 
 <head>
   <meta name="viewport" content="width=device-width" />
   <link rel="icon" href="data:" />
-  <title>Proxy - ksite</title>
+  <title>Common - ksite</title>
 </head>
 
 <style>
@@ -37,20 +38,29 @@
   header > :active {
     background: #8887;
   }
-  iframe {
+  header ~ * {
+    font-family: monospace;
     border-top-width: 1px;
+  }
+  textarea {
     flex: 1;
-    padding: 0;
+    white-space: pre;
   }
 </style>
 
 <body>
   <header>
-    <button>Visit</button>
-    <input />
+    <button onclick="alert('Button clicked')">Button</button>
+    <select id="$k">
+      <option value hidden>Click to select</option>
+      <option>first_option</option>
+      <option>second_option</option>
+    </select>
   </header>
-  <!-- Socks mode, http mode -->
-  <iframe></iframe>
+  <input id="$v" placeholder="VALUE" />
+  <textarea id="$log" readonly>/*{slot}*/</textarea>
 </body>
 
-<script></script>
+<script>
+  // script here
+</script>
