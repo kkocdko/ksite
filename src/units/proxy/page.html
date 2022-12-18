@@ -8,6 +8,7 @@
 
 <style>
   * {
+    appearance: none;
     margin: 0;
     font: 14px / 20px sans-serif;
     background: #fff;
@@ -19,15 +20,15 @@
     }
   }
   body {
-    display: grid;
-    grid: repeat(1, auto) 1fr / none;
+    display: flex;
+    flex-direction: column;
     height: 100vh;
   }
   header > *,
   header ~ * {
     padding: 8px 10px;
     border: 0 solid #888;
-    outline: none;
+    outline: 0;
   }
   header > * {
     float: left;
@@ -38,23 +39,26 @@
   }
   header ~ * {
     font-family: monospace;
-    white-space: pre;
     border-top-width: 1px;
   }
-  #\$v:fullscreen {
-    border-top-width: 0;
+  textarea {
+    flex: 1;
+    white-space: pre;
+  }
+  iframe {
+    border-top-width: 1px;
+    flex: 1;
+    padding: 0;
   }
 </style>
 
 <body>
   <header>
-    <button
-      onclick="fetch(location,{method:'POST',body:$v.value}).catch(alert)"
-    >
-      Save
-    </button>
-    <button onclick="$v.select();document.execCommand('copy')">Copy</button>
-    <button onclick="$v.requestFullscreen()">Fullscreen</button>
+    <button>Visit</button>
+    <input />
   </header>
-  <textarea id="$v">/*{slot}*/</textarea>
+  <!-- Socks mode, http mode -->
+  <iframe></iframe>
 </body>
+
+<script></script>

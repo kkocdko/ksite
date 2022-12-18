@@ -8,6 +8,7 @@
 
 <style>
   * {
+    appearance: none;
     margin: 0;
     font: 14px / 20px sans-serif;
     background: #fff;
@@ -19,15 +20,15 @@
     }
   }
   body {
-    display: grid;
-    grid: repeat(3, auto) 1fr / none;
+    display: flex;
+    flex-direction: column;
     height: 100vh;
   }
   header > *,
   header ~ * {
     padding: 8px 10px;
     border: 0 solid #888;
-    outline: none;
+    outline: 0;
   }
   header > * {
     float: left;
@@ -38,11 +39,14 @@
   }
   header ~ * {
     font-family: monospace;
-    white-space: pre;
     border-top-width: 1px;
   }
   #\$data:focus {
     height: calc(70vh - 60px);
+  }
+  #\$log {
+    flex: 1;
+    white-space: pre;
   }
 </style>
 

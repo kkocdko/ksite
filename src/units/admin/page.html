@@ -8,6 +8,7 @@
 
 <style>
   * {
+    appearance: none;
     margin: 0;
     font: 14px / 20px sans-serif;
     background: #fff;
@@ -19,15 +20,15 @@
     }
   }
   body {
-    display: grid;
-    grid: repeat(2, auto) 1fr / none;
+    display: flex;
+    flex-direction: column;
     height: 100vh;
   }
   header > *,
   header ~ * {
     padding: 8px 10px;
     border: 0 solid #888;
-    outline: none;
+    outline: 0;
   }
   header > * {
     float: left;
@@ -38,23 +39,26 @@
   }
   header ~ * {
     font-family: monospace;
-    white-space: pre;
     border-top-width: 1px;
+  }
+  textarea {
+    flex: 1;
+    white-space: pre;
   }
 </style>
 
 <body>
   <header>
     <button onclick="send().catch(alert)">Send</button>
+    <select id="$k">
+      <option value hidden>Click to select</option>
+      <option>trigger_reset_auth_key</option>
+      <option>trigger_restart_process</option>
+      <option>trigger_backup_database</option>
+      <option>set_ssl_cert</option>
+      <option>set_ssl_key</option>
+    </select>
   </header>
-  <select id="$k">
-    <option value="noop" selected>(trigger) noop</option>
-    <option value="reset_auth_key">(trigger) reset_auth_key</option>
-    <option value="restart_process">(trigger) restart_process</option>
-    <option value="backup_database">(trigger) backup_database</option>
-    <option value="ssl_cert">(set) ssl_cert</option>
-    <option value="ssl_key">(set) ssl_key</option>
-  </select>
   <textarea id="$v" placeholder="VALUE"></textarea>
 </body>
 
