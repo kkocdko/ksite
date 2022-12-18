@@ -48,13 +48,13 @@ use tokio_rustls::TlsAcceptor;
 /// * https://github.com/hyperium/hyper/blob/v0.14.20/src/server/server.rs#L176
 /// * https://github.com/tokio-rs/axum/tree/axum-v0.5.15/examples/low-level-rustls
 /// * https://github.com/programatik29/axum-server
-pub async fn serve(addr: &SocketAddr, mut app: Router) {
+pub async fn serve(addr: &SocketAddr, app: Router) {
     static IS_FIRST_CALL: AtomicBool = AtomicBool::new(true);
     assert!(IS_FIRST_CALL.load(Ordering::SeqCst), "called twice");
     IS_FIRST_CALL.store(false, Ordering::SeqCst);
 
     // make the clone() cheaper. https://docs.rs/axum/0.6.1/src/axum/routing/mod.rs.html#538-542
-    app = app.with_state(());
+    let app = app.with_state(());
 
     let mut tls_cfg = ServerConfig::builder()
         .with_safe_defaults()
@@ -84,10 +84,11 @@ pub async fn serve(addr: &SocketAddr, mut app: Router) {
     loop {
         let mut stream = match poll_fn(|cx| Pin::new(&mut listener).poll_accept(cx)).await {
             Some(Ok(v)) => v,
+            // e => panic!("{e:?}"),
             _ => continue, // ignore error here
         };
 
-        let svc = app.clone();
+        let svc = app.clone(); // axum's Router implemented the HttpService trait
         tokio::spawn(tokio::time::timeout(TIMEOUT, async move {
             // redirect HTTP to HTTPS
             let mut flag = [0]; // expect 0x16, TLS handshake

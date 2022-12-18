@@ -15,7 +15,7 @@ pub async fn on_group_msg(
     msg_parts: Vec<&str>,
     client: &ricq::Client,
 ) -> Result<String> {
-    static REPLIES: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(|| Default::default());
+    static REPLIES: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(Default::default);
     Ok(match msg_parts[..] {
         ["运行平台"] => concat!(
             env!("CARGO_PKG_NAME"),

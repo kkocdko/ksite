@@ -19,7 +19,7 @@ async fn run() {
     // db_upgrade(); // uncomment this if we need to upgrade database
 
     let server = async {
-        let addr = SocketAddr::from(([0, 0, 0, 0], 9304));
+        let addr = SocketAddr::from(([0, 0, 0, 0], 9304)); // server address here
         println!("server address = {addr}");
 
         let app = axum::Router::new()
@@ -39,7 +39,7 @@ async fn run() {
 
     let oscillator = async {
         let interval = Duration::from_secs(60);
-        println!("oscillator interval = {:?}", &interval);
+        println!("oscillator interval = {interval:?}");
 
         let mut interval = tokio::time::interval(interval);
         loop {

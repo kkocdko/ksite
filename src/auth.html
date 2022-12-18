@@ -18,35 +18,29 @@
       background: #000;
     }
   }
-  body {
-    display: grid;
-  }
-  header > *,
-  header ~ * {
+  body > * {
     padding: 8px 10px;
     border: 0 solid #888;
-    outline: none;
+    outline: 0;
   }
-  header > * {
+  button {
     border-right-width: 1px;
   }
-  header > :active {
+  button:active {
     background: #8887;
   }
-  header ~ * {
+  input {
+    width: calc(100vw - 20px);
     font-family: monospace;
-    border-top-width: 1px;
+    border-width: 1px 0;
   }
 </style>
 
 <body>
-  <header>
-    <button
-      onclick="document.cookie=`auth=${$v.value};max-age=94608000;path=/`;location.reload()"
-    >
-      Authorize
-    </button>
-  </header>
+  <button
+    onclick="document.cookie=`auth=${$v.value};max-age=94608000;path=/`;location.reload()"
+  >
+    Authorize
+  </button>
   <input id="$v" placeholder="AUTH KEY" />
-  <div></div>
 </body>
