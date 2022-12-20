@@ -52,13 +52,13 @@
     <button
       onclick="fetch(`/qqbot?${$k.value}`,{method:'post',body:$v.value}).catch(alert)"
     >
-      Set
+      Send
     </button>
     <select id="$k">
-      <option value hidden>Click to select</option>
-      <option>device_json</option>
-      <option>token_json</option>
-      <option>notify_groups</option>
+      <option value hidden>Click to select operation</option>
+      <option>set_device_json</option>
+      <option>set_token_json</option>
+      <option>set_notify_groups</option>
     </select>
   </header>
   <input id="$v" placeholder="VALUE" />

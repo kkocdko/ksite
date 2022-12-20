@@ -1,0 +1,61 @@
+From b76db0fc46ebf931d3fc9530c2b5d24b39e9395a Mon Sep 17 00:00:00 2001
+From: kkocdko <kkocdko@163.com>
+Date: Tue, 20 Dec 2022 15:04:04 +0800
+Subject: [PATCH] lite_version
+
+---
+ ricq/src/client/processor/mod.rs         | 3 +++
+ ricq/src/client/processor/online_push.rs | 2 ++
+ 2 files changed, 5 insertions(+)
+
+diff --git a/ricq/src/client/processor/mod.rs b/ricq/src/client/processor/mod.rs
+index df340fe..d5b1c50 100644
+--- a/ricq/src/client/processor/mod.rs
++++ b/ricq/src/client/processor/mod.rs
+@@ -89,6 +89,7 @@ impl super::Client {
+                         }
+                     }
+                 }
++                #[cfg(lite_version_disabled)]
+                 "MessageSvc.PushNotify" => {
+                     // c2c流程：
+                     // 1. Server 发送 PushNotify 到 Client, 表示有通知需要 Client 拉取 (不带具体内容)
+@@ -130,6 +131,7 @@ impl super::Client {
+                         }
+                     }
+                 }
++                #[cfg(lite_version_disabled)]
+                 "OnlinePush.PbPushTransMsg" => {
+                     let online_push_trans = cli
+                         .engine
+@@ -170,6 +172,7 @@ impl super::Client {
+                         }
+                     }
+                 }
++                #[cfg(lite_version_disabled)]
+                 "OnlinePush.PbC2CMsgSync" => {
+                     // 其他设备发送消息，同步
+                     let push = cli.engine.read().await.decode_c2c_sync_packet(pkt.body);
+diff --git a/ricq/src/client/processor/online_push.rs b/ricq/src/client/processor/online_push.rs
+index 83fe315..bdab144 100644
+--- a/ricq/src/client/processor/online_push.rs
++++ b/ricq/src/client/processor/online_push.rs
+@@ -42,6 +42,7 @@ impl Client {
+         }
+ 
+         if let Some(ptt) = group_message_part.ptt {
++            #[cfg(lite_version_disabled)]
+             self.handler
+                 .handle(QEvent::GroupAudioMessage(GroupAudioMessageEvent {
+                     client: self.clone(),
+@@ -152,6 +153,7 @@ impl Client {
+                     let i_type = r.get_u8();
+                     r.get_u8();
+                     match i_type {
++                        #[cfg(lite_version_disabled)]
+                         0x0c => {
+                             let operator = r.get_u32() as i64;
+                             if operator == self.uin().await {
+-- 
+2.38.1
+

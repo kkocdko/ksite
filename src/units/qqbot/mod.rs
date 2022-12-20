@@ -89,7 +89,7 @@ mod db {
             WHERE k = ?
             ",
             [k.as_bytes()],
-            &|r| r.get(0)
+            *|r| r.get(0)
         )
         .ok()
     }
@@ -302,7 +302,21 @@ pub fn service() -> Router {
     async fn post_handler(q: RawQuery, body: Bytes) {
         let q = q.0.unwrap();
         let k = q.as_str();
-        db::cfg_set(k, &body);
+        println!("units::qqbot received op {k}");
+        match k {
+            "set_device_json" => {
+                db::cfg_set("device_json", &body);
+            }
+            "set_token_json" => {
+                db::cfg_set("token_json", &body);
+            }
+            "set_notify_groups" => {
+                db::cfg_set("notify_groups", &body);
+            }
+            _ => {
+                println!("units::qqbot unknown op");
+            }
+        }
     }
 
     async fn get_handler() -> Html<String> {
