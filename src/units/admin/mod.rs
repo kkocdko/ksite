@@ -32,7 +32,7 @@ pub fn db_get(k: &str) -> Option<Vec<u8>> {
         WHERE k = ?
         ",
         [k.as_bytes()],
-        &|r| r.get(0)
+        *|r| r.get(0)
     )
     .ok()
 }
@@ -50,7 +50,7 @@ pub fn db_del(k: &str) {
 async fn post_handler(q: RawQuery, body: Bytes) {
     let q = q.0.unwrap();
     let k = q.as_str();
-    println!("received admin op {k}");
+    println!("units::admin received op {k}");
     match k {
         "trigger_noop" => {
             // do nothing
@@ -72,7 +72,7 @@ async fn post_handler(q: RawQuery, body: Bytes) {
             db_set("ssl_key", &body);
         }
         _ => {
-            println!("unknown op");
+            println!("units::admin unknown op");
         }
     }
 }

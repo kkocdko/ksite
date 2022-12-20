@@ -131,7 +131,7 @@ macro_rules! db {
     //     )
     // }};
     // query and return the first row
-    ( $sql:literal, [ $($param:expr),* ], &$f:expr ) => {{
+    ( $sql:literal, [ $($param:expr),* ], *$f:expr ) => {{
         $crate::database::inner_::query_row(
             $crate::strip_str!($sql),
             rusqlite::params![$($param),*],

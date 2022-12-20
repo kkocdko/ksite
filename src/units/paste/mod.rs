@@ -33,7 +33,7 @@ fn db_get(id: u64) -> Option<String> {
         WHERE id = ?
         ",
         [id],
-        &|r| Ok(String::from_utf8(r.get(0)?).unwrap())
+        *|r| Ok(String::from_utf8(r.get(0)?).unwrap())
     )
     .ok()
 }
