@@ -30,6 +30,7 @@ async fn run() {
             .merge(units::magazine::service())
             .merge(units::paste::service())
             // .merge(units::paste_next::service())
+            // .merge(units::proxy::service())
             .merge(units::qqbot::service());
 
         // .into_make_service_with_connect_info::<SocketAddr>();

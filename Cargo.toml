@@ -1,6 +1,6 @@
 [package]
 name = "ksite"
-version = "0.7.3"
+version = "0.7.4"
 edition = "2021"
 
 [profile.release]
@@ -49,6 +49,6 @@ webpki-roots = "0.22"
 
 [patch.crates-io]
 # ricq = { path = "/home/kkocdko/misc/code/ricq/ricq" }
-ricq = { rev = "f0d2662", git = "https://github.com/kkocdko/ricq" }
+ricq = { rev = "b76db0f", git = "https://github.com/kkocdko/ricq" }
 prost-build = { path = "src/crates/prost-gen" } # for `ricq-core`
 tracing = { path = "src/crates/tracing-fake" }
