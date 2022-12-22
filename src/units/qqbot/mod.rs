@@ -1,6 +1,6 @@
 //! QQ robot for fun.
 
-mod command;
+mod commands;
 use crate::auth::auth_layer;
 use crate::ticker::Ticker;
 use crate::utils::{fetch_text, log_escape, OptionResult};
@@ -251,7 +251,7 @@ async fn on_event(event: QEvent) {
             if prefix_matched(&msg).await {
                 let msg_parts = msg.split_whitespace().skip(1).collect();
                 if let Ok(reply) =
-                    care!(command::on_group_msg(e.group_code, msg_parts, &CLIENT).await)
+                    care!(commands::on_group_msg(e.group_code, msg_parts, &CLIENT).await)
                 {
                     let reply = bot_msg(&reply);
                     let result = CLIENT.send_group_message(e.group_code, reply).await;
