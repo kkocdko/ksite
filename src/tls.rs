@@ -60,8 +60,22 @@ pub async fn serve(addr: &SocketAddr, app: Router) {
         .with_safe_defaults()
         .with_no_client_auth()
         .with_single_cert(
-            vec![Certificate(db_get("ssl_cert").unwrap())],
-            PrivateKey(db_get("ssl_key").unwrap()),
+            vec![Certificate(
+                db_get("ssl_cert")
+                    .or_else(|| {
+                        println!("using default ssl cert / key");
+                        Some(default_cert::CERT.into())
+                    })
+                    .unwrap(),
+            )],
+            PrivateKey(
+                db_get("ssl_key")
+                    .or_else(|| {
+                        println!("using default ssl cert / key");
+                        Some(default_cert::KEY.into())
+                    })
+                    .unwrap(),
+            ),
         )
         .unwrap();
     // enable http2, needs hyper feature "http2"
@@ -81,6 +95,7 @@ pub async fn serve(addr: &SocketAddr, app: Router) {
 
     let mut listener = AddrIncoming::bind(addr).unwrap();
 
+    // Event loop
     loop {
         let mut stream = match poll_fn(|cx| Pin::new(&mut listener).poll_accept(cx)).await {
             Some(Ok(v)) => v,
@@ -116,3 +131,7 @@ const TIMEOUT: Duration = Duration::from_secs(75);
 
 const TO_HTTPS_PAGE: &[u8] = b"HTTP/1.1 200 OK\r\ncontent-type:text/html\r\n\r\n\
 <script>location=location.href.replace(':','s:')</script>\r\n\r\n\0";
+
+mod default_cert {
+    include!("tls.defaults.rs");
+}
