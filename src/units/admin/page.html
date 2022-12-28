@@ -64,7 +64,7 @@
 <script>
   const send = async () => {
     let body;
-    if ($k.value.startsWith("ssl_")) {
+    if ($k.value.startsWith("set_ssl_")) {
       if (!$v.value.startsWith("-----")) throw alert("must be PEM format");
       const base64 = $v.value.split("-----")[2].replaceAll("\n", "");
       body = await fetch(`data:;base64,${base64}`).then((v) => v.blob());
