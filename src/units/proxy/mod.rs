@@ -1,11 +1,8 @@
 //! Primitive proxy over http(s).
-
-/*
-
-* Page mode: browser iframe <-> service worker <-> server. Save data mode.
-* Raw mode: tcp and udp -> http -> browser -> client.
-
-*/
+//!
+//! 1. Browser Mode: view web page with proxy directly, for simple usage.
+//! 2. Shadowsocks Mode: simple shadowsocks proxy implement.
+//! 3. UDP 53 Mode: through client's UDP 53 port.
 
 use crate::include_page;
 use axum::response::Html;
@@ -14,7 +11,6 @@ use axum::routing::{MethodRouter, Router};
 // https://github.com/dizda/fast-socks5
 
 pub fn service() -> Router {
-   
     Router::new()
         .route(
             "/proxy",

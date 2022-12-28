@@ -8,6 +8,9 @@ mod utils;
 use std::net::SocketAddr;
 use std::time::Duration;
 
+// #[global_allocator]
+// static ALLOC: rpmalloc::RpMalloc = rpmalloc::RpMalloc;
+
 fn main() {
     launcher::launch(run);
 }
@@ -25,7 +28,6 @@ async fn run() {
         let app = axum::Router::new()
             .merge(units::admin::service())
             .merge(units::chat::service())
-            .merge(units::health::service())
             .merge(units::info::service())
             .merge(units::magazine::service())
             .merge(units::paste::service())
@@ -46,7 +48,6 @@ async fn run() {
         loop {
             interval.tick().await;
             let _ = tokio::join!(
-                units::health::tick(),
                 units::magazine::tick(),
                 // units::paste_next::tick(),
                 units::qqbot::tick(),

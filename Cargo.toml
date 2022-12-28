@@ -1,6 +1,6 @@
 [package]
 name = "ksite"
-version = "0.7.4"
+version = "0.7.6"
 edition = "2021"
 
 [profile.release]
@@ -8,7 +8,7 @@ panic = "abort" # CAUTIONS! cause tokio worker abort
 strip = true
 lto = "fat"
 codegen-units = 1
-opt-level = "z"
+# opt-level = "z"
 
 # Best check speed, `cargo check --profile=ci`
 [profile.ci]
@@ -46,9 +46,10 @@ serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 tokio-rustls = "0.23"
 webpki-roots = "0.22"
+# rpmalloc = "0.2"
 
 [patch.crates-io]
 # ricq = { path = "/home/kkocdko/misc/code/ricq/ricq" }
-ricq = { rev = "b76db0f", git = "https://github.com/kkocdko/ricq" }
+ricq = { rev = "b76db0f", git = "https://github.com/kkocdko/ricq" } # lite patch
 prost-build = { path = "src/crates/prost-gen" } # for `ricq-core`
 tracing = { path = "src/crates/tracing-fake" }
