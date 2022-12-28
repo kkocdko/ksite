@@ -365,7 +365,7 @@ macro_rules! strip_str {
 }
 
 #[macro_export]
-macro_rules! include_page {
+macro_rules! include_src {
     ($s:expr) => {{
         use $crate::utils::str_const_ops_::*;
         const S: &str = $crate::strip_str!(include_str!($s));

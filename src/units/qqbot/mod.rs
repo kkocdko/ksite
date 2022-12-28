@@ -4,7 +4,7 @@ mod commands;
 use crate::auth::auth_layer;
 use crate::ticker::Ticker;
 use crate::utils::{fetch_text, log_escape, OptionResult};
-use crate::{care, include_page};
+use crate::{care, include_src};
 use anyhow::Result;
 use axum::body::Bytes;
 use axum::extract::RawQuery;
@@ -320,7 +320,7 @@ pub fn service() -> Router {
     }
 
     async fn get_handler() -> Html<String> {
-        const PAGE: [&str; 2] = include_page!("page.html");
+        const PAGE: [&str; 2] = include_src!("page.html");
         let mut body = String::new();
         body += PAGE[0];
         for (time, content) in db::log_get().into_iter().rev() {

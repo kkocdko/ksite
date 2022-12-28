@@ -2,7 +2,7 @@
 
 use crate::ticker::Ticker;
 use crate::utils::{fetch_text, OptionResult};
-use crate::{care, include_page};
+use crate::{care, include_src};
 use anyhow::Result;
 use axum::body::Bytes;
 use axum::http::header::{HeaderName, HeaderValue};
@@ -71,7 +71,7 @@ fn generate(mut i: &str, o: &mut String, mut limit: usize) -> Result<()> {
 
 type Res = ([(HeaderName, HeaderValue); 2], Html<Bytes>);
 
-const PAGE: [&str; 2] = include_page!("page.html");
+const PAGE: [&str; 2] = include_src!("page.html");
 
 static CACHE: Lazy<Mutex<Res>> = Lazy::new(|| {
     let body = format!("{}<h2>Magazine is generating ...</h2>{}", PAGE[0], PAGE[1]);

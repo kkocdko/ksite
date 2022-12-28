@@ -1,7 +1,7 @@
 //! Admin console.
 
 use crate::auth::auth_layer;
-use crate::{db, include_page};
+use crate::{db, include_src};
 use axum::body::Bytes;
 use axum::extract::RawQuery;
 use axum::middleware;
@@ -85,7 +85,7 @@ pub fn service() -> Router {
     Router::new().route(
         "/admin",
         MethodRouter::new()
-            .get(|| async { Html((include_page!("page.html") as [_; 1])[0]) })
+            .get(|| async { Html((include_src!("page.html") as [_; 1])[0]) })
             .post(post_handler)
             .layer(middleware::from_fn(auth_layer)),
     )

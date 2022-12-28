@@ -1,6 +1,6 @@
 //! Simple chat rooms, client-to-client encrypted.
 
-use crate::include_page;
+use crate::include_src;
 use anyhow::Result;
 use axum::extract::Path;
 use axum::http::header::CACHE_CONTROL;
@@ -96,7 +96,7 @@ pub fn service() -> Router {
             MethodRouter::new().get(|| async {
                 (
                     [(CACHE_CONTROL, "max-age=300")],
-                    Html((include_page!("page.html") as [_; 1])[0]),
+                    Html((include_src!("page.html") as [_; 1])[0]),
                 )
             }),
         )

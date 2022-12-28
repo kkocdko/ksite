@@ -2,7 +2,7 @@
 
 use crate::auth::auth_layer;
 use crate::utils::html_escape;
-use crate::{db, include_page};
+use crate::{db, include_src};
 use axum::extract::Path;
 use axum::middleware;
 use axum::response::{Html, Redirect};
@@ -39,7 +39,7 @@ fn db_get(id: u64) -> Option<String> {
 }
 
 async fn get_handler(Path(id): Path<u64>) -> Html<String> {
-    const PAGE: [&str; 2] = include_page!("page.html");
+    const PAGE: [&str; 2] = include_src!("page.html");
     let mut body = String::new();
     body += PAGE[0];
     body += match &db_get(id) {

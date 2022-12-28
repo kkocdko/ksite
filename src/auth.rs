@@ -1,6 +1,6 @@
 // Provide auth middleware.
 
-use crate::include_page;
+use crate::include_src;
 use crate::units::admin::db_get;
 use axum::body::Body;
 use axum::body::Bytes;
@@ -27,7 +27,7 @@ pub fn auth_key() -> &'static str {
 }
 
 pub async fn auth_layer(req: Request<Body>, next: Next<Body>) -> Response {
-    const AUTH_PAGE: &str = (include_page!("auth.html") as [_; 1])[0];
+    const AUTH_PAGE: &str = (include_src!("auth.html") as [_; 1])[0];
     match req
         .headers()
         .get_all(COOKIE)
