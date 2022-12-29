@@ -100,11 +100,11 @@ static CLIENT: Lazy<Client<HttpsConnector<HttpConnector>>> = Lazy::new(|| {
             })
             .collect(),
     };
-    let tls_cfg = ClientConfig::builder()
+    let mut tls_cfg = ClientConfig::builder()
         .with_safe_defaults()
         .with_root_certificates(root_cert_store)
         .with_no_client_auth();
-    // tls_cfg.alpn_protocols = vec![b"http/1.1".to_vec()]; // http2 is not supported
+    tls_cfg.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
     let mut http_conn = HttpConnector::new();
     http_conn.enforce_http(false); // allow HTTPS
     let connector = HttpsConnector::from((http_conn, tls_cfg));
@@ -365,6 +365,7 @@ macro_rules! strip_str {
 }
 
 #[macro_export]
+/// Include a source code file, with solt detect and blank strip.
 macro_rules! include_src {
     ($s:expr) => {{
         use $crate::utils::str_const_ops_::*;

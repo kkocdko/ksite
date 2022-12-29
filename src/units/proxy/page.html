@@ -46,7 +46,7 @@
 
 <body>
   <header>
-    <button>Visit</button>
+    <button onclick="visit()">Visit</button>
     <input placeholder="TYPE URL HERE" />
   </header>
   <iframe></iframe>
@@ -54,4 +54,9 @@
 
 <script>
   navigator.serviceWorker.register("/proxy/sw.js");
+  const visit = () => {
+    document.querySelector("iframe").src =
+      "/proxy/inline?" + document.querySelector("input").value;
+  };
+  // sessionStorage;
 </script>
