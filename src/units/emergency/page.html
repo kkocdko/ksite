@@ -49,15 +49,34 @@
 
 <body>
   <header>
-    <button>Video</button>
-    <button>Audio</button>
-    <button>Photo</button>
+    <button id="$video">Video</button>
+    <button id="$audio">Audio</button>
+    <button id="$photo">Photo</button>
   </header>
-  <!-- <input id="$v" placeholder="VALUE" /> -->
-  <!-- <textarea id="$log" readonly>/*{slot}*/</textarea> -->
+  <video id="$preview"></video>
 </body>
 
 <script type="module">
+  let state = null;
+  $video.onclick = async () => {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: {
+        width: { max: 1280 },
+        height: { max: 720 },
+        facingMode: { ideal: "environment" },
+      },
+    });
+    const recorder = new MediaRecorder(stream);
+    $preview.muted = true;
+    $preview.srcObject = stream;
+    $preview.play();
+    recorder.ondataavailable = ({ data }) => {
+      data.type
+      console.log(data);
+    };
+    recorder.start(500);
+  };
   // const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   // const vstream = await navigator.mediaDevices.getUserMedia({
   //   video: {

@@ -2,51 +2,45 @@
 
 use crate::auth::auth_layer;
 use crate::include_src;
-use axum::body::Bytes;
-use axum::extract::Path;
-use axum::http::status::StatusCode;
+use axum::body::Body;
+use axum::extract::{FromRequest, Path};
+use axum::http::header::CONTENT_TYPE;
+use axum::http::{Request, StatusCode};
 use axum::middleware;
 use axum::response::{Html, IntoResponse};
-use axum::routing::MethodRouter;
-use axum::Router;
+use axum::routing::{MethodRouter, Router};
 use std::fmt::Write as _;
-use std::io::Write as _;
 
 mod db {
     use crate::db;
 
-    pub const KIND_UNKNOWN: u8 = 0;
-    pub const KIND_IMAGE: u8 = 1;
-    pub const KIND_AUDIO: u8 = 2;
-    pub const KIND_VIDEO: u8 = 3;
-
     pub fn init() {
         db!("
             CREATE TABLE IF NOT EXISTS emergency_chunks
-            (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER, kind INTEGER, data BLOB);
+            (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER, mime BLOB, data BLOB);
         ")
         .unwrap();
     }
 
-    pub fn insert(data: &[u8], kind: u8) {
+    pub fn insert(mime: &str, data: &[u8]) {
         db!(
             "
             INSERT INTO emergency_chunks
             VALUES (NULL, strftime('%s', 'now'), ?1, ?2)
             ",
-            [data, kind]
+            [mime.as_bytes(), data]
         )
         .unwrap();
     }
 
-    /// Returns `Vec<(id, timestamp, kind)>`
-    pub fn list() -> Vec<(u64, u64, u8)> {
+    /// Returns `Vec<(id, timestamp, mime)>`
+    pub fn list() -> Vec<(u64, u64, String)> {
         db!(
             "
-            SELECT id, timestamp, kind from emergency_chunks
+            SELECT id, timestamp, mime from emergency_chunks
             ",
             [],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            |r| Ok((r.get(0)?, r.get(1)?, String::from_utf8(r.get(2)?).unwrap()))
         )
         .unwrap()
     }
@@ -73,13 +67,12 @@ pub fn service() -> Router {
         )
         .route(
             "/emergency/upload",
-            MethodRouter::new().post(|body: Bytes| async move {
-                match body[0] {
-                    byte => {
-                        dbg!(byte);
-                        db::insert(&body, db::KIND_UNKNOWN)
-                    }
-                }
+            MethodRouter::new().post(|mut req: Request<Body>| async move {
+                let mime = req.headers_mut().remove(CONTENT_TYPE).unwrap();
+                db::insert(
+                    &String::from_request(req, &()).await.unwrap(),
+                    mime.as_bytes(),
+                );
             }),
         )
         .route(
@@ -95,8 +88,8 @@ pub fn service() -> Router {
             "/emergency/list",
             MethodRouter::new().get(|| async {
                 let mut ret = String::new();
-                for (id, timestamp, kind) in db::list() {
-                    writeln!(&mut ret, "{id} {timestamp} {kind}").unwrap();
+                for (id, timestamp, mime) in db::list() {
+                    writeln!(&mut ret, "{id} {timestamp} {mime}").unwrap();
                 }
                 ret
             }),
