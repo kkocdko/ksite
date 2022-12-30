@@ -6,4 +6,4 @@ pub mod paste;
 pub mod proxy;
 // pub mod paste_next;
 pub mod qqbot;
-// pub mod record;
+pub mod emergency;

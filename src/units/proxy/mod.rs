@@ -16,6 +16,7 @@ use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE, EXPIRES, REFRESH};
 use axum::http::{Request, Response, Uri};
 use axum::response::Html;
 use axum::routing::{MethodRouter, Router};
+use hyper::Version;
 use std::mem;
 
 // https://jimages.net/archives/269
@@ -25,31 +26,9 @@ async fn inline_proxy_handler(mut req: Request<Body>) -> Result<Response<Body>, 
     let e = "invalid_request";
     let uri = req.uri_mut();
     let uri: Uri = uri.query().e().or(Err(e))?.try_into().or(Err(e))?;
-    let path = uri.path();
-    let mut is_html = path.ends_with(".htm")
-        || path.ends_with(".html")
-        || path.ends_with(".xhtml")
-        || path.ends_with(".shtml");
     *req.uri_mut() = uri;
     let mut rep = fetch(req).await.or(Err("fetch_failed"))?;
-    if let Some(v) = rep.headers().get(CONTENT_TYPE) {
-        if let Ok(v) = v.to_str() {
-            if v.contains("text/html;") || v.ends_with("text/html") {
-                is_html = true;
-            }
-        }
-    }
-    if is_html {
-        // rep.version()
-        // view-source:https://127.0.0.1:9304/proxy/inline?https://www.bing.com/
-        let mut body = read_body(mem::take(rep.body_mut())).await;
-        dbg!(String::from_utf8_lossy(&body[body.len() - 32..]));
-        const APPEND: &str = (include_src!("append.html") as [_; 1])[0];
-        body.extend(APPEND.as_bytes());
-
-        dbg!("is_html", APPEND);
-        *rep.body_mut() = Body::from(body);
-    }
+    // view-source:https://127.0.0.1:9304/proxy/inline?https://www.bing.com/
     // TODO: CSP?
     Ok(rep)
 }

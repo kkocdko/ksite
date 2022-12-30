@@ -36,7 +36,9 @@ async fn get_handler() -> impl IntoResponse {
 
     let now = UNIX_EPOCH.elapsed().unwrap().as_secs() as i64;
 
-    let mut o = PAGE[0].to_string();
+    let mut o = String::new();
+
+    o += PAGE[0];
 
     o += concat!(
         env!("CARGO_PKG_NAME"),

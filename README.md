@@ -6,17 +6,15 @@ All in one solution for my server.
 
 ### 0.8.0
 
-- `crate::tls` run server with default cert and key.
+- `units::emergency` record evidence picture, audio and video in real-time, sos request and others.
+
+### 0.9.0
 
 - `crate` proactive traffic restriction.
 
 - `crate` no out-of-service updates.
 
-- `units::throw` tiny 2D game, with webrtc, ai.
-
-- `units::record` record evidence picture, audio and video in real-time.
-
-### 0.9.0
+- `units::spacehuggers` [space-huggers](https://github.com/KilledByAPixel/SpaceHuggers) game with co-op mode, webrtc or server forward fallback.
 
 - `units::paste_next` (see the comments in its code).
 

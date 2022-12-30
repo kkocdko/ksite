@@ -28,6 +28,7 @@ async fn run() {
         let app = axum::Router::new()
             .merge(units::admin::service())
             .merge(units::chat::service())
+            .merge(units::emergency::service())
             .merge(units::info::service())
             .merge(units::magazine::service())
             .merge(units::paste::service())

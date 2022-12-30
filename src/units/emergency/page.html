@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+
+<head>
+  <meta name="viewport" content="width=device-width" />
+  <link rel="icon" href="data:" />
+  <title>Emergency - ksite</title>
+</head>
+
+<style>
+  * {
+    appearance: none;
+    margin: 0;
+    font: 14px / 20px sans-serif;
+    background: #fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    * {
+      color: #fff;
+      background: #000;
+    }
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+  header > *,
+  header ~ * {
+    padding: 8px 10px;
+    border: 0 solid #888;
+    outline: 0;
+  }
+  header > * {
+    float: left;
+    border-right-width: 1px;
+  }
+  header > :active {
+    background: #8887;
+  }
+  header ~ * {
+    font-family: monospace;
+    border-top-width: 1px;
+  }
+  textarea {
+    flex: 1;
+    white-space: pre;
+  }
+</style>
+
+<body>
+  <header>
+    <button>Video</button>
+    <button>Audio</button>
+    <button>Photo</button>
+  </header>
+  <!-- <input id="$v" placeholder="VALUE" /> -->
+  <!-- <textarea id="$log" readonly>/*{slot}*/</textarea> -->
+</body>
+
+<script type="module">
+  // const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  // const vstream = await navigator.mediaDevices.getUserMedia({
+  //   video: {
+  //     width: { max: 1280 },
+  //     height: { max: 720 },
+  //     facingMode: { exact: "environment" },
+  //   },
+  // });
+
+  // // navigator.mediaDevices.enumerateDevices().then((devices) => {
+  // //   devices.forEach((device) => {
+  // //     console.log(`${device.kind}: ${device.label} id = ${device.deviceId}`);
+  // //   });
+  // // });
+
+  // const recorder = new MediaRecorder(stream, { audioBitsPerSecond: 64000 });
+  // recorder.ondataavailable = ({ data }) => ws.send(data);
+  // recorder.start(500);
+  // $stop.onclick = () => recorder.stop();
+
+  // <audio id="$player" controls></audio>
+  // let chunks = [];
+  // recorder.ondataavailable = (e) => {
+  //   chunks.push(e.data);
+  // };
+  // recorder.onstop = () => {
+  //   $player.src = URL.createObjectURL(new Blob(chunks));
+  //   chunks = [];
+  // };
+  // https://cn.bing.com/search?q=websocket+MediaRecorder
+</script>

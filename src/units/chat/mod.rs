@@ -4,6 +4,7 @@ use crate::include_src;
 use anyhow::Result;
 use axum::extract::Path;
 use axum::http::header::CACHE_CONTROL;
+use axum::http::HeaderValue;
 use axum::response::sse::{Event as SseEvent, Sse};
 use axum::response::{Html, IntoResponse};
 use axum::routing::{MethodRouter, Router};
@@ -95,7 +96,7 @@ pub fn service() -> Router {
             "/chat", // https://127.0.0.1:9304/chat#123
             MethodRouter::new().get(|| async {
                 (
-                    [(CACHE_CONTROL, "max-age=300")],
+                    [(CACHE_CONTROL, HeaderValue::from_static("max-age=300"))],
                     Html((include_src!("page.html") as [_; 1])[0]),
                 )
             }),
