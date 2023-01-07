@@ -110,7 +110,7 @@ macro_rules! push_log {
 
 static QR: Mutex<Bytes> = Mutex::new(Bytes::new());
 static CLIENT: Lazy<Arc<Client>> = Lazy::new(|| {
-    push_log!("init client");
+    push_log!("init client. if you want to login, please refresh the page");
     let device = match db::cfg_get_str(db::K_DEVICE) {
         Some(v) => serde_json::from_str(&v).unwrap(),
         None => {
@@ -297,7 +297,10 @@ pub async fn notify(msg: &str) -> Result<()> {
 
 pub fn service() -> Router {
     db::init();
-    CLIENT.get_status(); // init client
+
+    if db::cfg_get(db::K_TOKEN).is_some() {
+        CLIENT.get_status(); // init client
+    }
 
     async fn post_handler(q: RawQuery, body: Bytes) {
         let q = q.0.unwrap();
@@ -320,6 +323,8 @@ pub fn service() -> Router {
     }
 
     async fn get_handler() -> Html<String> {
+        CLIENT.get_status(); // init client
+
         const PAGE: [&str; 2] = include_src!("page.html");
         let mut body = String::new();
         body += PAGE[0];
