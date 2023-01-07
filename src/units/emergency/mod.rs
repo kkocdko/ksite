@@ -2,7 +2,7 @@
 
 use crate::auth::auth_layer;
 use crate::include_src;
-use axum::body::Body;
+use axum::body::{Body, Bytes};
 use axum::extract::{FromRequest, Path};
 use axum::http::header::CONTENT_TYPE;
 use axum::http::{Request, StatusCode};
@@ -70,9 +70,10 @@ pub fn service() -> Router {
             MethodRouter::new().post(|mut req: Request<Body>| async move {
                 let mime = req.headers_mut().remove(CONTENT_TYPE).unwrap();
                 db::insert(
-                    &String::from_request(req, &()).await.unwrap(),
-                    mime.as_bytes(),
+                    mime.to_str().unwrap(),
+                    &Bytes::from_request(req, &()).await.unwrap(),
                 );
+                dbg!(&mime);
             }),
         )
         .route(

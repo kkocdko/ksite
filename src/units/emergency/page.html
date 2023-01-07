@@ -38,73 +38,64 @@
     background: #8887;
   }
   header ~ * {
-    font-family: monospace;
     border-top-width: 1px;
-  }
-  textarea {
-    flex: 1;
-    white-space: pre;
   }
 </style>
 
 <body>
   <header>
-    <button id="$video">Video</button>
-    <button id="$audio">Audio</button>
-    <button id="$photo">Photo</button>
+    <button id="$trigger">Start</button>
+    <select id="$type">
+      <option value hidden>Click to select record type</option>
+      <option value="av">Video and Audio</option>
+      <option value="a">Audio Only</option>
+    </select>
   </header>
-  <video id="$preview"></video>
+  <div id="$preview"></div>
 </body>
 
 <script type="module">
-  let state = null;
-  $video.onclick = async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-      video: {
+  $trigger.onclick = async () => {
+    if ($trigger.textContent === "Stop") {
+      $trigger.textContent = "Start";
+      return;
+    }
+    $trigger.textContent = "Stop";
+    const streamOptions = { audio: true };
+    if ($type.value === "av") {
+      streamOptions.video = {
         width: { max: 1280 },
         height: { max: 720 },
         facingMode: { ideal: "environment" },
-      },
-    });
+      };
+    }
+    const stream = await navigator.mediaDevices.getUserMedia(streamOptions);
     const recorder = new MediaRecorder(stream);
-    $preview.muted = true;
-    $preview.srcObject = stream;
-    $preview.play();
+    if ($type.value === "av") {
+      const el = document.createElement("video");
+      el.id = "$preview";
+      $preview.replaceWith(el);
+      $preview.muted = true;
+      $preview.srcObject = stream;
+      $preview.play();
+    } else if ($type.value === "a") {
+      // do nothing
+    } else {
+      throw alert("Please select a record type.");
+    }
     recorder.ondataavailable = ({ data }) => {
-      data.type
-      console.log(data);
+      fetch("/emergency/upload", {
+        // keepalive: true, // default is true
+        method: "post",
+        headers: { "content-type": data.type },
+        body: data,
+      }).catch((e) => console.log(e));
     };
     recorder.start(500);
   };
-  // const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  // const vstream = await navigator.mediaDevices.getUserMedia({
-  //   video: {
-  //     width: { max: 1280 },
-  //     height: { max: 720 },
-  //     facingMode: { exact: "environment" },
-  //   },
+  // navigator.mediaDevices.enumerateDevices().then((devices) => {
+  //   devices.forEach((device) => {
+  //     console.log(`${device.kind}: ${device.label} id = ${device.deviceId}`);
+  //   });
   // });
-
-  // // navigator.mediaDevices.enumerateDevices().then((devices) => {
-  // //   devices.forEach((device) => {
-  // //     console.log(`${device.kind}: ${device.label} id = ${device.deviceId}`);
-  // //   });
-  // // });
-
-  // const recorder = new MediaRecorder(stream, { audioBitsPerSecond: 64000 });
-  // recorder.ondataavailable = ({ data }) => ws.send(data);
-  // recorder.start(500);
-  // $stop.onclick = () => recorder.stop();
-
-  // <audio id="$player" controls></audio>
-  // let chunks = [];
-  // recorder.ondataavailable = (e) => {
-  //   chunks.push(e.data);
-  // };
-  // recorder.onstop = () => {
-  //   $player.src = URL.createObjectURL(new Blob(chunks));
-  //   chunks = [];
-  // };
-  // https://cn.bing.com/search?q=websocket+MediaRecorder
 </script>
