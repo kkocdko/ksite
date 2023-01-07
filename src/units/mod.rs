@@ -1,9 +1,11 @@
 pub mod admin;
 pub mod chat;
+pub mod emergency;
 pub mod info;
 pub mod magazine;
+// pub mod mirror;
 pub mod paste;
-// pub mod proxy;
 // pub mod paste_next;
-pub mod emergency;
+// pub mod proxy;
 pub mod qqbot;
+// pub mod spacehuggers;

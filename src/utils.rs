@@ -1,10 +1,19 @@
 use anyhow::Result;
+use axum::body::Bytes;
+use axum::http::header::HeaderMap;
+use axum::response::{IntoResponse, Response};
+use futures_core::ready;
 use hyper::body::HttpBody;
 use hyper::client::HttpConnector;
-use hyper::{Body, Client, Request, Response};
+use hyper::{Body, Client, Request};
 use hyper_rustls::HttpsConnector;
 use once_cell::sync::Lazy;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 use std::time::UNIX_EPOCH;
+use tokio::fs::File;
+use tokio::io;
+use tokio::sync::mpsc;
 use tokio_rustls::rustls::{ClientConfig, OwnedTrustAnchor, RootCertStore};
 
 pub trait OptionResult<T> {
@@ -134,8 +143,8 @@ impl ToRequest for &String {
 /// Send a `Request` and return the response. Allow both HTTPS and HTTP.
 ///
 /// Unlike `reqwest` crate, this function dose not follow redirect.
-pub async fn fetch(request: impl ToRequest) -> Result<Response<Body>> {
-    Ok(CLIENT.request(request.into_request()).await?)
+pub async fn fetch(request: impl ToRequest) -> Result<Response<Body>, hyper::Error> {
+    CLIENT.request(request.into_request()).await
 }
 
 /// Fetch a URI, returns as `Vec<u8>`.
@@ -174,6 +183,96 @@ pub async fn fetch_json(request: impl ToRequest, pointer: &str) -> Result<String
         .ok_or_else(|| anyhow::anyhow!("json field not found"))?
         .to_string();
     Ok(v.trim_matches('"').to_owned())
+}
+
+pub struct MpscResponse(mpsc::Receiver<io::Result<Bytes>>);
+
+impl MpscResponse {
+    pub fn new(rx: mpsc::Receiver<io::Result<Bytes>>) -> Self {
+        Self(rx)
+    }
+}
+
+impl HttpBody for MpscResponse {
+    type Data = Bytes;
+    type Error = io::Error;
+
+    fn poll_data(
+        self: Pin<&mut Self>,
+        cx: &mut Context,
+    ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
+        let rx = self.get_mut();
+        let mut rx = Pin::new(&mut rx.0);
+        match ready!(rx.poll_recv(cx)) {
+            Some(v) => Poll::Ready(Some(v)),
+            None => Poll::Ready(None),
+        }
+    }
+
+    fn poll_trailers(
+        self: Pin<&mut Self>,
+        _: &mut Context,
+    ) -> Poll<Result<Option<HeaderMap>, Self::Error>> {
+        Poll::Ready(Ok(None))
+    }
+}
+
+impl IntoResponse for MpscResponse {
+    fn into_response(self) -> Response {
+        Response::new(axum::body::boxed(self))
+    }
+}
+
+// https://docs.rs/tower-http/0.3.5/tower_http/services/struct.ServeFile.html
+
+pub struct FileResponse {
+    file: File,
+    buf: Vec<u8>,
+}
+
+impl FileResponse {
+    const BUF_CAPACITY: usize = 1024 * 4;
+
+    pub fn new(file: File) -> Self {
+        FileResponse {
+            file,
+            buf: Vec::with_capacity(Self::BUF_CAPACITY),
+        }
+    }
+}
+
+impl HttpBody for FileResponse {
+    type Data = Bytes;
+    type Error = io::Error;
+
+    fn poll_data(
+        self: Pin<&mut Self>,
+        cx: &mut Context,
+    ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
+        let Self { file, buf } = self.get_mut();
+        let file = Pin::new(file);
+        match ready!(tokio_util::io::poll_read_buf(file, cx, buf))? {
+            0 => Poll::Ready(None),
+            _ => Poll::Ready(Some(Ok(std::mem::replace(
+                buf,
+                Vec::with_capacity(Self::BUF_CAPACITY),
+            )
+            .into()))),
+        }
+    }
+
+    fn poll_trailers(
+        self: Pin<&mut Self>,
+        _: &mut Context,
+    ) -> Poll<Result<Option<HeaderMap>, Self::Error>> {
+        Poll::Ready(Ok(None))
+    }
+}
+
+impl IntoResponse for FileResponse {
+    fn into_response(self) -> Response {
+        Response::new(axum::body::boxed(self))
+    }
 }
 
 /// (stamp secs) -> (days)

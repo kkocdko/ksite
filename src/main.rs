@@ -31,6 +31,7 @@ async fn run() {
             .merge(units::emergency::service())
             .merge(units::info::service())
             .merge(units::magazine::service())
+            // .merge(units::mirror::service())
             .merge(units::paste::service())
             // .merge(units::paste_next::service())
             // .merge(units::proxy::service())
