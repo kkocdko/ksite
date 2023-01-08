@@ -8,6 +8,8 @@ All in one solution for my server.
 
 - `units::emergency` record evidence picture, audio and video in real-time, sos request and others.
 
+- `units::mirror` lazy mirror for caching linux distros' packages.
+
 ### 0.9.0
 
 - `crate` proactive traffic restriction.
@@ -15,6 +17,8 @@ All in one solution for my server.
 - `crate` no out-of-service updates.
 
 - `units::spacehuggers` [space-huggers](https://github.com/KilledByAPixel/SpaceHuggers) game with co-op mode, webrtc or server forward fallback.
+
+- `units::admin` acme protocol.
 
 - `units::paste_next` (see the comments in its code).
 

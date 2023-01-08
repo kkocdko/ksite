@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+
+<head>
+  <meta name="viewport" content="width=device-width" />
+  <link rel="icon" href="data:" />
+  <title>Mirror - ksite</title>
+</head>
+
+<style>
+  * {
+    appearance: none;
+    margin: 0;
+    font: 14px / 20px sans-serif;
+    background: #fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    * {
+      color: #fff;
+      background: #000;
+    }
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+  header > *,
+  header ~ * {
+    padding: 8px 10px;
+    border: 0 solid #888;
+    outline: 0;
+  }
+  header > * {
+    float: left;
+    border-right-width: 1px;
+  }
+  header > :active {
+    background: #8887;
+  }
+  header ~ * {
+    font-family: monospace;
+    border-top-width: 1px;
+  }
+  textarea {
+    flex: 1;
+    white-space: pre;
+  }
+</style>
+
+<body>
+  <header>
+    <button onclick="alert('Button clicked')">Button</button>
+    <select id="$k">
+      <option value hidden>Click to select</option>
+      <option>first_option</option>
+      <option>second_option</option>
+    </select>
+  </header>
+  <input id="$v" placeholder="VALUE" />
+  <textarea id="$log" readonly>/*{slot}*/</textarea>
+</body>
+
+<script>
+  // script here
+</script>

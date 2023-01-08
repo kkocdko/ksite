@@ -522,7 +522,7 @@ dependencies = [
 
 [[package]]
 name = "ksite"
-version = "0.8.0-beta.2"
+version = "0.8.0-beta.3"
 dependencies = [
  "anyhow",
  "askama_escape",

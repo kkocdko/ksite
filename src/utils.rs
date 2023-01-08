@@ -185,17 +185,17 @@ pub async fn fetch_json(request: impl ToRequest, pointer: &str) -> Result<String
     Ok(v.trim_matches('"').to_owned())
 }
 
-pub struct MpscResponse(mpsc::Receiver<io::Result<Bytes>>);
+pub struct MpscResponse<E: Send = io::Error>(mpsc::Receiver<Result<Bytes, E>>);
 
-impl MpscResponse {
-    pub fn new(rx: mpsc::Receiver<io::Result<Bytes>>) -> Self {
+impl<E: Send> MpscResponse<E> {
+    pub fn new(rx: mpsc::Receiver<Result<Bytes, E>>) -> Self {
         Self(rx)
     }
 }
 
-impl HttpBody for MpscResponse {
+impl<E: Send> HttpBody for MpscResponse<E> {
     type Data = Bytes;
-    type Error = io::Error;
+    type Error = E;
 
     fn poll_data(
         self: Pin<&mut Self>,
@@ -217,7 +217,10 @@ impl HttpBody for MpscResponse {
     }
 }
 
-impl IntoResponse for MpscResponse {
+impl<E> IntoResponse for MpscResponse<E>
+where
+    E: Into<axum::BoxError> + Send + 'static,
+{
     fn into_response(self) -> Response {
         Response::new(axum::body::boxed(self))
     }
@@ -231,7 +234,7 @@ pub struct FileResponse {
 }
 
 impl FileResponse {
-    const BUF_CAPACITY: usize = 1024 * 4;
+    const BUF_CAPACITY: usize = 16384 + 64;
 
     pub fn new(file: File) -> Self {
         FileResponse {
@@ -253,11 +256,16 @@ impl HttpBody for FileResponse {
         let file = Pin::new(file);
         match ready!(tokio_util::io::poll_read_buf(file, cx, buf))? {
             0 => Poll::Ready(None),
-            _ => Poll::Ready(Some(Ok(std::mem::replace(
-                buf,
-                Vec::with_capacity(Self::BUF_CAPACITY),
-            )
-            .into()))),
+            _ => {
+                // if buf.len() != Self::BUF_CAPACITY {
+                //     dbg!(buf.len());
+                // }
+                Poll::Ready(Some(Ok(std::mem::replace(
+                    buf,
+                    Vec::with_capacity(Self::BUF_CAPACITY),
+                )
+                .into())))
+            }
         }
     }
 
