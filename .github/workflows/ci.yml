@@ -1,12 +1,12 @@
-name: CI
+name: ci
 on: [push, pull_request]
 env:
   RUSTC_BOOTSTRAP: 1
 jobs:
-  CI:
+  ci:
     runs-on: ubuntu-latest
     steps:
       - name: Git Clone
         run: git clone --depth=1 $GITHUB_SERVER_URL/$GITHUB_REPOSITORY .
       - name: Cargo Check
-        run: rustup show && cargo check --profile=ci
+        run: rustup show ; cargo check --profile=ci
