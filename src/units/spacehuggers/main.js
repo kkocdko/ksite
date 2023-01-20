@@ -1,11 +1,24 @@
+"use strict";
 // https://github.com/KilledByAPixel/SpaceHuggers , commit hash `bdabe47`
 /*
+│a100488
 lowGraphicsSettings = false;
 startCameraScale = 4 * 8;
 defaultCameraScale = 4 * 8;
 maxWidth = 1024;
 maxHeight = 576;
+grenadeCount
 */
+let randCur = 76550; // seed
+Math.random = () => (randCur = (25214903917 * randCur) & 65535) / 100000;
+const FPS = 60;
+const timeDelta = 1 / FPS;
+const maxWidth = 1024;
+const maxHeight = 576; // up to 1080p and 16:10
+const debug = false;
+const showWatermark = false;
+const godMode = true;
+const lowGraphicsSettings = true;
 /*
     LittleJS Utility Classes and Functions
     - Vector2 - fast, simple, easy vector class
@@ -13,7 +26,6 @@ maxHeight = 576;
     - Timer - tracks time automatically
     - Small math lib
 */
-
 ///////////////////////////////////////////////////////////////////////////////
 // helper functions
 
@@ -54,8 +66,9 @@ const randColor = (cA = new Color(), cB = new Color(0, 0, 0, 1), linear) =>
 
 // seeded random numbers - Xorshift
 let randSeed = 0;
-const randSeeded = (a = 1, b = 0) =>
-  b + (a - b) * ((Math.sin(++randSeed) ** 2 * 1e9) % 1);
+const sinMono = Array.from(Array(360), (_, i) => Math.sin(i));
+const randSeeded = (a = 1.0, b = 0.0) =>
+  b + (a - b) * ((sinMono[++randSeed % 360] ** 2.0 * 1e9) % 1.0);
 
 // create a 2d vector, can take another Vector2 to copy, 2 scalars, or 1 scalar
 const vec2 = (x = 0, y) =>
@@ -305,9 +318,6 @@ class Timer {
     This file is automatically included first by the build system.
 */
 
-const debug = 0;
-const showWatermark = 0;
-const godMode = 0;
 const debugOverlay = 0;
 const debugPhysics = 0;
 const debugParticles = 0;
@@ -344,11 +354,6 @@ const debugRender = () => {};
 
 const engineName = "LittleJS";
 const engineVersion = "v0.74";
-const FPS = 60,
-  timeDelta = 1 / FPS;
-const defaultFont = "arial"; // font used for text rendering
-const maxWidth = 1920,
-  maxHeight = 1200; // up to 1080p and 16:10
 const fixedWidth = 0; // native resolution
 //const fixedWidth = 1280, fixedHeight = 720; // 720p
 //const fixedWidth = 128,  fixedHeight = 128; // PICO-8
@@ -485,7 +490,7 @@ function engineInit(
     appRender();
     engineObjects.sort((a, b) => a.renderOrder - b.renderOrder);
     for (const o of engineObjects) o.destroyed || o.render();
-    glCopyToContext(mainContext);
+    glCopyToContext(mainContext, false);
     appRenderPost();
     debugRender();
 
@@ -513,7 +518,7 @@ function engineInit(
     }
 
     // copy anything left in the buffer if necessary
-    glCopyToContext(mainContext);
+    glCopyToContext(mainContext, false);
   };
 
   //tileImage.src = 'tiles.png';
@@ -1367,7 +1372,7 @@ class TileLayer extends EngineObject {
 
   redrawEnd() {
     ASSERT(mainContext == this.context); // must call redrawStart() before drawing tiles
-    glCopyToContext(mainContext, 1);
+    glCopyToContext(mainContext, true);
     //debugSaveCanvas(this.canvas);
 
     // set stuff back to normal
@@ -1500,22 +1505,9 @@ onkeyup = (e) => {
   const c = remapKeyCode(e.keyCode);
   inputData[0][c] && ((inputData[0][c].d = 0), (inputData[0][c].r = 1));
 };
-onmousedown = (e) => (
-  (inputData[0][e.button] = { d: (hadInput = 1), p: 1 }), onmousemove(e)
-);
-onmouseup = (e) =>
-  inputData[0][e.button] &&
-  ((inputData[0][e.button].d = 0), (inputData[0][e.button].r = 1));
-onmousemove = (e) => {
-  if (!mainCanvas) return;
 
-  // convert mouse pos to canvas space
-  const rect = mainCanvas.getBoundingClientRect();
-  mousePosScreen.x = mainCanvasSize.x * percent(e.x, rect.right, rect.left);
-  mousePosScreen.y = mainCanvasSize.y * percent(e.y, rect.bottom, rect.top);
-};
 if (debug) onwheel = (e) => e.ctrlKey || (mouseWheel = sign(e.deltaY));
-oncontextmenu = (e) => !1; // prevent right click menu
+// oncontextmenu = (e) => !1; // prevent right click menu
 const remapKeyCode = (c) =>
   copyWASDToDpad
     ? c == 87
@@ -1607,29 +1599,6 @@ function updateGamepads() {
 ///////////////////////////////////////////////////////////////////////////////
 // touch screen input
 
-if (enableTouchInput && window.ontouchstart !== undefined) {
-  // handle all touch events the same way
-  ontouchstart =
-    ontouchmove =
-    ontouchend =
-      (e) => {
-        e.button = 0; // all touches are left click
-        hadInput || zzfx((hadInput = 1)); // fix mobile audio, force it to play a sound the first time
-
-        // check if touching and pass to mouse events
-        const touching = e.touches.length;
-        if (touching) {
-          // set event pos and pass it along
-          e.x = e.touches[0].clientX;
-          e.y = e.touches[0].clientY;
-          wasTouching ? onmousemove(e) : onmousedown(e);
-        } else if (wasTouching) wasTouching && onmouseup(e);
-
-        // set was touching
-        wasTouching = touching;
-      };
-  let wasTouching;
-}
 /*
     LittleJS Particle System
     - Spawns particles with randomness from parameters
@@ -1878,7 +1847,7 @@ let glCanvas,
   glAdditive,
   glShrinkTilesX,
   glShrinkTilesY,
-  glOverlay;
+  glOverlay = lowGraphicsSettings;
 
 function glInit() {
   if (!glEnable) return;
@@ -2387,7 +2356,7 @@ function drawText(
   lineWidth = 0,
   lineColor = new Color(0, 0, 0),
   textAlign = "center",
-  font = defaultFont
+  font = "monospace"
 ) {
   pos = worldToScreen(pos);
   mainContext.font = size * cameraScale + "px " + font;
@@ -3735,7 +3704,7 @@ class Player extends Character {
   constructor(pos, playerIndex = 0) {
     super(pos);
 
-    this.grenadeCount = 3;
+    this.grenadeCount = 9999;
     this.burnTime = 2;
 
     this.eyeColor = new Color().setHSLA(-playerIndex * 0.6, 1, 0.5);
@@ -4496,7 +4465,7 @@ function destroyTile(
 
 function drawStars() {
   randSeed = levelSeed;
-  for (let i = lowGraphicsSettings ? 400 : 1e3; i--; ) {
+  for (let i = 400; i--; ) {
     let size = randSeeded(6, 1);
     let speed = randSeeded() < 0.9 ? randSeeded(5) : randSeeded(99, 9);
     let color = new Color().setHSLA(
@@ -5196,9 +5165,8 @@ function nextLevel() {
 */
 
 const clampCamera = !debug;
-const lowGraphicsSettings = (glOverlay = !window["chrome"]); // only chromium uses high settings
-const startCameraScale = 4 * 16;
-const defaultCameraScale = 4 * 16;
+const startCameraScale = 4 * 8;
+const defaultCameraScale = 4 * 8;
 const maxPlayers = 4;
 
 const team_none = 0;
@@ -5395,12 +5363,16 @@ engineInit(
       //mainContext.globalCompositeOperation = 'difference';
       mainContext.fillStyle = new Color(0, 0, 0, p).rgba();
       if (p > 0) {
-        //mainContext.fillStyle = (new Color).setHSLA(time/3,1,.5,p).rgba();
-        mainContext.font = "1.5in impact";
+        // mainContext.fillStyle = new Color().setHSLA(time / 3, 1, 0.5, p).rgba();
+        // mainContext.fillStyle = "rgb(255,255,255)";
+        mainContext.font = mainCanvas.width / 12 + "px monospace";
         mainContext.fillText("SPACE HUGGERS", mainCanvas.width / 2, 140);
+        // mainContext.fillStyle = "rgb(0,0,0)";
+        // mainContext.font = mainCanvas.width / 12 + "px monospace";
+        // mainContext.fillText("SPACE HUGGERS", mainCanvas.width / 2, 140);
       }
 
-      mainContext.font = ".5in impact";
+      mainContext.font = mainCanvas.width / 30 + "px monospace";
       p > 0 &&
         mainContext.fillText(
           "A JS13K Game by Frank Force",
@@ -5427,9 +5399,9 @@ engineInit(
       mainContext.fillText(
         "Level " +
           level +
-          "      Lives " +
+          "    Lives " +
           playerLives +
-          "      Enemies " +
+          "    Enemies " +
           enemiesCount,
         mainCanvas.width / 2,
         mainCanvas.height - 40

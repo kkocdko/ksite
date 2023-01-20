@@ -31,15 +31,15 @@ async fn run() {
             .merge(units::emergency::service())
             .merge(units::info::service())
             .merge(units::magazine::service())
-            // .merge(units::mirror::service())
+            .merge(units::mirror::service())
             .merge(units::paste::service())
             // .merge(units::paste_next::service())
             // .merge(units::proxy::service())
             .merge(units::qqbot::service());
 
         // .into_make_service_with_connect_info::<SocketAddr>();
-        // axum::Server::bind(&addr).serve(app.into_make_service()).await.unwrap();
-        tls::serve(&addr, app).await;
+        axum::Server::bind(&addr).serve(app.into_make_service()).await.unwrap();
+        // tls::serve(&addr, app).await;
     };
 
     let oscillator = async {
