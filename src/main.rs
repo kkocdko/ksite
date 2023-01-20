@@ -38,7 +38,10 @@ async fn run() {
             .merge(units::qqbot::service());
 
         // .into_make_service_with_connect_info::<SocketAddr>();
-        axum::Server::bind(&addr).serve(app.into_make_service()).await.unwrap();
+        axum::Server::bind(&addr)
+            .serve(app.into_make_service())
+            .await
+            .unwrap();
         // tls::serve(&addr, app).await;
     };
 
