@@ -1,8 +1,7 @@
 //! Lazy mirror for caching linux distros' packages.
 
-use crate::utils::{fetch, FileResponse, MpscResponse};
+use crate::utils::{fetch, log_escape, with_retry, FileResponse, MpscResponse};
 use crate::{care, db, include_src};
-use anyhow::Result;
 use axum::body::HttpBody;
 use axum::extract::Path;
 use axum::http::StatusCode;
@@ -10,25 +9,21 @@ use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{MethodRouter, Router};
 use once_cell::sync::Lazy;
 use std::fmt::Write as _;
-use std::future::Future;
 use std::path::PathBuf;
-use std::time::Duration;
 use tokio::fs::File;
-use tokio::io;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 
-const STATE_PENDING: u8 = 1;
-const STATE_FINISHED: u8 = 3;
-
 fn db_init() {
-    db!("CREATE TABLE IF NOT EXISTS mirror (path BLOB PRIMARY KEY, time INTEGER, state INTEGER)")
-        .unwrap();
+    db!(
+        "CREATE TABLE IF NOT EXISTS mirror (path BLOB PRIMARY KEY, time INTEGER, finished INTEGER)"
+    )
+    .unwrap();
 }
 
-fn db_get(path: &str) -> Option<(u64, u8)> {
+fn db_get(path: &str) -> Option<(u64, bool)> {
     db!(
-        "SELECT rowid, state FROM mirror WHERE path = ?1",
+        "SELECT rowid, finished FROM mirror WHERE path = ?1",
         [path.as_bytes()],
         *|r| Ok((r.get(0)?, r.get(1)?))
     )
@@ -37,16 +32,16 @@ fn db_get(path: &str) -> Option<(u64, u8)> {
 
 fn db_add(path: &str) {
     db!(
-        "INSERT INTO mirror VALUES (?1, strftime('%s', 'now'), ?2)",
-        [path.as_bytes(), STATE_PENDING]
+        "INSERT INTO mirror VALUES (?1, strftime('%s', 'now'), 0)",
+        [path.as_bytes()]
     )
     .unwrap();
 }
 
-fn db_set(path: &str, state: u8) {
+fn db_set_finished(path: &str) {
     db!(
-        "UPDATE mirror SET state = ?2 WHERE path = ?1",
-        [path.as_bytes(), state]
+        "UPDATE mirror SET finished = 1 WHERE path = ?1",
+        [path.as_bytes()]
     )
     .unwrap();
 }
@@ -55,119 +50,79 @@ fn db_del(path: &str) {
     db!("DELETE FROM mirror WHERE path = ?", [path.as_bytes()]).unwrap();
 }
 
-// TODO: clean outdated cache
+fn db_list() -> Vec<(u64, String)> {
+    db!("SELECT rowid, path FROM mirror", [], |r| Ok((
+        r.get(0)?,
+        String::from_utf8(r.get(1)?).unwrap()
+    )))
+    .unwrap()
+}
 
-fn gen_file_path(path: &str, rowid: u64) -> PathBuf {
+fn gen_file_path(rowid: u64) -> PathBuf {
     static DIR: Lazy<String> = Lazy::new(|| {
         let mut dir = std::env::current_exe().unwrap();
         dir.set_extension("mirror");
         std::fs::create_dir(&dir).ok();
-        // keep the slash ('/' or '\')
-        dir.push("a");
+        dir.push("a"); // keep the slash ('/' or '\')
         let mut dir = dir.into_os_string().into_string().unwrap();
-        dir.pop();
+        dir.pop(); // the OsString is encoded by WTF-8, similer to UTF-8
         dir
     });
     let mut ret = DIR.clone();
-    let mut last_is_hyphen = true; // we dont't want a hyphen prefix
-    let max_len = ret.len() + 60;
-    for ch in path.chars() {
-        if ret.len() > max_len {
-            break;
-        }
-        if ch.is_ascii_alphanumeric() {
-            ret.push(ch.to_ascii_lowercase());
-            last_is_hyphen = false;
-        } else if !last_is_hyphen {
-            ret.push('-');
-            last_is_hyphen = true;
-        }
-    }
-    if !last_is_hyphen {
-        ret.push('-');
-    }
-    write!(&mut ret, "{rowid}").unwrap();
+    write!(&mut ret, "{rowid:0>20}").unwrap(); // string(2 ** 64).length == 20
     PathBuf::from(ret)
 }
 
-async fn retry<T, E: std::fmt::Debug, FUT: Future<Output = Result<T, E>>>(
-    f: impl Fn() -> FUT,
-) -> Result<T, E> {
-    let mut err = None;
-    for _ in 0..3 {
-        match f().await {
-            Ok(v) => return Ok(v),
-            Err(e) => err = Some(e),
-        };
-        tokio::time::sleep(Duration::from_millis(700)).await;
+async fn handle(req_path: &str, target: String) -> Response {
+    let fetch_target = || async { care!(with_retry(|| fetch(&target), 3, 500).await) };
+    let db_get_result = db_get(&req_path);
+    if let Some((rowid, true)) = db_get_result {
+        let file = File::open(gen_file_path(rowid)).await.unwrap();
+        return FileResponse::new(file).into_response();
     }
-    Err(err.unwrap())
-}
-
-async fn handle(path: &str, relative: &str, target: &str) -> Response {
-    let url = || target.to_string() + relative;
-    match db_get(path) {
-        Some((rowid, state)) if state == STATE_FINISHED => {
-            // println!("m:hit  {path}");
-            // let file = match File::open(gen_file_path(path, rowid)).await {
-            //     Ok(v) => v,
-            //     Err(e) => {
-            //         dbg!(gen_file_path(path, rowid));
-            //         std::process::exit(0);
-            //     }
-            // };
-            let file = File::open(gen_file_path(path, rowid)).await.unwrap();
-            return FileResponse::new(file).into_response();
+    if db_get_result.is_some() {
+        return match fetch_target().await {
+            Ok(v) => v.into_response(),
+            Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        };
+    }
+    db_add(&req_path); // insert first to avoid condition race
+    let mut body = match fetch_target().await {
+        Ok(v) => v.into_body(),
+        Err(e) => {
+            println!("[error] {e:?}");
+            db_del(&req_path);
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
-        Some(_) => {
-            // println!("m:pen  {path}");
-            let u = url();
-            return match care!(retry(|| fetch(&u)).await) {
-                Ok(v) => v.into_response(),
-                Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-            };
-        }
-        None => {}
     };
-    // println!("m:mis  {path}");
-    db_add(path);
-    let rowid = db_get(path).unwrap().0;
-    let res_url = url();
-    // In most cases the Internet will be slower than LANs and filesystem. However, if the Internet is too fast, it can lead to data droping if the mpsc capacity bound is reached.
     let (tx, rx) = mpsc::channel(16);
+    let req_path = req_path.to_owned();
     // even if the connection closed, the store process still running
-    let path = path.to_owned();
-    let file_path = gen_file_path(&path, rowid);
     tokio::spawn(async move {
-        let result = retry(|| async {
-            let response = fetch(&res_url).await?;
-            let mut file = File::create(&file_path).await.unwrap();
-            let mut body = response.into_body();
-            while let Some(result) = body.data().await {
-                match result {
-                    Ok(buf) => {
-                        file.write_all(&buf).await.unwrap();
-                        tx.send(Ok(buf)).await.ok(); // ignore error if rx closed
-                    }
-                    Err(e) => {
-                        file.set_len(0).await.unwrap();
-                        drop(file);
-                        tokio::fs::remove_file(&file_path).await.unwrap();
-                        let io_err = io::Error::new(io::ErrorKind::Other, "");
-                        tx.send(Err(io_err)).await.ok(); // ignore error if rx closed
-                        return Err(e)?;
-                    }
+        let rowid = db_get(&req_path).unwrap().0;
+        let file_path = gen_file_path(rowid);
+        let mut file = File::create(&file_path).await.unwrap();
+        while let Some(result) = body.data().await {
+            match result {
+                Ok(buf) => {
+                    file.write_all(&buf).await.unwrap();
+                    tx.send(Ok(buf)).await.ok(); // ignore error if rx closed
+                }
+                Err(e) => {
+                    println!("[error] {e:?}");
+                    let io_err_str = StatusCode::INTERNAL_SERVER_ERROR.as_str();
+                    let io_err = std::io::Error::new(std::io::ErrorKind::Other, io_err_str);
+                    tx.send(Err(io_err)).await.ok();
+                    // remember to remove file and cache entry in database
+                    file.set_len(0).await.unwrap();
+                    drop(file);
+                    tokio::fs::remove_file(&file_path).await.unwrap();
+                    db_del(&req_path);
+                    return;
                 }
             }
-            db_set(&path, STATE_FINISHED);
-            // println!("m:got  {path}");
-            anyhow::Ok(())
-        })
-        .await;
-        if care!(result).is_err() {
-            db_del(&path);
-            // println!("m:err  {path}");
         }
+        db_set_finished(&req_path);
     });
     MpscResponse::new(rx).into_response()
 }
@@ -177,7 +132,22 @@ pub fn service() -> Router {
     Router::new()
         .route(
             "/mirror",
-            MethodRouter::new().get(|| async { Html((include_src!("page.html") as [_; 1])[0]) }),
+            MethodRouter::new().get(|| async {
+                const PAGE: [&str; 2] = include_src!("page.html");
+                let mut ret = String::new();
+                ret += PAGE[0];
+                let mut list = db_list();
+                for (number, _) in &mut list {
+                    *number = std::fs::metadata(gen_file_path(*number)).unwrap().len();
+                }
+                list.sort_by_key(|v| v.0);
+                for (size, path) in list.into_iter().rev() {
+                    let path = log_escape(&path);
+                    writeln!(&mut ret, "{size: >12} {path}").unwrap();
+                }
+                ret += PAGE[1];
+                Html(ret)
+            }),
         )
         .route(
             "/mirror/*path",
@@ -186,12 +156,14 @@ pub fn service() -> Router {
                 // http://mirrors.ustc.edu.cn/fedora/
                 // http://mirrors.tuna.tsinghua.edu.cn/fedora/
                 if let Some(r) = p.strip_prefix("fedora/") {
-                    return handle(&p, r, "http://mirrors.ustc.edu.cn/fedora/").await;
+                    return handle(&p, format!("http://mirrors.ustc.edu.cn/fedora/{r}")).await;
                 }
                 if let Some(r) = p.strip_prefix("ubuntu/") {
-                    return handle(&p, r, "http://mirrors.ustc.edu.cn/ubuntu/").await;
+                    return handle(&p, format!("http://mirrors.ustc.edu.cn/ubuntu/{r}")).await;
                 }
                 StatusCode::NOT_FOUND.into_response()
             }),
         )
 }
+
+// TODO: clean outdated cache

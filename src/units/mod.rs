@@ -3,6 +3,7 @@ pub mod chat;
 pub mod emergency;
 pub mod info;
 pub mod magazine;
+#[allow(unused)]
 pub mod mirror;
 pub mod paste;
 // pub mod paste_next;

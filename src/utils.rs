@@ -8,8 +8,10 @@ use hyper::client::HttpConnector;
 use hyper::{Body, Client, Request};
 use hyper_rustls::HttpsConnector;
 use once_cell::sync::Lazy;
+use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
+use std::time::Duration;
 use std::time::UNIX_EPOCH;
 use tokio::fs::File;
 use tokio::io;
@@ -28,6 +30,22 @@ impl<T> OptionResult<T> for Option<T> {
             None => Err(anyhow::anyhow!("Option is None")),
         }
     }
+}
+
+pub async fn with_retry<T, E, FUT>(f: impl Fn() -> FUT, limit: usize, interval: u64) -> Result<T, E>
+where
+    E: std::fmt::Debug,
+    FUT: Future<Output = Result<T, E>>,
+{
+    let mut err = None;
+    for _ in 0..limit {
+        match f().await {
+            Ok(v) => return Ok(v),
+            Err(e) => err = Some(e),
+        };
+        tokio::time::sleep(Duration::from_millis(interval)).await;
+    }
+    Err(err.unwrap())
 }
 
 /// Same as JavaScript's `encodeURI`.
