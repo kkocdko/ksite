@@ -1,6 +1,8 @@
 "use strict";
 // https://github.com/KilledByAPixel/SpaceHuggers , commit hash `bdabe47`
 /*
+~/misc/code/hello-react/node_modules/.bin/esbuild main.js --outfile=out.js --minify --bundle
+~/misc/code/hello-react/node_modules/.bin/esbuild main.js --minify --bundle | wc -c
 │a100488
 lowGraphicsSettings = false;
 startCameraScale = 4 * 8;
@@ -8,36 +10,25 @@ defaultCameraScale = 4 * 8;
 maxWidth = 1024;
 maxHeight = 576;
 grenadeCount
+keep trying until a valid level is generated
 */
 let randCur = 76550; // seed
 Math.random = () => (randCur = (25214903917 * randCur) & 65535) / 100000;
+const GOD_MODE = true;
 const FPS = 60;
-const timeDelta = 1 / FPS;
-const maxWidth = 1024;
-const maxHeight = 576; // up to 1080p and 16:10
-const debug = false;
-const showWatermark = false;
-const godMode = true;
-const lowGraphicsSettings = true;
-/*
-    LittleJS Utility Classes and Functions
-    - Vector2 - fast, simple, easy vector class
-    - Color - holds a rgba color with math functions
-    - Timer - tracks time automatically
-    - Small math lib
-*/
-///////////////////////////////////////////////////////////////////////////////
-// helper functions
+const TIME_DELTA = 1 / FPS;
+const CAMERA_SCALE = 4 * 8;
+const MAX_WIDTH = 1024;
+const MAX_HEIGHT = 576;
 
+/* LittleJS Utility Classes and Functions */
 const PI = Math.PI;
 const abs = (a) => (a < 0 ? -a : a);
 const sign = (a) => (a < 0 ? -1 : 1);
 const min = (a, b) => (a < b ? a : b);
 const max = (a, b) => (a > b ? a : b);
 const mod = (a, b) => ((a % b) + b) % b;
-const clamp = (v, max = 1, min = 0) => (
-  ASSERT(max > min), v < min ? min : v > max ? max : v
-);
+const clamp = (v, max = 1, min = 0) => (v < min ? min : v > max ? max : v);
 const percent = (v, max = 1, min = 0) =>
   max - min ? clamp((v - min) / (max - min)) : 0;
 const lerp = (p, max = 1, min = 0) => min + clamp(p) * (max - min);
@@ -45,8 +36,6 @@ const formatTime = (t) =>
   ((t / 60) | 0) + ":" + (t % 60 < 10 ? "0" : "") + (t % 60 | 0);
 const isOverlapping = (pA, sA, pB, sB) =>
   (abs(pA.x - pB.x) * 2 < sA.x + sB.x) & (abs(pA.y - pB.y) * 2 < sA.y + sB.y);
-
-// random functions
 const rand = (a = 1, b = 0) => b + (a - b) * Math.random();
 const randSign = () => (rand(2) | 0) * 2 - 1;
 const randInCircle = (radius = 1, minRadius = 0) =>
@@ -76,7 +65,6 @@ const vec2 = (x = 0, y) =>
     ? new Vector2(x, y == undefined ? x : y)
     : new Vector2(x.x, x.y);
 
-///////////////////////////////////////////////////////////////////////////////
 class Vector2 {
   constructor(x = 0, y = 0) {
     this.x = x;
@@ -88,23 +76,18 @@ class Vector2 {
     return new Vector2(this.x, this.y);
   }
   scale(s) {
-    ASSERT(s.x == undefined);
     return new Vector2(this.x * s, this.y * s);
   }
   add(v) {
-    ASSERT(v.x != undefined);
     return new Vector2(this.x + v.x, this.y + v.y);
   }
   subtract(v) {
-    ASSERT(v.x != undefined);
     return new Vector2(this.x - v.x, this.y - v.y);
   }
   multiply(v) {
-    ASSERT(v.x != undefined);
     return new Vector2(this.x * v.x, this.y * v.y);
   }
   divide(v) {
-    ASSERT(v.x != undefined);
     return new Vector2(this.x / v.x, this.y / v.y);
   }
 
@@ -125,18 +108,6 @@ class Vector2 {
     const l = this.length();
     return l ? this.scale(length / l) : new Vector2(length);
   }
-  clampLength(length = 1) {
-    const l = this.length();
-    return l > length ? this.scale(length / l) : this;
-  }
-  dot(v) {
-    ASSERT(v.x != undefined);
-    return this.x * v.x + this.y * v.y;
-  }
-  cross(v) {
-    ASSERT(v.x != undefined);
-    return this.x * v.y - this.y * v.x;
-  }
   angle() {
     return Math.atan2(this.x, this.y);
   }
@@ -150,26 +121,10 @@ class Vector2 {
       s = Math.sin(a);
     return new Vector2(this.x * c - this.y * s, this.x * s + this.y * c);
   }
-  direction() {
-    return abs(this.x) > abs(this.y)
-      ? this.x < 0
-        ? 3
-        : 1
-      : this.y < 0
-      ? 2
-      : 0;
-  }
   flip() {
     return new Vector2(this.y, this.x);
   }
-  invert() {
-    return new Vector2(this.y, -this.x);
-  }
-  round() {
-    return new Vector2(Math.round(this.x), Math.round(this.y));
-  }
   lerp(v, p) {
-    ASSERT(v.x != undefined);
     return this.add(v.subtract(this).scale(clamp(p)));
   }
   int() {
@@ -185,17 +140,9 @@ class Vector2 {
   }
 }
 
-///////////////////////////////////////////////////////////////////////////////
 class Color {
   constructor(r = 1, g = 1, b = 1, a = 1) {
-    this.r = r;
-    this.g = g;
-    this.b = b;
-    this.a = a;
-  }
-
-  copy(c) {
-    return new Color(this.r, this.g, this.b, this.a);
+    (this.r = r), (this.g = g), (this.b = b), (this.a = a);
   }
   add(c) {
     return new Color(this.r + c.r, this.g + c.g, this.b + c.b, this.a + c.a);
@@ -229,31 +176,11 @@ class Color {
     ).clamp();
   }
   rgba() {
-    ASSERT(
-      this.r >= 0 &&
-        this.r <= 1 &&
-        this.g >= 0 &&
-        this.g <= 1 &&
-        this.b >= 0 &&
-        this.b <= 1 &&
-        this.a >= 0 &&
-        this.a <= 1
-    );
     return `rgb(${(this.r * 255) | 0},${(this.g * 255) | 0},${
       (this.b * 255) | 0
     },${this.a})`;
   }
   rgbaInt() {
-    ASSERT(
-      this.r >= 0 &&
-        this.r <= 1 &&
-        this.g >= 0 &&
-        this.g <= 1 &&
-        this.b >= 0 &&
-        this.b <= 1 &&
-        this.a >= 0 &&
-        this.a <= 1
-    );
     return (
       ((this.r * 255) | 0) +
       ((this.g * 255) << 8) +
@@ -281,7 +208,6 @@ class Color {
   }
 }
 
-///////////////////////////////////////////////////////////////////////////////
 class Timer {
   constructor(timeLeft) {
     this.time = timeLeft == undefined ? undefined : time + timeLeft;
@@ -311,63 +237,12 @@ class Timer {
     return this.isSet() ? percent(this.time - time, 0, this.setTime) : 0;
   }
 }
-/*
-    LittleJS - Build include file
-    By Frank Force 2021
 
-    This file is automatically included first by the build system.
-*/
-
-const debugOverlay = 0;
-const debugPhysics = 0;
-const debugParticles = 0;
-
-// allow debug commands to be removed from the final build
-const ASSERT = () => {};
-const debugPoint = () => {};
-const debugRect = () => {};
-const debugLine = () => {};
-const debugInit = () => {};
-const debugUpdate = () => {};
-const debugRender = () => {};
-/*
-    LittleJS - The Little JavaScript Game Engine That Can - By Frank Force 2021
-
-    Engine Features
-    - Engine and debug system are separate from game code
-    - Object oriented with base class engine object
-    - Engine handles core update loop
-    - Base class object handles update, physics, collision, rendering, etc
-    - Engine helper classes and functions like Vector2, Color, and Timer
-    - Super fast rendering system for tile sheets
-    - Sound effects audio with zzfx and music with zzfxm
-    - Input processing system with gamepad and touchscreen support
-    - Tile layer rendering and collision system
-    - Particle effect system
-    - Automatically calls appInit(), appUpdate(), appUpdatePost(), appRender(), appRenderPost()
-    - Debug tools and debug rendering system
-    - Call engineInit() to start it up!
-*/
-
-///////////////////////////////////////////////////////////////////////////////
-// engine config
-
-const engineName = "LittleJS";
-const engineVersion = "v0.74";
-const fixedWidth = 0; // native resolution
-//const fixedWidth = 1280, fixedHeight = 720; // 720p
-//const fixedWidth = 128,  fixedHeight = 128; // PICO-8
-//const fixedWidth = 240,  fixedHeight = 136; // TIC-80
-
+/* LittleJS v0.74 - The Little JavaScript Game Engine That Can - By Frank Force 2021 */
 // tile sheet settings
-//const defaultTilesFilename = 'a.png'; // everything goes in one tile sheet
 const defaultTileSize = vec2(16); // default size of tiles in pixels
 const tileBleedShrinkFix = 0.3; // prevent tile bleeding from neighbors
-const pixelated = 1; // use crisp pixels for pixel art
-
-///////////////////////////////////////////////////////////////////////////////
 // core engine
-
 const gravity = -0.01;
 let mainCanvas = 0,
   mainContext = 0,
@@ -379,8 +254,7 @@ let frame = 0,
   realTime = 0,
   paused = 0,
   frameTimeLastMS = 0,
-  frameTimeBufferMS = 0,
-  debugFPS = 0;
+  frameTimeBufferMS = 0;
 let cameraPos = vec2(),
   cameraScale = 4 * max(defaultTileSize.x, defaultTileSize.y);
 let tileImageSize, tileImageSizeInverse, shrinkTilesX, shrinkTilesY, drawCount;
@@ -399,7 +273,6 @@ function engineInit(
     tileImageSizeInverse = vec2(1).divide(
       (tileImageSize = vec2(tileImage.width, tileImage.height))
     );
-    debug && (tileImage.onload = () => ASSERT(1)); // tile sheet can not reloaded
     shrinkTilesX = tileBleedShrinkFix / tileImageSize.x;
     shrinkTilesY = tileBleedShrinkFix / tileImageSize.y;
 
@@ -410,7 +283,6 @@ function engineInit(
       "position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);image-rendering:crisp-edges;image-rendering:pixelated"; // pixelated rendering
     mainContext = mainCanvas.getContext("2d");
 
-    debugInit();
     glInit();
     appInit();
     engineUpdate();
@@ -427,8 +299,6 @@ function engineInit(
     let frameTimeDeltaMS = realFrameTimeDeltaMS;
     frameTimeLastMS = frameTimeMS;
     realTime = frameTimeMS / 1e3;
-    if (debug)
-      frameTimeDeltaMS *= keyIsDown(107) ? 5 : keyIsDown(109) ? 0.2 : 1;
     if (!paused) frameTimeBufferMS += frameTimeDeltaMS;
 
     // update frame
@@ -441,9 +311,7 @@ function engineInit(
       // force an update each frame if time is close enough (not just a fast refresh rate)
       deltaSmooth = frameTimeBufferMS;
       frameTimeBufferMS = 0;
-      //debug && frameTimeBufferMS < 0 && console.log('time smoothing: ' + -deltaSmooth);
     }
-    //debug && frameTimeBufferMS < 0 && console.log('skipped frame! ' + -frameTimeBufferMS);
 
     // clamp incase of extra long frames (slow framerate)
     frameTimeBufferMS = min(frameTimeBufferMS, 50);
@@ -454,7 +322,6 @@ function engineInit(
       appUpdate();
       engineUpdateObjects();
       appUpdatePost();
-      debugUpdate();
 
       // update input
       for (let deviceInputData of inputData)
@@ -465,25 +332,13 @@ function engineInit(
     // add the smoothing back in
     frameTimeBufferMS += deltaSmooth;
 
-    if (fixedWidth) {
-      // clear and fill window if smaller
-      mainCanvas.width = fixedWidth;
-      mainCanvas.height = fixedHeight;
-
-      // fit to window width if smaller
-      const fixedAspect = fixedWidth / fixedHeight;
-      const aspect = innerWidth / innerHeight;
-      mainCanvas.style.width = aspect < fixedAspect ? "100%" : "";
-      mainCanvas.style.height = aspect < fixedAspect ? "" : "100%";
-    } else {
-      // fill the window
-      mainCanvas.width = min(innerWidth, maxWidth);
-      mainCanvas.height = min(innerHeight, maxHeight);
-    }
+    // fill the window
+    mainCanvas.width = min(innerWidth, MAX_WIDTH);
+    mainCanvas.height = min(innerHeight, MAX_HEIGHT);
 
     // save canvas size
     mainCanvasSize = vec2(mainCanvas.width, mainCanvas.height);
-    mainContext.imageSmoothingEnabled = !pixelated; // disable smoothing for pixel art
+    mainContext.imageSmoothingEnabled = false; // disable smoothing for pixel art
 
     // render sort then render while removing destroyed objects
     glPreRender(mainCanvas.width, mainCanvas.height);
@@ -492,31 +347,6 @@ function engineInit(
     for (const o of engineObjects) o.destroyed || o.render();
     glCopyToContext(mainContext, false);
     appRenderPost();
-    debugRender();
-
-    if (showWatermark) {
-      // update fps
-      debugFPS = lerp(0.05, 1e3 / (realFrameTimeDeltaMS || 1), debugFPS);
-      mainContext.textAlign = "right";
-      mainContext.textBaseline = "top";
-      mainContext.font = "1em monospace";
-      mainContext.fillStyle = "#000";
-      const text =
-        engineName +
-        " " +
-        engineVersion +
-        " / " +
-        drawCount +
-        " / " +
-        engineObjects.length +
-        " / " +
-        debugFPS.toFixed(1);
-      mainContext.fillText(text, mainCanvas.width - 3, 3);
-      mainContext.fillStyle = "#fff";
-      mainContext.fillText(text, mainCanvas.width - 2, 2);
-      drawCount = 0;
-    }
-
     // copy anything left in the buffer if necessary
     glCopyToContext(mainContext, false);
   };
@@ -560,22 +390,13 @@ function forEachObject(
       pos.distanceSquared(o.pos) < sizeSquared && callbackFunction(o);
   }
 }
-/*
-    LittleJS Audio System
-    - Speech Synthesis
-    - ZzFX Sound Effects
-    - ZzFXM Music
-    - Can attenuate zzfx sounds by camera range
-*/
 
+/* LittleJS Audio System */
 const soundEnable = 1; // all audio can be disabled
 const defaultSoundRange = 15; // distance where taper starts
 const soundTaperPecent = 0.5; // extra range added for sound taper
 const audioVolume = 0.5; // volume for sound, music and speech
 let audioContext; // main audio context
-
-///////////////////////////////////////////////////////////////////////////////
-
 // play a zzfx sound in world space with attenuation and culling
 function playSound(zzfxSound, pos, range = defaultSoundRange, volumeScale = 1) {
   if (!soundEnable) return;
@@ -593,38 +414,7 @@ function playSound(zzfxSound, pos, range = defaultSoundRange, volumeScale = 1) {
   zzfx(...zzfxSound);
 }
 
-// render and play zzfxm music with an option to loop
-function playMusic(zzfxmMusic, loop = 1) {
-  if (!soundEnable) return;
-
-  const source = zzfxP(...zzfxM(...zzfxmMusic));
-  source && (source.loop = loop);
-  return source;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// speak text with passed in settings
-function speak(text, language = "", volume = 1, rate = 1, pitch = 1) {
-  if (!soundEnable || !speechSynthesis) return;
-
-  // common languages (not supported by all browsers)
-  // en - english,  it - italian, fr - french,  de - german, es - spanish
-  // ja - japanese, ru - russian, zh - chinese, hi - hindi,  ko - korean
-
-  // build utterance and speak
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = language;
-  utterance.volume = volume * audioVolume * 3;
-  utterance.rate = rate;
-  utterance.pitch = pitch;
-  speechSynthesis.speak(utterance);
-}
-
-const stopSpeech = () => speechSynthesis && speechSynthesis.cancel();
-
-///////////////////////////////////////////////////////////////////////////////
 // ZzFXMicro - Zuper Zmall Zound Zynth - v1.1.8 by Frank Force
-
 const zzfxR = 44100; // sample rate
 function zzfx(
   // parameters
@@ -749,8 +539,7 @@ function zzfx(
   }
 
   // create audio context
-  if (!audioContext)
-    audioContext = new (window.AudioContext || webkitAudioContext)();
+  if (!audioContext) audioContext = new AudioContext();
 
   // create buffer and source
   const buffer = audioContext.createBuffer(1, b.length, zzfxR),
@@ -764,131 +553,7 @@ function zzfx(
   return source;
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// ZzFX Music Renderer v2.0.3 by Keith Clark and Frank Force
-
-///////////////////////////////////////////////////////////////////////////////
-// ZzFX Music Renderer v2.0.3 by Keith Clark and Frank Force
-
-function zzfxM(instruments, patterns, sequence, BPM = 125) {
-  if (!soundEnable) return;
-  let instrumentParameters;
-  let i;
-  let j;
-  let k;
-  let note;
-  let sample;
-  let patternChannel;
-  let notFirstBeat;
-  let stop;
-  let instrument;
-  let pitch;
-  let attenuation;
-  let outSampleOffset;
-  let isSequenceEnd;
-  let sampleOffset = 0;
-  let nextSampleOffset;
-  let sampleBuffer = [];
-  let leftChannelBuffer = [];
-  let rightChannelBuffer = [];
-  let channelIndex = 0;
-  let panning = 0;
-  let hasMore = 1;
-  let sampleCache = {};
-  let beatLength = ((zzfxR / BPM) * 60) >> 2;
-
-  // for each channel in order until there are no more
-  for (; hasMore; channelIndex++) {
-    // reset current values
-    sampleBuffer = [(hasMore = notFirstBeat = pitch = outSampleOffset = 0)];
-
-    // for each pattern in sequence
-    sequence.map((patternIndex, sequenceIndex) => {
-      // get pattern for current channel, use empty 1 note pattern if none found
-      patternChannel = patterns[patternIndex][channelIndex] || [0, 0, 0];
-
-      // check if there are more channels
-      hasMore |= !!patterns[patternIndex][channelIndex];
-
-      // get next offset, use the length of first channel
-      nextSampleOffset =
-        outSampleOffset +
-        (patterns[patternIndex][0].length - 2 - !notFirstBeat) * beatLength;
-      // for each beat in pattern, plus one extra if end of sequence
-      isSequenceEnd = sequenceIndex == sequence.length - 1;
-      for (
-        i = 2, k = outSampleOffset;
-        i < patternChannel.length + isSequenceEnd;
-        notFirstBeat = ++i
-      ) {
-        // <channel-note>
-        note = patternChannel[i];
-
-        // stop if end, different instrument or new note
-        stop =
-          (i == patternChannel.length + isSequenceEnd - 1 && isSequenceEnd) ||
-          (instrument != (patternChannel[0] || 0)) | note | 0;
-
-        // fill buffer with samples for previous beat, most cpu intensive part
-        for (
-          j = 0;
-          j < beatLength && notFirstBeat;
-          // fade off attenuation at end of beat if stopping note, prevents clicking
-          j++ > beatLength - 99 && stop
-            ? (attenuation += (attenuation < 1) / 99)
-            : 0
-        ) {
-          // copy sample to stereo buffers with panning
-          sample = ((1 - attenuation) * sampleBuffer[sampleOffset++]) / 2 || 0;
-          leftChannelBuffer[k] =
-            (leftChannelBuffer[k] || 0) - sample * panning + sample;
-          rightChannelBuffer[k] =
-            (rightChannelBuffer[k++] || 0) + sample * panning + sample;
-        }
-
-        // set up for next note
-        if (note) {
-          // set attenuation
-          attenuation = note % 1;
-          panning = patternChannel[1] || 0;
-          if ((note |= 0)) {
-            // get cached sample
-            sampleBuffer = sampleCache[
-              [(instrument = patternChannel[(sampleOffset = 0)] || 0), note]
-            ] =
-              sampleCache[[instrument, note]] ||
-              // add sample to cache
-              ((instrumentParameters = [...instruments[instrument]]),
-              (instrumentParameters[2] *= 2 ** ((note - 12) / 12)),
-              // allow negative values to stop notes
-              note > 0 ? zzfxG(...instrumentParameters) : []);
-          }
-        }
-      }
-
-      // update the sample offset
-      outSampleOffset = nextSampleOffset;
-    });
-  }
-
-  return [leftChannelBuffer, rightChannelBuffer];
-}
-/*
-    LittleJS Object Base Class
-    - Base object class used by the engine
-    - Automatically adds self to object list
-    - Will be updated and rendered each frame
-    - Renders as a sprite from a tilesheet by default
-    - Can have color and addtive color applied
-    - 2d Physics and collision system
-    - Sorted by renderOrder
-    - Objects can have children attached
-    - Parents are updated before children, and set child transform
-    - Call destroy() to get rid of objects
-*/
-
-///////////////////////////////////////////////////////////////////////////////
-
+/* LittleJS Object Base Class */
 // object defaults
 const defaultObjectSize = vec2(0.999);
 const defaultObjectMass = 1;
@@ -908,7 +573,6 @@ class EngineObject {
     color
   ) {
     // set passed in params
-    ASSERT(pos);
     this.pos = pos.copy();
     this.size = size;
     this.tileIndex = tileIndex;
@@ -957,10 +621,6 @@ class EngineObject {
       this.damping * this.velocity.y + gravity * this.gravityScale;
     this.angle += this.angleVelocity *= this.angleDamping;
 
-    // physics sanity checks
-    ASSERT(this.angleDamping >= 0 && this.angleDamping <= 1);
-    ASSERT(this.damping >= 0 && this.damping <= 1);
-
     if (!this.mass)
       // do not update collision for fixed objects
       return;
@@ -974,7 +634,6 @@ class EngineObject {
       this.velocity.x =
         groundSpeed + (this.velocity.x - groundSpeed) * this.friction;
       this.groundObject = 0;
-      //debugPhysics && debugPoint(this.pos.subtract(vec2(0,this.size.y/2)), '#0f0');
     }
 
     if (this.collideSolidObjects) {
@@ -1005,7 +664,6 @@ class EngineObject {
             // push away if not fixed
             o.velocity = o.velocity.subtract(velocity);
 
-          debugPhysics && debugAABB(this.pos, o.pos, this.size, o.size, "#f00");
           continue;
         }
 
@@ -1033,10 +691,6 @@ class EngineObject {
               (this.mass * this.velocity.y + o.mass * o.velocity.y) /
               (this.mass + o.mass);
           }
-          debugPhysics &&
-            smallStepUp &&
-            abs(oldPos.x - o.pos.x) * 2 > sx &&
-            console.log("stepUp", oldPos.y - o.pos.y);
         }
         if (!smallStepUp && (isBlockedX || !isBlockedY)) {
           // resolve x collision
@@ -1051,15 +705,11 @@ class EngineObject {
           } // bounce if other object is fixed
           else this.velocity.x *= -this.elasticity;
         }
-
-        debugPhysics && debugAABB(this.pos, o.pos, this.size, o.size, "#f0f");
       }
     }
     if (this.collideTiles) {
       // check collision against tiles
       if (tileCollisionTest(this.pos, this.size, this)) {
-        //debugPhysics && debugRect(this.pos, this.size, '#ff0');
-
         // if already was stuck in collision, don't do anything
         // this should not happen unless something starts in collision
         if (!tileCollisionTest(oldPos, this.size, this)) {
@@ -1127,41 +777,31 @@ class EngineObject {
     return time - this.spawnTime;
   }
   applyAcceleration(a) {
-    ASSERT(!this.isFixed());
     this.velocity = this.velocity.add(a);
   }
   applyForce(force) {
     this.applyAcceleration(force.scale(1 / this.mass));
-  }
-  isFixed() {
-    return !this.mass;
   }
   getMirrorSign(s = 1) {
     return this.mirror ? -s : s;
   }
 
   addChild(child, localPos = vec2(), localAngle = 0) {
-    ASSERT(!child.parent && !this.children.includes(child));
     this.children.push(child);
     child.parent = this;
     child.localPos = localPos.copy();
     child.localAngle = localAngle;
   }
   removeChild(child) {
-    ASSERT(child.parent == this && this.children.includes(child));
     this.children.splice(this.children.indexOf(child), 1);
     child.parent = 0;
   }
 
   setCollision(collideSolidObjects = 1, isSolid, collideTiles = 1) {
-    ASSERT(collideSolidObjects || !isSolid); // solid objects must be set to collide
-
     // track collidable objects in separate list
     if (collideSolidObjects && !this.collideSolidObjects) {
-      ASSERT(!engineCollideObjects.includes(this));
       engineCollideObjects.push(this);
     } else if (!collideSolidObjects && this.collideSolidObjects) {
-      ASSERT(engineCollideObjects.includes(this));
       engineCollideObjects.splice(engineCollideObjects.indexOf(this), 1);
     }
 
@@ -1170,24 +810,14 @@ class EngineObject {
     this.collideTiles = collideTiles;
   }
 }
-/*
-    LittleJS Tile Layer System
-    - Caches arrays of tiles to offscreen canvas for fast rendering
-    - Unlimted numbers of layers, allocates canvases as needed
-    - Interfaces with EngineObject for collision
-    - Collision layer is separate from visible layers
-    - Tile layers can be drawn to using their context with canvas2d
-    - It is recommended to have a visible layer that matches the collision
-*/
 
-///////////////////////////////////////////////////////////////////////////////
+/* LittleJS Tile Layer System */
 // Tile Collision
 
 let tileCollision = [];
 let tileCollisionSize = vec2();
 const tileLayerCanvasCache = [];
 const defaultTileLayerRenderOrder = -1e9;
-const debugRaycast = 0;
 
 function initTileCollision(size) {
   // reset collision to be clear
@@ -1243,8 +873,6 @@ function tileCollisionRaycast(posStart, posEnd, object) {
         ? object.collideWithTileRaycast(tileData, new Vector2(x, y))
         : tileData > 0)
     ) {
-      debugRaycast && debugLine(posStart, posEnd, "#f00", 0.02, 1);
-      debugRaycast && debugPoint(new Vector2(x + 0.5, y + 0.5), "#ff0", 1);
       return new Vector2(x + 0.5, y + 0.5);
     }
 
@@ -1254,10 +882,8 @@ function tileCollisionRaycast(posStart, posEnd, object) {
     if (e2 >= dy) (e += dy), (x += sx);
     if (e2 <= dx) (e += dx), (y += sy);
   }
-  debugRaycast && debugLine(posStart, posEnd, "#00f", 0.02, 1);
 }
 
-///////////////////////////////////////////////////////////////////////////////
 // Tile Layer Rendering System
 
 class TileLayerData {
@@ -1316,10 +942,8 @@ class TileLayer extends EngineObject {
 
   update() {} // tile layers are not updated
   render() {
-    ASSERT(mainContext != this.context); // must call redrawEnd() after drawing tiles
-
     // flush and copy gl canvas because tile canvas does not use gl
-    this.flushGLBeforeRender && glEnable && glCopyToContext(mainContext);
+    this.flushGLBeforeRender && glCopyToContext(mainContext);
 
     // draw the entire cached level onto the main canvas
     const pos = worldToScreen(
@@ -1365,15 +989,13 @@ class TileLayer extends EngineObject {
     cameraPos = this.size.scale(0.5);
     mainCanvas = this.canvas;
     mainContext = this.context;
-    mainContext.imageSmoothingEnabled = !pixelated; // disable smoothing for pixel art
+    mainContext.imageSmoothingEnabled = false; // disable smoothing for pixel art
     mainCanvasSize = vec2(width, height);
     glPreRender(width, height);
   }
 
   redrawEnd() {
-    ASSERT(mainContext == this.context); // must call redrawStart() before drawing tiles
     glCopyToContext(mainContext, true);
-    //debugSaveCanvas(this.canvas);
 
     // set stuff back to normal
     [mainCanvasSize, mainCanvas, mainContext, cameraScale, cameraPos] =
@@ -1389,7 +1011,6 @@ class TileLayer extends EngineObject {
 
     // draw the tile
     const d = this.getData(layerPos);
-    ASSERT(d.tile < 0 || mainContext == this.context); // must call redrawStart() before drawing tiles
     d.tile < 0 ||
       drawTile(
         pos,
@@ -1457,14 +1078,8 @@ class TileLayer extends EngineObject {
     this.drawTile(pos, size, -1, 0, color, angle, 0);
   }
 }
-/*
-    LittleJS Input System
-    - Tracks key down, pressed, and released
-    - Also tracks mouse buttons, position, and wheel
-    - Supports multiple gamepads
-*/
+/* LittleJS Input System */
 
-///////////////////////////////////////////////////////////////////////////////
 // input
 
 const enableGamepads = 1;
@@ -1493,7 +1108,6 @@ const mouseWasReleased = keyWasReleased;
 
 // handle input events
 onkeydown = (e) => {
-  if (debug && e.target != document.body) return;
   e.repeat ||
     (inputData[(isUsingGamepad = 0)][remapKeyCode(e.keyCode)] = {
       d: (hadInput = 1),
@@ -1501,12 +1115,10 @@ onkeydown = (e) => {
     });
 };
 onkeyup = (e) => {
-  if (debug && e.target != document.body) return;
   const c = remapKeyCode(e.keyCode);
   inputData[0][c] && ((inputData[0][c].d = 0), (inputData[0][c].r = 1));
 };
 
-if (debug) onwheel = (e) => e.ctrlKey || (mouseWheel = sign(e.deltaY));
 // oncontextmenu = (e) => !1; // prevent right click menu
 const remapKeyCode = (c) =>
   copyWASDToDpad
@@ -1521,7 +1133,6 @@ const remapKeyCode = (c) =>
       : c
     : c;
 
-////////////////////////////////////////////////////////////////////
 // gamepad
 
 let isUsingGamepad = 0;
@@ -1537,8 +1148,6 @@ const gamepadWasReleased = (button, gamepad = 0) =>
 
 function updateGamepads() {
   if (!navigator.getGamepads || !enableGamepads) return;
-
-  if (!document.hasFocus() && !debug) return;
 
   const gamepads = navigator.getGamepads();
   gamepadCount = 0;
@@ -1596,15 +1205,7 @@ function updateGamepads() {
   }
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// touch screen input
-
-/*
-    LittleJS Particle System
-    - Spawns particles with randomness from parameters
-    - Updates particle physics
-    - Fast particle rendering
-*/
+/* LittleJS Particle System */
 
 class ParticleEmitter extends EngineObject {
   constructor(
@@ -1678,16 +1279,13 @@ class ParticleEmitter extends EngineObject {
       if (this.emitRate) {
         const rate = 1 / this.emitRate;
         for (
-          this.emitTimeBuffer += timeDelta;
+          this.emitTimeBuffer += TIME_DELTA;
           this.emitTimeBuffer > 0;
           this.emitTimeBuffer -= rate
         )
           this.emitParticle();
       }
     } else this.destroy();
-
-    debugParticles &&
-      debugRect(this.pos, vec2(this.emitSize), "#0f0", 0, this.angle);
   }
 
   emitParticle() {
@@ -1758,7 +1356,6 @@ class ParticleEmitter extends EngineObject {
   render() {} // emitters are not rendered
 }
 
-///////////////////////////////////////////////////////////////////////////////
 // particle object
 
 class Particle extends EngineObject {
@@ -1786,7 +1383,7 @@ class Particle extends EngineObject {
     ); // fade alpha
 
     // draw the particle
-    this.additive && setBlendMode(1);
+    this.additive && glSetBlendMode(1);
     if (this.trailScale) {
       // trail style particles
       const speed = this.velocity.length();
@@ -1813,8 +1410,7 @@ class Particle extends EngineObject {
         this.angle,
         this.mirror
       );
-    this.additive && setBlendMode();
-    debugParticles && debugRect(this.pos, size, "#f005", 0, this.angle);
+    this.additive && glSetBlendMode(0);
 
     if (p == 1) {
       this.color = color;
@@ -1825,17 +1421,9 @@ class Particle extends EngineObject {
     }
   }
 }
-/*
-    LittleJS WebGL Interface
-    - All webgl used by the engine is wrapped up here
-    - Can be disabled with glEnable to revert to 2D canvas rendering
-    - Batches sprite rendering on GPU for incredibly fast performance
-    - Sprite transform math is done in the shader where possible
-    - For normal stuff you won't need to call any functions in this file
-    - For advanced stuff there are helper functions to create shaders, textures, etc
-*/
 
-const glEnable = 1; // can run without gl (texured coloring will be disabled)
+/* LittleJS WebGL Interface */
+
 let glCanvas,
   glContext,
   glTileTexture,
@@ -1846,24 +1434,19 @@ let glCanvas,
   glDirty,
   glAdditive,
   glShrinkTilesX,
-  glShrinkTilesY,
-  glOverlay = lowGraphicsSettings;
+  glShrinkTilesY;
 
 function glInit() {
-  if (!glEnable) return;
-
   // create the canvas and tile texture
   glCanvas = document.createElement("canvas");
-  glContext = glCanvas.getContext("webgl", { antialias: !pixelated });
+  glContext = glCanvas.getContext("webgl", { antialias: false });
   glTileTexture = glCreateTexture(tileImage);
   glShrinkTilesX = tileBleedShrinkFix / tileImageSize.x;
   glShrinkTilesY = tileBleedShrinkFix / tileImageSize.y;
 
-  if (glOverlay) {
-    // firefox is much faster without copying the gl buffer so we just overlay it with some tradeoffs
-    document.body.appendChild(glCanvas);
-    glCanvas.style = mainCanvas.style.cssText;
-  }
+  // firefox is much faster without copying the gl buffer so we just overlay it with some tradeoffs
+  document.body.appendChild(glCanvas);
+  glCanvas.style = mainCanvas.style.cssText;
 
   // setup vertex and fragment shaders
   glShader = glCreateProgram(
@@ -1918,21 +1501,11 @@ function glInit() {
   initVertexAttribArray("b", gl_UNSIGNED_BYTE, 1, 4, 1); // additiveColor
 
   // use point filtering for pixelated rendering
-  glContext.texParameteri(
-    gl_TEXTURE_2D,
-    gl_TEXTURE_MIN_FILTER,
-    pixelated ? gl_NEAREST : gl_LINEAR
-  );
-  glContext.texParameteri(
-    gl_TEXTURE_2D,
-    gl_TEXTURE_MAG_FILTER,
-    pixelated ? gl_NEAREST : gl_LINEAR
-  );
+  glContext.texParameteri(gl_TEXTURE_2D, gl_TEXTURE_MIN_FILTER, gl_NEAREST);
+  glContext.texParameteri(gl_TEXTURE_2D, gl_TEXTURE_MAG_FILTER, gl_NEAREST);
 }
 
 function glSetBlendMode(additive) {
-  if (!glEnable) return;
-
   if (additive != glAdditive) glFlush();
 
   // setup blending
@@ -1946,22 +1519,16 @@ function glSetBlendMode(additive) {
 }
 
 function glCompileShader(source, type) {
-  if (!glEnable) return;
-
   // build the shader
   const shader = glContext.createShader(type);
   glContext.shaderSource(shader, source);
   glContext.compileShader(shader);
 
   // check for errors
-  if (debug && !glContext.getShaderParameter(shader, gl_COMPILE_STATUS))
-    throw glContext.getShaderInfoLog(shader);
   return shader;
 }
 
 function glCreateProgram(vsSource, fsSource) {
-  if (!glEnable) return;
-
   // build the program
   const program = glContext.createProgram();
   glContext.attachShader(program, glCompileShader(vsSource, gl_VERTEX_SHADER));
@@ -1972,14 +1539,10 @@ function glCreateProgram(vsSource, fsSource) {
   glContext.linkProgram(program);
 
   // check for errors
-  if (debug && !glContext.getProgramParameter(program, gl_LINK_STATUS))
-    throw glContext.getProgramInfoLog(program);
   return program;
 }
 
 function glCreateBuffer(bufferType, size, usage) {
-  if (!glEnable) return;
-
   // build the buffer
   const buffer = glContext.createBuffer();
   glContext.bindBuffer(bufferType, buffer);
@@ -1988,8 +1551,6 @@ function glCreateBuffer(bufferType, size, usage) {
 }
 
 function glCreateTexture(image) {
-  if (!glEnable) return;
-
   // build the texture
   const texture = glContext.createTexture();
   glContext.bindTexture(gl_TEXTURE_2D, texture);
@@ -2005,8 +1566,6 @@ function glCreateTexture(image) {
 }
 
 function glPreRender(width, height) {
-  if (!glEnable) return;
-
   // clear and set to same size as main canvas
   glCanvas.width = width;
   glCanvas.height = height;
@@ -2044,7 +1603,6 @@ function glPreRender(width, height) {
 }
 
 function glFlush() {
-  if (!glEnable) return;
   if (!glBatchCount) return;
 
   // draw all the sprites in the batch and reset the buffer
@@ -2058,13 +1616,12 @@ function glFlush() {
 }
 
 function glCopyToContext(context, forceDraw) {
-  if (!glEnable) return;
   if (!glDirty) return;
 
   // draw any sprites still in the buffer, copy to main canvas and clear
   glFlush();
 
-  if (!glOverlay || forceDraw) {
+  if (forceDraw) {
     // do not draw/clear in overlay mode because the canvas is visible
     context.drawImage(glCanvas, 0, (glAdditive = glDirty = 0));
     glContext.clear(gl_COLOR_BUFFER_BIT);
@@ -2085,8 +1642,6 @@ function glDraw(
   abgr,
   abgrAdditive
 ) {
-  if (!glEnable) return;
-
   // flush if there is no room for more verts
   if (glBatchCount >= MAX_BATCH) glFlush();
 
@@ -2170,7 +1725,6 @@ function glDraw(
   glColorData[++offset] = abgrAdditive;
 }
 
-///////////////////////////////////////////////////////////////////////////////
 // store gl constants as integers so their name doesn't use space in minifed
 const gl_ONE = 1,
   gl_TRIANGLES = 4,
@@ -2233,64 +1787,43 @@ function drawTile(
 ) {
   if (!size.x | !size.y) return;
 
-  showWatermark && ++drawCount;
-  if (glEnable) {
-    if (tileIndex < 0) {
-      // if negative tile index, force untextured
-      glDraw(
-        pos.x,
-        pos.y,
-        size.x,
-        size.y,
-        angle,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        color.rgbaInt()
-      );
-    } else {
-      // calculate uvs and render
-      const cols = (tileImage.width / tileSize.x) | 0;
-      const uvSizeX = tileSize.x * tileImageSizeInverse.x;
-      const uvSizeY = tileSize.y * tileImageSizeInverse.y;
-      const uvX = (tileIndex % cols) * uvSizeX,
-        uvY = ((tileIndex / cols) | 0) * uvSizeY;
-      glDraw(
-        pos.x,
-        pos.y,
-        size.x,
-        size.y,
-        angle,
-        mirror,
-        uvX,
-        uvY,
-        uvX + uvSizeX,
-        uvY + uvSizeY,
-        color.rgbaInt(),
-        additiveColor.rgbaInt()
-      );
-    }
+  if (tileIndex < 0) {
+    // if negative tile index, force untextured
+    glDraw(
+      pos.x,
+      pos.y,
+      size.x,
+      size.y,
+      angle,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      color.rgbaInt()
+    );
   } else {
-    // normal canvas 2D rendering method (slower)
-    drawCanvas2D(pos, size, angle, mirror, (context) => {
-      if (tileIndex < 0) {
-        // if negative tile index, force untextured
-        context.fillStyle = color.rgba();
-        context.fillRect(-0.5, -0.5, 1, 1);
-      } else {
-        // calculate uvs and render
-        const cols = (tileImage.width / tileSize.x) | 0;
-        const sX = (tileIndex % cols) * tileSize.x + tileBleedShrinkFix;
-        const sY = ((tileIndex / cols) | 0) * tileSize.y + tileBleedShrinkFix;
-        const sWidth = tileSize.x - 2 * tileBleedShrinkFix;
-        const sHeight = tileSize.y - 2 * tileBleedShrinkFix;
-        context.globalAlpha = color.a; // only alpha is supported
-        context.drawImage(tileImage, sX, sY, sWidth, sHeight, -0.5, -0.5, 1, 1);
-      }
-    });
+    // calculate uvs and render
+    const cols = (tileImage.width / tileSize.x) | 0;
+    const uvSizeX = tileSize.x * tileImageSizeInverse.x;
+    const uvSizeY = tileSize.y * tileImageSizeInverse.y;
+    const uvX = (tileIndex % cols) * uvSizeX,
+      uvY = ((tileIndex / cols) | 0) * uvSizeY;
+    glDraw(
+      pos.x,
+      pos.y,
+      size.x,
+      size.y,
+      angle,
+      mirror,
+      uvX,
+      uvY,
+      uvX + uvSizeX,
+      uvY + uvSizeY,
+      color.rgbaInt(),
+      additiveColor.rgbaInt()
+    );
   }
 }
 
@@ -2322,71 +1855,7 @@ function drawTileScreenSpace(
   );
 }
 
-// draw a colored untextured rect in screen space
-function drawRectScreenSpace(pos, size, color, angle) {
-  drawTileScreenSpace(pos, size, -1, defaultTileSize, color, angle);
-}
-
-// draw a colored line between two points
-function drawLine(posA, posB, thickness = 0.1, color) {
-  const halfDelta = vec2((posB.x - posA.x) * 0.5, (posB.y - posA.y) * 0.5);
-  const size = vec2(thickness, halfDelta.length() * 2);
-  drawRect(posA.add(halfDelta), size, color, halfDelta.angle());
-}
-
-// draw directly to the 2d canvas in world space (bipass webgl)
-function drawCanvas2D(pos, size, angle, mirror, drawFunction) {
-  // create canvas transform from world space to screen space
-  pos = worldToScreen(pos);
-  size = size.scale(cameraScale);
-  mainContext.save();
-  mainContext.translate((pos.x + 0.5) | 0, (pos.y - 0.5) | 0);
-  mainContext.rotate(angle);
-  mainContext.scale(mirror ? -size.x : size.x, size.y);
-  drawFunction(mainContext);
-  mainContext.restore();
-}
-
-// draw text in world space without canvas scaling because that messes up fonts
-function drawText(
-  text,
-  pos,
-  size = 1,
-  color = new Color(),
-  lineWidth = 0,
-  lineColor = new Color(0, 0, 0),
-  textAlign = "center",
-  font = "monospace"
-) {
-  pos = worldToScreen(pos);
-  mainContext.font = size * cameraScale + "px " + font;
-  mainContext.textAlign = textAlign;
-  mainContext.textBaseline = "middle";
-  if (lineWidth) {
-    mainContext.lineWidth = lineWidth * cameraScale;
-    mainContext.strokeStyle = lineColor.rgba();
-    mainContext.strokeText(text, pos.x, pos.y);
-  }
-  mainContext.fillStyle = color.rgba();
-  mainContext.fillText(text, pos.x, pos.y);
-}
-
-// enable additive or regular blend mode
-function setBlendMode(additive) {
-  glEnable
-    ? glSetBlendMode(additive)
-    : (mainContext.globalCompositeOperation = additive
-        ? "lighter"
-        : "source-over");
-}
-
 // END ENGINE
-
-/*
-    Javascript Space Game
-    By Frank Force 2021
-
-*/
 
 class GameObject extends EngineObject {
   constructor(pos, size, tileIndex, tileSize, angle) {
@@ -2441,7 +1910,6 @@ class GameObject extends EngineObject {
         } else if (rand() < 0.01) {
           // random chance to spread fire
           const spreadRadius = 2;
-          debugFire && debugCircle(this.pos, spreadRadius, "#f00", 1);
           forEachObject(
             this.pos,
             spreadRadius,
@@ -2480,11 +1948,11 @@ class GameObject extends EngineObject {
     )
       return;
 
-    if (godMode && this.isPlayer) return;
+    if (GOD_MODE && this.isPlayer) return;
 
     if (this.team == team_player) {
       // safety window after spawn
-      if (godMode || this.getAliveTime() < 2) return;
+      if (GOD_MODE || this.getAliveTime() < 2) return;
     }
 
     if (instant) {
@@ -2508,7 +1976,6 @@ class GameObject extends EngineObject {
   }
 
   heal(health) {
-    assert(health >= 0);
     if (this.isDead()) return 0;
 
     // apply healing and return amount healed
@@ -2518,7 +1985,6 @@ class GameObject extends EngineObject {
   }
 
   damage(damage, damagingObject) {
-    ASSERT(damage >= 0);
     if (this.isDead()) return 0;
 
     // set damage timer;
@@ -2553,8 +2019,6 @@ class GameObject extends EngineObject {
   }
 }
 
-///////////////////////////////////////////////////////////////////////////////
-
 const propType_crate_wood = 0;
 const propType_crate_explosive = 1;
 const propType_crate_metal = 2;
@@ -2577,28 +2041,28 @@ class Prop extends GameObject {
     let health = 5;
     this.tileIndex = 16;
     this.explosionSize = 0;
-    if (this.type == propType_crate_wood) {
+    if (type == propType_crate_wood) {
       this.color = new Color(1, 0.5, 0);
       this.canBurn = 1;
-    } else if (this.type == propType_crate_metal) {
+    } else if (type == propType_crate_metal) {
       this.color = new Color(0.9, 0.9, 1);
       health = 10;
-    } else if (this.type == propType_crate_explosive) {
+    } else if (type == propType_crate_explosive) {
       this.color = new Color(0.2, 0.8, 0.2);
       this.canBurn = 1;
       this.explosionSize = 2;
       health = 1e3;
-    } else if (this.type == propType_barrel_metal) {
+    } else if (type == propType_barrel_metal) {
       this.tileIndex = 17;
       this.color = new Color(0.9, 0.9, 1);
       health = 10;
-    } else if (this.type == propType_barrel_explosive) {
+    } else if (type == propType_barrel_explosive) {
       this.tileIndex = 17;
       this.color = new Color(0.2, 0.8, 0.2);
       this.canBurn = 1;
       this.explosionSize = 2;
       health = 1e3;
-    } else if (this.type == propType_barrel_highExplosive) {
+    } else if (type == propType_barrel_highExplosive) {
       this.tileIndex = 17;
       this.color = new Color(1, 0.1, 0.1);
       this.canBurn = 1;
@@ -2606,11 +2070,11 @@ class Prop extends GameObject {
       this.burnTimeDelay = 0;
       this.burnTime = rand(0.5, 0.1);
       health = 1e3;
-    } else if (this.type == propType_barrel_water) {
+    } else if (type == propType_barrel_water) {
       this.tileIndex = 17;
       this.color = new Color(0, 0.6, 1);
       health = 0.01;
-    } else if (this.type == propType_rock || this.type == propType_rock_lava) {
+    } else if (type == propType_rock || type == propType_rock_lava) {
       this.tileIndex = 18;
       this.color = new Color(0.8, 0.8, 0.8).mutate(0.2);
       health = 30;
@@ -2623,7 +2087,7 @@ class Prop extends GameObject {
       }
       this.isCrushing = 1;
 
-      if (this.type == propType_rock_lava) {
+      if (type == propType_rock_lava) {
         this.color = new Color(1, 0.9, 0);
         this.additiveColor = new Color(1, 0, 0);
         this.isLavaRock = 1;
@@ -2667,11 +2131,9 @@ class Prop extends GameObject {
 
     this.explosionSize
       ? explosion(this.pos, this.explosionSize)
-      : playSound(sound_destroyTile, this.pos);
+      : playSound(fxDestroy, this.pos);
   }
 }
-
-///////////////////////////////////////////////////////////////////////////////
 
 let checkpointPos,
   activeCheckpoint,
@@ -2703,7 +2165,7 @@ class Checkpoint extends GameObject {
 
   setActive() {
     if (activeCheckpoint != this && !levelWarmup)
-      playSound(sound_checkpoint, this.pos);
+      playSound(fxCheckPoint, this.pos);
 
     checkpointPos = this.pos;
     activeCheckpoint = this;
@@ -2731,8 +2193,6 @@ class Checkpoint extends GameObject {
   }
 }
 
-///////////////////////////////////////////////////////////////////////////////
-
 class Grenade extends GameObject {
   constructor(pos) {
     super(pos, vec2(0.2), 5, vec2(8));
@@ -2756,7 +2216,7 @@ class Grenade extends GameObject {
     }
 
     if (this.beepTimer.elapsed()) {
-      playSound(sound_grenade, this.pos);
+      playSound(fxGrenade, this.pos);
       this.beepTimer.set(1);
     }
 
@@ -2774,7 +2234,7 @@ class Grenade extends GameObject {
     );
 
     const a = this.getAliveTime();
-    setBlendMode(1);
+    glSetBlendMode(1);
     drawTile(
       this.pos,
       vec2(2),
@@ -2796,11 +2256,9 @@ class Grenade extends GameObject {
       vec2(16),
       new Color(1, 1, 1, 0.2 - 0.2 * Math.cos(a * 2 * PI))
     );
-    setBlendMode(0);
+    glSetBlendMode(0);
   }
 }
-
-///////////////////////////////////////////////////////////////////////////////
 
 class Weapon extends EngineObject {
   constructor(pos, parent) {
@@ -2855,7 +2313,7 @@ class Weapon extends EngineObject {
     const spread = 0.1;
 
     this.mirror = this.parent.mirror;
-    this.fireTimeBuffer += timeDelta;
+    this.fireTimeBuffer += TIME_DELTA;
 
     if (this.recoilTimer.active())
       this.localAngle = lerp(this.recoilTimer.getPercent(), 0, this.localAngle);
@@ -2873,7 +2331,7 @@ class Weapon extends EngineObject {
 
         this.shellEmitter.localAngle = -0.8 * this.getMirrorSign();
         this.shellEmitter.emitParticle();
-        playSound(sound_shoot, this.pos);
+        playSound(fxShoot, this.pos);
 
         // alert enemies
         this.parent.isPlayer && alertEnemies(this.pos, this.pos);
@@ -2881,8 +2339,6 @@ class Weapon extends EngineObject {
     } else this.fireTimeBuffer = min(this.fireTimeBuffer, 0);
   }
 }
-
-///////////////////////////////////////////////////////////////////////////////
 
 class Bullet extends EngineObject {
   constructor(pos, attacker) {
@@ -2948,7 +2404,7 @@ class Bullet extends EngineObject {
       o.damage(this.damage, this);
       o.applyForce(this.velocity.scale(0.1));
       if (o.isCharacter) {
-        playSound(sound_walk, this.pos);
+        playSound(fxWalk, this.pos);
         this.destroy();
       } else this.kill();
     }
@@ -3013,14 +2469,8 @@ class Bullet extends EngineObject {
     drawRect(this.pos, vec2(0.2, 0.5), this.color, this.velocity.angle());
   }
 }
-/*
-    Javascript Space Game
-    By Frank Force 2021
-
-*/
 
 const aiEnable = 1;
-const debugAI = 0;
 const maxCharacterSpeed = 0.2;
 
 class Character extends GameObject {
@@ -3120,7 +2570,7 @@ class Character extends GameObject {
             this.jumpTimer.set(0.2);
           }
           this.preventJumpTimer.set(0.5);
-          playSound(sound_jump, this.pos);
+          playSound(fxJump, this.pos);
         }
       }
 
@@ -3152,7 +2602,7 @@ class Character extends GameObject {
       this.dodgeRechargeTimer.set(2);
       this.jumpTimer.unset();
       this.extinguish();
-      playSound(sound_dodge, this.pos);
+      playSound(fxDodge, this.pos);
 
       if (!this.groundObject && this.getAliveTime() > 0.2)
         this.velocity.y += 0.2;
@@ -3202,8 +2652,8 @@ class Character extends GameObject {
           )
         );
         grenade.angleVelocity = this.getMirrorSign() * rand(0.8, 0.5);
-        playSound(sound_jump, this.pos);
-        this.grendeThrowTimer.set(1);
+        playSound(fxJump, this.pos);
+        if (!GOD_MODE) this.grendeThrowTimer.set(1);
       }
       this.wasPressingThrow = this.pressingThrow;
     }
@@ -3304,7 +2754,7 @@ class Character extends GameObject {
 
     if (this.team == team_player) {
       // safety window after spawn
-      if (godMode || this.getAliveTime() < 2) return;
+      if (GOD_MODE || this.getAliveTime() < 2) return;
     }
 
     if (this.isDead() && !this.persistent) {
@@ -3332,7 +2782,7 @@ class Character extends GameObject {
     this.size = this.size.scale(0.5);
 
     makeBlood(this.pos, 300);
-    playSound(sound_die, this.pos);
+    playSound(fxDie, this.pos);
 
     this.team = team_none;
     this.health = 0;
@@ -3410,8 +2860,6 @@ class Character extends GameObject {
   }
 }
 
-///////////////////////////////////////////////////////////////////////////////
-
 const type_weak = 0;
 const type_normal = 1;
 const type_strong = 2;
@@ -3424,7 +2872,6 @@ function alertEnemies(pos, playerPos) {
   forEachObject(pos, radius, (o) => {
     o.team == team_enemy && o.alert && o.alert(playerPos);
   });
-  debugAI && debugCircle(pos, radius, "#0ff6");
 }
 
 class Enemy extends Character {
@@ -3493,13 +2940,11 @@ class Enemy extends Character {
 
     // update check if players are visible
     const sightCheckFrames = 9;
-    ASSERT(this.sawPlayerPos || !this.sawPlayerTimer.isSet());
     if (frame % sightCheckFrames == this.sightCheckFrame) {
       const sawRecently =
         this.sawPlayerTimer.isSet() && this.sawPlayerTimer.get() < 5;
       const visionRangeSquared =
         (sawRecently ? this.maxVisionRange * 1.2 : this.maxVisionRange) ** 2;
-      debugAI && debugCircle(this.pos, visionRangeSquared ** 0.5, "#f003", 0.1);
       for (const player of players) {
         // check range
         if (player && !player.isDead())
@@ -3516,11 +2961,8 @@ class Enemy extends Character {
                 const raycastHit = tileCollisionRaycast(this.pos, player.pos);
                 if (!raycastHit) {
                   this.alert(player.pos, 1);
-                  debugAI && debugLine(this.pos, player.pos, "#0f0", 0.1);
                   break;
                 }
-                debugAI && debugLine(this.pos, player.pos, "#f00", 0.1);
-                debugAI && raycastHit && debugPoint(raycastHit, "#ff0", 0.1);
               }
       }
 
@@ -3550,8 +2992,6 @@ class Enemy extends Character {
       if (this.type == type_elite) this.pressedDodge = 1;
       else if (this.groundObject) this.pressedDodge = rand() < 0.005;
     } else if (this.sawPlayerTimer.isSet() && this.sawPlayerTimer.get() < 10) {
-      debugAI && debugPoint(this.sawPlayerPos, "#f00");
-
       // wall climb
       if (
         this.type >= type_strong &&
@@ -3571,8 +3011,6 @@ class Enemy extends Character {
         // just saw player for first time, act surprised
         this.moveInput.x = 0;
       } else if (timeSinceSawPlayer < 5) {
-        debugAI && debugRect(this.pos, this.size, "#f00");
-
         if (!this.dodgeTimer.active()) {
           const playerDirection = sign(this.sawPlayerPos.x - this.pos.x);
           if (
@@ -3613,7 +3051,6 @@ class Enemy extends Character {
           this.pressedDodge = rand() < 0.01 && timeSinceSawPlayer < 0.5;
       } else {
         // was fighting but lost player
-        debugAI && debugRect(this.pos, this.size, "#ff0");
 
         if (rand() < 0.04) this.facePlayerTimer.set(rand(2, 0.5));
 
@@ -3698,13 +3135,11 @@ class Enemy extends Character {
   }
 }
 
-///////////////////////////////////////////////////////////////////////////////
-
 class Player extends Character {
   constructor(pos, playerIndex = 0) {
     super(pos);
 
-    this.grenadeCount = 9999;
+    this.grenadeCount = GOD_MODE ? 99999 : 3;
     this.burnTime = 2;
 
     this.eyeColor = new Color().setHSLA(-playerIndex * 0.6, 1, 0.5);
@@ -3742,7 +3177,7 @@ class Player extends Character {
           if (this.deadTimer.get() > 2) {
             this.persistent = 0;
             new Player(checkpointPos, this.playerIndex);
-            playSound(sound_jump, cameraPos);
+            playSound(fxJump, cameraPos);
           }
         } else {
           // respawn only if all players dead, or checkpoint touched
@@ -3767,12 +3202,12 @@ class Player extends Character {
                 checkpointPos.add(vec2(1 - this.playerIndex / 2, 0)),
                 this.playerIndex
               );
-              this.playerIndex || playSound(sound_jump, cameraPos);
+              this.playerIndex || playSound(fxJump, cameraPos);
             } else if (checkpointTimer.active()) {
               // respawn if checkpoint active
               this.persistent = 0;
               const player = new Player(checkpointPos, this.playerIndex);
-              playSound(sound_jump, cameraPos);
+              playSound(fxJump, cameraPos);
             }
           }
         }
@@ -3831,7 +3266,7 @@ class Player extends Character {
     ) {
       if (this.walkSoundTime > 1) {
         this.walkSoundTime = 0;
-        playSound(sound_walk, this.pos);
+        playSound(fxWalk, this.pos);
       }
     } else this.walkSoundTime = 0.5;
 
@@ -3844,177 +3279,36 @@ class Player extends Character {
             if (player && player != this && !player.isDead()) {
               this.pos = player.pos.copy();
               this.velocity = vec2();
-              playSound(sound_jump, this.pos);
+              playSound(fxJump, this.pos);
             }
         } else this.kill();
       }
     }
   }
 }
-/*
-    Javascript Space Game
-    By Frank Force 2021
-
-*/
 
 const precipitationEnable = 1;
-const debugFire = 0;
 
-///////////////////////////////////////////////////////////////////////////////
 // sounds
+// let fxRain = [0.02, , 1e3, 2, , 2, , , , , , , , 99];
+// let fxWind = [0.01, 0.3, 2e3, 2, 1, 2, , , , , , , 1, 2, , , , , , 0.1];
+let fxShoot = [, , 90, , 0.01, 0.03, 4, , , , , , , 9, 50, 0.2, , 0.2, 0.01];
+let fxDie = [0.5, 0.4, 126, 0.05, , 0.2, 1, 2.09, , -4, , , 1, 1, 1, 0.4, 0.03];
+let fxJump = [0.4, 0.2, 250, 0.04, , 0.04, , , 1, , , , , 3];
+let fxDodge = [0.4, 0.2, 150, 0.05, , 0.05, , , -1, , , , , 4, , , , , 0.02];
+let fxWalk = [0.3, 0.1, 70, , , 0.01, 4, , , , -9, 0.1, , , , , , 0.5];
+let fxGrenade = [0.5, 0.01, 300, , , 0.02, 3, 0.22, , , -9, 0.2, , , , , , 0.5];
+let fxCheckPoint =
+  (0, [0.6, 0, 500, , 0.04, 0.3, 1, 2, , , 570, 0.02, 0.02, , , , 0.04]);
+let fxDestroy =
+  (0, [0.5, , 1e3, 0.02, , 0.2, 1, 3, 0.1, , , , , 1, -30, 0.5, , 0.5]);
+let fxExplosion =
+  (0, [2, 0.2, 72, 0.01, 0.01, 0.2, 4, , , , , , , 1, , 0.5, 0.1, 0.5, 0.02]);
 
-const sound_shoot = [
-  ,
-  ,
-  90,
-  ,
-  0.01,
-  0.03,
-  4,
-  ,
-  ,
-  ,
-  ,
-  ,
-  ,
-  9,
-  50,
-  0.2,
-  ,
-  0.2,
-  0.01,
-];
-const sound_destroyTile = [
-  0.5,
-  ,
-  1e3,
-  0.02,
-  ,
-  0.2,
-  1,
-  3,
-  0.1,
-  ,
-  ,
-  ,
-  ,
-  1,
-  -30,
-  0.5,
-  ,
-  0.5,
-];
-const sound_die = [
-  0.5,
-  0.4,
-  126,
-  0.05,
-  ,
-  0.2,
-  1,
-  2.09,
-  ,
-  -4,
-  ,
-  ,
-  1,
-  1,
-  1,
-  0.4,
-  0.03,
-];
-const sound_jump = [0.4, 0.2, 250, 0.04, , 0.04, , , 1, , , , , 3];
-const sound_dodge = [
-  0.4,
-  0.2,
-  150,
-  0.05,
-  ,
-  0.05,
-  ,
-  ,
-  -1,
-  ,
-  ,
-  ,
-  ,
-  4,
-  ,
-  ,
-  ,
-  ,
-  0.02,
-];
-const sound_walk = [0.3, 0.1, 70, , , 0.01, 4, , , , -9, 0.1, , , , , , 0.5];
-const sound_explosion = [
-  2,
-  0.2,
-  72,
-  0.01,
-  0.01,
-  0.2,
-  4,
-  ,
-  ,
-  ,
-  ,
-  ,
-  ,
-  1,
-  ,
-  0.5,
-  0.1,
-  0.5,
-  0.02,
-];
-const sound_checkpoint = [
-  0.6,
-  0,
-  500,
-  ,
-  0.04,
-  0.3,
-  1,
-  2,
-  ,
-  ,
-  570,
-  0.02,
-  0.02,
-  ,
-  ,
-  ,
-  0.04,
-];
-const sound_rain = [0.02, , 1e3, 2, , 2, , , , , , , , 99];
-const sound_wind = [0.01, 0.3, 2e3, 2, 1, 2, , , , , , , 1, 2, , , , , , 0.1];
-const sound_grenade = [
-  0.5,
-  0.01,
-  300,
-  ,
-  ,
-  0.02,
-  3,
-  0.22,
-  ,
-  ,
-  -9,
-  0.2,
-  ,
-  ,
-  ,
-  ,
-  ,
-  0.5,
-];
-
-///////////////////////////////////////////////////////////////////////////////
 // special effects
 
 const persistentParticleDestroyCallback = (particle) => {
   // copy particle to tile layer on death
-  ASSERT(particle.tileIndex < 0); // quick draw to tile layer uses canvas 2d so must be untextured
   if (particle.groundObject)
     tileLayer.drawTile(
       particle.pos,
@@ -4118,7 +3412,7 @@ function makeDebris(pos, color = new Color(), amount = 100) {
   return emitter;
 }
 
-function makeWater(pos, amount = 400) {
+function makeWater(pos) {
   // overall spray
   new ParticleEmitter(
     pos,
@@ -4154,7 +3448,7 @@ function makeWater(pos, amount = 400) {
     pos,
     1,
     0.1,
-    amount,
+    400,
     PI, // pos, emitSize, emitTime, emitRate, emiteCone
     0,
     undefined, // tileIndex, tileSize
@@ -4192,15 +3486,10 @@ function makeWater(pos, amount = 400) {
     }
   });
 
-  debugFire && debugCircle(pos, radius, "#0ff", 1);
-
   return emitter;
 }
 
-///////////////////////////////////////////////////////////////////////////////
-
 function explosion(pos, radius = 2) {
-  ASSERT(radius > 0);
   if (levelWarmup) return;
 
   const damage = radius * 2;
@@ -4238,9 +3527,7 @@ function explosion(pos, radius = 2) {
       o.angleVelocity += randSign() * rand((p * radius) / 4, 0.3);
   });
 
-  playSound(sound_explosion, pos);
-  debugFire && debugCircle(pos, maxRangeSquared ** 0.5, "#f00", 2);
-  debugFire && debugCircle(pos, radius ** 0.5, "#ff0", 2);
+  playSound(fxExplosion, pos);
 
   // smoke
   new ParticleEmitter(
@@ -4303,8 +3590,6 @@ function explosion(pos, radius = 2) {
   );
 }
 
-///////////////////////////////////////////////////////////////////////////////
-
 class TileCascadeDestroy extends EngineObject {
   constructor(pos, cascadeChance = 1, glass = 0) {
     super(pos, vec2());
@@ -4357,7 +3642,6 @@ function decorateBackgroundTile(pos) {
 }
 
 function decorateTile(pos) {
-  ASSERT((pos.x | 0) == pos.x && (pos.y | 0) == pos.y);
   const tileData = getTileCollisionData(pos);
   if (tileData <= 0) {
     tileData || tileLayer.setData(pos, new TileLayerData(), 1); // force it to clear if it is empty
@@ -4429,7 +3713,7 @@ function destroyTile(
   const layerData = tileLayer.getData(pos);
   if (layerData) {
     makeDebris(centerPos, layerData.color.mutate());
-    makeSound && playSound(sound_destroyTile, centerPos);
+    makeSound && playSound(fxDestroy, centerPos);
 
     setTileCollisionData(pos, tileType_empty);
     tileLayer.setData(pos, new TileLayerData(), 1); // set and clear tile
@@ -4461,8 +3745,6 @@ function destroyTile(
   return 1;
 }
 
-///////////////////////////////////////////////////////////////////////////////
-
 function drawStars() {
   randSeed = levelSeed;
   for (let i = 400; i--; ) {
@@ -4491,60 +3773,18 @@ function drawStars() {
       ((randSeeded(h) + time * speed * randSeeded(1, 0.2)) % h) - 200
     );
 
-    if (lowGraphicsSettings) {
-      // drawing stars with gl wont work in low graphics mode, just draw rects
-      mainContext.fillStyle = color.rgba();
-      if (size < 9) mainContext.fillRect(screenPos.x, screenPos.y, size, size);
-      else
-        mainContext.beginPath(
-          mainContext.fill(
-            mainContext.arc(screenPos.x, screenPos.y, size, 0, 9)
-          )
-        );
-    } else drawTileScreenSpace(screenPos, vec2(size), 0, vec2(16), color);
-  }
-}
-
-function updateSky() {
-  if (!skyParticles) return;
-
-  let skyParticlesPos = cameraPos.add(vec2(rand(-40, 40), 0));
-  const raycastHit = tileCollisionRaycast(
-    vec2(skyParticlesPos.x, levelSize.y),
-    vec2(skyParticlesPos.x, 0)
-  );
-  if (raycastHit && raycastHit.y > cameraPos.y + 10)
-    skyParticlesPos = raycastHit;
-  skyParticles.pos = skyParticlesPos.add(vec2(0, 20));
-
-  if (rand() < 0.002) {
-    skyParticles.emitRate = clamp(skyParticles.emitRate + rand(200, -200), 500);
-    skyParticles.angle = clamp(
-      skyParticles.angle + rand(0.3, -0.3),
-      PI + 0.5,
-      PI - 0.5
-    );
-  }
-
-  if (!levelWarmup && !skySoundTimer.active()) {
-    skySoundTimer.set(rand(2, 1));
-    playSound(
-      skyRain ? sound_rain : sound_wind,
-      skyParticlesPos,
-      20,
-      skyParticles.emitRate / 1e3
-    );
-    if (rand() < 0.1)
-      playSound(
-        sound_wind,
-        skyParticlesPos,
-        20,
-        rand(skyParticles.emitRate / 1e3)
+    // if (lowGraphicsSettings) {
+    // drawing stars with gl wont work in low graphics mode, just draw rects
+    mainContext.fillStyle = color.rgba();
+    if (size < 9) mainContext.fillRect(screenPos.x, screenPos.y, size, size);
+    else
+      mainContext.beginPath(
+        mainContext.fill(mainContext.arc(screenPos.x, screenPos.y, size, 0, 9))
       );
+    // }
+    //  drawTileScreenSpace(screenPos, vec2(size), 0, vec2(16), color);
   }
 }
-
-///////////////////////////////////////////////////////////////////////////////
 
 let tileParallaxLayers = [];
 
@@ -4609,11 +3849,6 @@ function updateParallaxLayers() {
       .subtract(vec2(0, 150 / cameraScale));
   });
 }
-/*
-    Javascript Space Game
-    By Frank Force 2021
-
-*/
 
 const tileType_ladder = -1;
 const tileType_empty = 0;
@@ -4659,7 +3894,6 @@ const getTileBackgroundData = (pos) =>
     ? tileBackground[((pos.y | 0) * tileCollisionSize.x + pos.x) | 0]
     : 0;
 
-///////////////////////////////////////////////////////////////////////////////
 // level generation
 
 const resetGame = () => {
@@ -4956,7 +4190,7 @@ function generateLevel() {
 
 const groundTileStart = 8;
 
-function makeTileLayers(level_) {
+function makeTileLayers() {
   // create foreground layer
   tileLayer = new TileLayer(vec2(), levelSize);
   tileLayer.renderOrder = tileRenderOrder;
@@ -5042,69 +4276,6 @@ function applyArtToLevel() {
     }
 
   generateParallaxLayers();
-
-  if (precipitationEnable && !lowGraphicsSettings) {
-    // create rain or snow particles
-    if ((skyRain = rand() < 0.5)) {
-      // rain
-      skyParticles = new ParticleEmitter(
-        vec2(),
-        3,
-        0,
-        0,
-        0.3, // pos, emitSize, emitTime, emitRate, emiteCone
-        0,
-        undefined, // tileIndex, tileSize
-        new Color(0.8, 1, 1, 0.6),
-        new Color(0.5, 0.5, 1, 0.2), // colorStartA, colorStartB
-        new Color(0.8, 1, 1, 0.6),
-        new Color(0.5, 0.5, 1, 0.2), // colorEndA, colorEndB
-        2,
-        0.1,
-        0.1,
-        0.2,
-        0, // particleTime, sizeStart, sizeEnd, particleSpeed, particleAngleSpeed
-        0.99,
-        1,
-        0.5,
-        PI,
-        0.2, // damping, angleDamping, gravityScale, particleCone, fadeRate,
-        0.5,
-        1 // randomness, collide, additive, randomColorLinear, renderOrder
-      );
-      skyParticles.elasticity = 0.2;
-      skyParticles.trailScale = 2;
-    } else {
-      // snow
-      skyParticles = new ParticleEmitter(
-        vec2(),
-        3,
-        0,
-        0,
-        0.5, // pos, emitSize, emitTime, emitRate, emiteCone
-        0,
-        undefined, // tileIndex, tileSize
-        new Color(1, 1, 1, 0.8),
-        new Color(1, 1, 1, 0.2), // colorStartA, colorStartB
-        new Color(1, 1, 1, 0.8),
-        new Color(1, 1, 1, 0.2), // colorEndA, colorEndB
-        3,
-        0.1,
-        0.1,
-        0.3,
-        0.01, // particleTime, sizeStart, sizeEnd, particleSpeed, particleAngleSpeed
-        0.98,
-        1,
-        0.2,
-        PI,
-        0.2, // damping, angleDamping, gravityScale, particleCone, fadeRate,
-        0.5,
-        1 // randomness, collide, additive, randomColorLinear, renderOrder
-      );
-    }
-    skyParticles.emitRate = precipitationEnable && rand() < 0.5 ? rand(500) : 0;
-    skyParticles.angle = PI + rand(0.5, -0.5);
-  }
 }
 
 function nextLevel() {
@@ -5134,7 +4305,6 @@ function nextLevel() {
 
   const warmUpTime = 2;
   for (let i = warmUpTime * FPS; i--; ) {
-    updateSky();
     engineUpdateObjects();
   }
   levelWarmup = 0;
@@ -5158,15 +4328,7 @@ function nextLevel() {
   new Player(checkpointPos);
   //new Enemy(checkpointPos.add(vec2(3))); // test enemy
 }
-/*
-    Javascript Space Game
-    By Frank Force 2021
 
-*/
-
-const clampCamera = !debug;
-const startCameraScale = 4 * 8;
-const defaultCameraScale = 4 * 8;
 const maxPlayers = 4;
 
 const team_none = 0;
@@ -5176,241 +4338,141 @@ const team_enemy = 2;
 let updateWindowSize, renderWindowSize, gameplayWindowSize;
 
 engineInit(
-  ///////////////////////////////////////////////////////////////////////////////
-  () =>
-    // appInit
-    {
+  () /* appInit */ => {
+    resetGame();
+    cameraScale = CAMERA_SCALE;
+  },
+  () /* appUpdate */ => {
+    const cameraSize = vec2(mainCanvas.width, mainCanvas.height).scale(
+      1 / cameraScale
+    );
+    renderWindowSize = cameraSize.add(vec2(5));
+
+    gameplayWindowSize = vec2(mainCanvas.width, mainCanvas.height).scale(
+      1 / CAMERA_SCALE
+    );
+    updateWindowSize = gameplayWindowSize.add(vec2(30));
+
+    // restart if no lives left
+    let minDeadTime = 1e3;
+    for (const player of players)
+      minDeadTime = min(
+        minDeadTime,
+        player && player.isDead() ? player.deadTimer.get() : 0
+      );
+
+    if (
+      (minDeadTime > 3 &&
+        (keyWasPressed(90) || keyWasPressed(32) || gamepadWasPressed(0))) ||
+      keyWasPressed(82)
+    )
       resetGame();
-      cameraScale = startCameraScale;
-    },
 
-  ///////////////////////////////////////////////////////////////////////////////
-  () =>
-    // appUpdate
-    {
-      const cameraSize = vec2(mainCanvas.width, mainCanvas.height).scale(
-        1 / cameraScale
-      );
-      renderWindowSize = cameraSize.add(vec2(5));
-
-      gameplayWindowSize = vec2(mainCanvas.width, mainCanvas.height).scale(
-        1 / defaultCameraScale
-      );
-      updateWindowSize = gameplayWindowSize.add(vec2(30));
-      //debugRect(cameraPos, maxGameplayCameraSize);
-      //debugRect(cameraPos, updateWindowSize);
-
-      if (debug) {
-        randSeeded(randSeeded(randSeeded((randSeed = Date.now())))); // set random seed for debug mode stuf
-        if (keyWasPressed(81)) new Enemy(mousePosWorld);
-
-        if (keyWasPressed(84)) {
-          //for(let i=30;i--;)
-          new Prop(mousePosWorld);
-        }
-
-        if (keyWasPressed(69)) explosion(mousePosWorld);
-
-        if (keyIsDown(89)) {
-          let e = new ParticleEmitter(mousePosWorld);
-
-          // test
-          e.collideTiles = 1;
-          //e.tileIndex=7;
-          e.emitSize = 2;
-          e.colorStartA = new Color(1, 1, 1, 1);
-          e.colorStartB = new Color(0, 1, 1, 1);
-          e.colorEndA = new Color(0, 0, 1, 0);
-          e.colorEndB = new Color(0, 0.5, 1, 0);
-          e.emitConeAngle = 0.1;
-          e.particleTime = 1;
-          e.speed = 0.3;
-          e.elasticity = 0.1;
-          e.gravityScale = 1;
-          //e.additive = 1;
-          e.angle = -PI;
-        }
-
-        if (mouseWheel)
-          // mouse zoom
-          cameraScale = clamp(
-            cameraScale * (1 - mouseWheel / 10),
-            defaultTileSize.x * 16,
-            defaultTileSize.x / 16
-          );
-
-        //if (keyWasPressed(77))
-        //    playSong([[[,0,219,,,,,1.1,,-.1,-50,-.05,-.01,1],[2,0,84,,,.1,,.7,,,,.5,,6.7,1,.05]],[[[0,-1,1,0,5,0],[1,1,8,8,0,3]]],[0,0,0,0],90]) // music test
-
-        if (keyWasPressed(77)) players[0].pos = mousePosWorld;
-
-        /*if (keyWasPressed(32))
-        {
-            skyParticles && skyParticles.destroy();
-            tileLayer.destroy();
-            tileBackgroundLayer.destroy();
-            tileParallaxLayers.forEach((tileParallaxLayer)=>tileParallaxLayer.destroy());
-            randomizeLevelParams();
-            applyArtToLevel();
-        }*/
-        if (keyWasPressed(78)) nextLevel();
-      }
-
-      // restart if no lives left
-      let minDeadTime = 1e3;
-      for (const player of players)
-        minDeadTime = min(
-          minDeadTime,
-          player && player.isDead() ? player.deadTimer.get() : 0
+    if (levelEndTimer.get() > 3) nextLevel();
+  },
+  () /* appUpdatePost */ => {
+    if (players.length == 1) {
+      const player = players[0];
+      if (!player.isDead())
+        cameraPos = cameraPos.lerp(
+          player.pos,
+          clamp(player.getAliveTime() / 2)
         );
-
-      if (
-        (minDeadTime > 3 &&
-          (keyWasPressed(90) || keyWasPressed(32) || gamepadWasPressed(0))) ||
-        keyWasPressed(82)
-      )
-        resetGame();
-
-      if (levelEndTimer.get() > 3) nextLevel();
-    },
-
-  ///////////////////////////////////////////////////////////////////////////////
-  () =>
-    // appUpdatePost
-    {
-      if (players.length == 1) {
-        const player = players[0];
-        if (!player.isDead())
-          cameraPos = cameraPos.lerp(
-            player.pos,
-            clamp(player.getAliveTime() / 2)
-          );
-      } else {
-        // camera follows average pos of living players
-        let posTotal = vec2();
-        let playerCount = 0;
-        let cameraOffset = 1;
-        for (const player of players) {
-          if (player && !player.isDead()) {
-            ++playerCount;
-            posTotal = posTotal.add(player.pos.add(vec2(0, cameraOffset)));
-          }
-        }
-
-        if (playerCount)
-          cameraPos = cameraPos.lerp(posTotal.scale(1 / playerCount), 0.2);
-      }
-
-      // spawn players if they don't exist
-      for (let i = maxPlayers; i--; ) {
-        if (
-          !players[i] &&
-          (gamepadWasPressed(0, i) || gamepadWasPressed(1, i))
-        ) {
-          ++playerLives;
-          new Player(checkpointPos, i);
+    } else {
+      // camera follows average pos of living players
+      let posTotal = vec2();
+      let playerCount = 0;
+      let cameraOffset = 1;
+      for (const player of players) {
+        if (player && !player.isDead()) {
+          ++playerCount;
+          posTotal = posTotal.add(player.pos.add(vec2(0, cameraOffset)));
         }
       }
 
-      // clamp to bottom and sides of level
-      if (clampCamera) {
-        const w = mainCanvas.width / 2 / cameraScale + 1;
-        const h = mainCanvas.height / 2 / cameraScale + 2;
-        cameraPos.y = max(cameraPos.y, h);
-        if (w * 2 < tileCollisionSize.x)
-          cameraPos.x = clamp(cameraPos.x, tileCollisionSize.x - w, w);
-      }
-
-      updateParallaxLayers();
-
-      updateSky();
-    },
-
-  ///////////////////////////////////////////////////////////////////////////////
-  () =>
-    // appRender
-    {
-      const gradient = mainContext.createLinearGradient(
-        0,
-        0,
-        0,
-        mainCanvas.height
-      );
-      gradient.addColorStop(0, levelSkyColor.rgba());
-      gradient.addColorStop(1, levelSkyHorizonColor.rgba());
-      mainContext.fillStyle = gradient;
-      //mainContext.fillStyle = levelSkyColor.rgba();
-      mainContext.fillRect(0, 0, mainCanvas.width, mainCanvas.height);
-
-      drawStars();
-    },
-
-  ///////////////////////////////////////////////////////////////////////////////
-  () =>
-    // appRenderPost
-    {
-      //let minAliveTime = 9;
-      //for(const player of players)
-      //    minAliveTime = min(minAliveTime, player.getAliveTime());
-
-      //const livesPercent = percent(minAliveTime, 5, 4)
-      //const s = 8;
-      //const offset = 100*livesPercent;
-      //mainContext.drawImage(tileImage, 32, 8, s, s, 32, mainCanvas.height-90, s*9, s*9);
-      mainContext.textAlign = "center";
-      const p = percent(gameTimer.get(), 8, 10);
-
-      //mainContext.globalCompositeOperation = 'difference';
-      mainContext.fillStyle = new Color(0, 0, 0, p).rgba();
-      if (p > 0) {
-        // mainContext.fillStyle = new Color().setHSLA(time / 3, 1, 0.5, p).rgba();
-        // mainContext.fillStyle = "rgb(255,255,255)";
-        mainContext.font = mainCanvas.width / 12 + "px monospace";
-        mainContext.fillText("SPACE HUGGERS", mainCanvas.width / 2, 140);
-        // mainContext.fillStyle = "rgb(0,0,0)";
-        // mainContext.font = mainCanvas.width / 12 + "px monospace";
-        // mainContext.fillText("SPACE HUGGERS", mainCanvas.width / 2, 140);
-      }
-
-      mainContext.font = mainCanvas.width / 30 + "px monospace";
-      p > 0 &&
-        mainContext.fillText(
-          "A JS13K Game by Frank Force",
-          mainCanvas.width / 2,
-          210
-        );
-
-      // check if any enemies left
-      let enemiesCount = 0;
-      for (const o of engineCollideObjects) {
-        if (o.isCharacter && o.team == team_enemy) {
-          ++enemiesCount;
-          const pos = vec2(
-            mainCanvas.width / 2 + (o.pos.x - cameraPos.x) * 30,
-            mainCanvas.height - 20
-          );
-          drawRectScreenSpace(pos, o.size.scale(20), o.color.scale(1, 0.6));
-        }
-      }
-
-      if (!enemiesCount && !levelEndTimer.isSet()) levelEndTimer.set();
-
-      mainContext.fillStyle = new Color(0, 0, 0).rgba();
-      mainContext.fillText(
-        "Level " +
-          level +
-          "    Lives " +
-          playerLives +
-          "    Enemies " +
-          enemiesCount,
-        mainCanvas.width / 2,
-        mainCanvas.height - 40
-      );
-
-      // fade in level transition
-      const fade = levelEndTimer.isSet()
-        ? percent(levelEndTimer.get(), 3, 1)
-        : percent(levelTimer.get(), 0.5, 2);
-      drawRect(cameraPos, vec2(1e3), new Color(0, 0, 0, fade));
+      if (playerCount)
+        cameraPos = cameraPos.lerp(posTotal.scale(1 / playerCount), 0.2);
     }
+
+    // spawn players if they don't exist
+    for (let i = maxPlayers; i--; ) {
+      if (!players[i] && (gamepadWasPressed(0, i) || gamepadWasPressed(1, i))) {
+        ++playerLives;
+        new Player(checkpointPos, i);
+      }
+    }
+
+    updateParallaxLayers();
+  },
+  () /* appRender */ => {
+    const gradient = mainContext.createLinearGradient(
+      0,
+      0,
+      0,
+      mainCanvas.height
+    );
+    gradient.addColorStop(0, levelSkyColor.rgba());
+    gradient.addColorStop(1, levelSkyHorizonColor.rgba());
+    mainContext.fillStyle = gradient;
+    //mainContext.fillStyle = levelSkyColor.rgba();
+    mainContext.fillRect(0, 0, mainCanvas.width, mainCanvas.height);
+
+    drawStars();
+  },
+  () /* appRenderPost */ => {
+    mainContext.textAlign = "center";
+    const p = percent(gameTimer.get(), 8, 10);
+    mainContext.fillStyle = new Color(0, 0, 0, p).rgba();
+    if (p > 0) {
+      mainContext.font = mainCanvas.width / 12 + "px monospace";
+      mainContext.fillText("SPACE HUGGERS", mainCanvas.width / 2, 140);
+    }
+
+    mainContext.font = mainCanvas.width / 30 + "px monospace";
+    p > 0 &&
+      mainContext.fillText(
+        "A JS13K Game by Frank Force",
+        mainCanvas.width / 2,
+        210
+      );
+
+    // check if any enemies left
+    let enemiesCount = 0;
+    for (const o of engineCollideObjects) {
+      if (o.isCharacter && o.team == team_enemy) {
+        ++enemiesCount;
+        const pos = vec2(
+          mainCanvas.width / 2 + (o.pos.x - cameraPos.x) * 30,
+          mainCanvas.height - 20
+        );
+        drawTileScreenSpace(
+          pos,
+          o.size.scale(20),
+          -1,
+          defaultTileSize,
+          o.color.scale(1, 0.6)
+        );
+      }
+    }
+
+    if (!enemiesCount && !levelEndTimer.isSet()) levelEndTimer.set();
+
+    mainContext.fillStyle = new Color(0, 0, 0).rgba();
+    mainContext.fillText(
+      "Level " +
+        level +
+        "    Lives " +
+        playerLives +
+        "    Enemies " +
+        enemiesCount,
+      mainCanvas.width / 2,
+      mainCanvas.height - 40
+    );
+
+    // fade in level transition
+    const fade = levelEndTimer.isSet()
+      ? percent(levelEndTimer.get(), 3, 1)
+      : percent(levelTimer.get(), 0.5, 2);
+    drawRect(cameraPos, vec2(1e3), new Color(0, 0, 0, fade));
+  }
 );
