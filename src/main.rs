@@ -9,6 +9,7 @@ use std::net::SocketAddr;
 use std::time::Duration;
 
 // #[global_allocator]
+// static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 // static ALLOC: rpmalloc::RpMalloc = rpmalloc::RpMalloc;
 
 fn main() {
@@ -16,6 +17,7 @@ fn main() {
 }
 
 async fn run() {
+    // return ticker::fuzzle_test().await;
     // return units::paste_next::dev().await;
     println!("crate::run\nauth key = {}", auth::auth_key());
 
@@ -44,18 +46,25 @@ async fn run() {
 
     let oscillator = async {
         let interval = Duration::from_secs(60);
-        println!("oscillator interval = {interval:?}");
-
+        let timeout = Duration::from_secs(45);
+        println!("oscillator interval = {interval:?}, timeout = {timeout:?}");
+        async fn tasks() {
+            tokio::join!(
+                units::magazine::tick(),
+                // units::paste_next::tick(),
+                units::qqbot::tick()
+            );
+        }
         let mut interval = tokio::time::interval(interval);
         loop {
             interval.tick().await;
-            let _ = tokio::join!(
-                units::magazine::tick(),
-                // units::paste_next::tick(),
-                units::qqbot::tick(),
-            );
+            care!(tokio::time::timeout(timeout, tasks()).await).ok();
         }
     };
+
+    // let tasks = tokio::task::LocalSet::new();
+    // tasks.spawn_local(units::magazine::tick());
+    // tasks.spawn_local(units::qqbot::tick());
 
     // TODO: benchmark with tls enabled always failed on linux (but it's normal on windows)
     // seems a problem of rustls. any idea to fix this?

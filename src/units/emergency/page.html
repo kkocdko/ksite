@@ -47,8 +47,9 @@
     <button id="$trigger">Start</button>
     <select id="$type">
       <option value hidden>Click to select record type</option>
-      <option value="av">Video and Audio</option>
-      <option value="a">Audio Only</option>
+      <option value="vp">Video Preview</option>
+      <option value="av">Video + Audio</option>
+      <option value="a">Audio</option>
     </select>
   </header>
   <div id="$preview"></div>
@@ -64,9 +65,21 @@
     const streamOptions = { audio: true };
     if ($type.value === "av") {
       streamOptions.video = {
-        width: { max: 1280 },
-        height: { max: 720 },
-        facingMode: { ideal: "environment" },
+        deviceId: await navigator.mediaDevices
+          .enumerateDevices()
+          .then((devices) => {
+            for (const device of devices)
+              if (
+                device.kind === "videoinput" &&
+                device.label.startsWith("COOCAP")
+              )
+                return device.deviceId;
+          }),
+        width: 1920,
+        height: 1080,
+        // width: { max: 1280 },
+        // height: { max: 720 },
+        // facingMode: { ideal: "environment" },
       };
     }
     const stream = await navigator.mediaDevices.getUserMedia(streamOptions);

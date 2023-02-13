@@ -3,6 +3,13 @@ use std::time::UNIX_EPOCH;
 
 const ANY: i64 = 99; // must >= 60, terser logic?
 
+fn get_now() -> i64 {
+    // return get_now_fake();
+    // https://doc.rust-lang.org/stable/reference/expressions/operator-expr.html#semantics
+    // > Casting between two integers of the same size (e.g. i32 -> u32) is a no-op
+    UNIX_EPOCH.elapsed().unwrap().as_secs() as _
+}
+
 /// Convert time stamp to (hours, minutes, seconds).
 fn hms(v: i64) -> (i64, i64, i64) {
     (v / 60 / 60 % 24, v / 60 % 60, v % 60)
@@ -64,9 +71,7 @@ pub struct Ticker {
 impl Ticker {
     /// Returns `true` if the next instant has been reached.
     pub fn tick(&self) -> bool {
-        // https://doc.rust-lang.org/stable/reference/expressions/operator-expr.html#semantics
-        // > Casting between two integers of the same size (e.g. i32 -> u32) is a no-op
-        let now = UNIX_EPOCH.elapsed().unwrap().as_secs() as _;
+        let now = get_now();
         if now >= self.next.load(Ordering::SeqCst) {
             let nexts = self.cfgs.iter().map(|&cfg| gen_next(now, cfg));
             self.next.store(nexts.min().unwrap(), Ordering::SeqCst);
@@ -97,5 +102,29 @@ impl Ticker {
     /// Create with UTC+8 timezone.
     pub fn new_p8(patterns: &[(i64, i64, i64)]) -> Self {
         Self::new(patterns, 8)
+    }
+}
+
+// TODO add fuzzle test
+#[allow(unused)]
+fn get_now_fake() -> i64 {
+    static V: AtomicI64 = AtomicI64::new(0);
+    println!("now = {}", V.load(Ordering::SeqCst));
+    V.fetch_add(1, Ordering::SeqCst)
+}
+#[allow(unused)]
+pub async fn fuzzle_test() {
+    use std::time::Duration;
+    let interval = Duration::from_secs(1);
+    println!("oscillator interval = {interval:?}");
+    let mut interval = tokio::time::interval(interval);
+    let mut ticker = Ticker::new(&[(-1, 12, -1), (3, -1, 24)], 0);
+    loop {
+        interval.tick().await;
+        println!("tick");
+        // let _ = tokio::join!(
+        //     units::magazine::tick(),
+        //     units::qqbot::tick(),
+        // );
     }
 }
