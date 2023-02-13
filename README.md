@@ -8,6 +8,8 @@ All in one solution for my server.
 
 - `units::emergency` record evidence picture, audio and video in real-time, sos request and others.
 
+- `crate::log` lightweight logging, use `httpdate`. provide a log viewer mode.
+
 ### 0.9.0
 
 - `crate` proactive traffic restriction.
@@ -28,7 +30,7 @@ All in one solution for my server.
 
 This crate used some unstable Rust features (most in `ricq` dependency), so use nightly toolchain please (or set `RUSTC_BOOTSTRAP=1` for stable toolchain).
 
-If you prefer musl libc, try [cargo-zigbuild](https://github.com/messense/cargo-zigbuild):
+If you prefer musl libc, try [cargo-zigbuild](https://github.com/messense/cargo-zigbuild), it's awesome:
 
 ```
 # dnf install zig # for fedora

@@ -1,6 +1,7 @@
 mod auth;
 mod database;
 mod launcher;
+// mod log;
 mod ticker;
 mod tls;
 mod units;
@@ -8,9 +9,8 @@ mod utils;
 use std::net::SocketAddr;
 use std::time::Duration;
 
-// #[global_allocator]
-// static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
-// static ALLOC: rpmalloc::RpMalloc = rpmalloc::RpMalloc;
+#[global_allocator]
+static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc; // or rpmalloc::RpMalloc
 
 fn main() {
     launcher::launch(run);
@@ -45,9 +45,9 @@ async fn run() {
     };
 
     let oscillator = async {
-        let interval = Duration::from_secs(60);
-        let timeout = Duration::from_secs(45);
-        println!("oscillator interval = {interval:?}, timeout = {timeout:?}");
+        const INTERVAL: Duration = Duration::from_secs(60);
+        const TIMEOUT: Duration = Duration::from_secs(45);
+        println!("oscillator interval = {INTERVAL:?}, timeout = {TIMEOUT:?}");
         async fn tasks() {
             tokio::join!(
                 units::magazine::tick(),
@@ -55,10 +55,10 @@ async fn run() {
                 units::qqbot::tick()
             );
         }
-        let mut interval = tokio::time::interval(interval);
+        let mut interval = tokio::time::interval(INTERVAL);
         loop {
             interval.tick().await;
-            care!(tokio::time::timeout(timeout, tasks()).await).ok();
+            care!(tokio::time::timeout(TIMEOUT, tasks()).await).ok();
         }
     };
 
