@@ -102,6 +102,7 @@ async fn refresh() -> Result<()> {
     let r = tokio::join!(
         rss!("/leetcode/dailyquestion/solution/en"),
         rss!("/bbc"),
+        rss!("/hackernews"),
         rss!("/zhihu/daily"),
         rss!("/oschina/news/industry"),
         rss!("/1point3acres/post/hot3"),
@@ -114,7 +115,8 @@ async fn refresh() -> Result<()> {
         r.2.map(|v| generate(&v, &mut o, 9)).ok();
         r.3.map(|v| generate(&v, &mut o, 9)).ok();
         r.4.map(|v| generate(&v, &mut o, 9)).ok();
-        r.5.map(|v| generate(&v, &mut o, 5)).ok();
+        r.5.map(|v| generate(&v, &mut o, 9)).ok();
+        r.6.map(|v| generate(&v, &mut o, 5)).ok();
         o += PAGE[1];
         let mut enc = flate2::write::GzEncoder::new(Vec::new(), Default::default());
         enc.write_all(o.as_bytes()).unwrap();

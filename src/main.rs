@@ -1,7 +1,6 @@
 mod auth;
 mod database;
 mod launcher;
-// mod log;
 mod ticker;
 mod tls;
 mod units;
