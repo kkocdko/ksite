@@ -1,6 +1,6 @@
 pub mod admin;
 pub mod chat;
-pub mod emergency;
+pub mod media;
 pub mod info;
 pub mod magazine;
 #[allow(unused)]

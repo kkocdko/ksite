@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+
+<head>
+  <meta name="viewport" content="width=device-width" />
+  <link rel="icon" href="data:" />
+  <title>Media - ksite</title>
+</head>
+
+<style>
+  * {
+    appearance: none;
+    margin: 0;
+    font: 14px / 20px sans-serif;
+    background: #fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    * {
+      color: #fff;
+      background: #000;
+    }
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+  header > *,
+  header ~ * {
+    padding: 8px 10px;
+    border: 0 solid #888;
+    outline: 0;
+  }
+  header > * {
+    float: left;
+    border-right-width: 1px;
+  }
+  header > :active {
+    background: #8887;
+  }
+  header ~ * {
+    border-top-width: 1px;
+  }
+  select {
+    width: min(calc(50vw - 4.2em), 200px);
+  }
+  video {
+    max-width: 100%;
+    max-height: 100%;
+    padding: 0;
+    box-shadow: 1px 1px #777;
+  }
+</style>
+
+<body>
+  <header>
+    <button id="$trigger">Start</button>
+    <button id="$detail">Detail</button>
+    <select id="$audio">
+      <option value="({})">Default audio</option>
+      <option value="false">No audio</option>
+    </select>
+    <select id="$video">
+      <option value="({})">Default video</option>
+      <option value="false">No video</option>
+    </select>
+  </header>
+  <video id="$preview"></video>
+</body>
+
+<!-- <script src="https://cdn.jsdelivr.net/npm/peerjs@1.4.7/dist/peerjs.min.js"></script> -->
+<script type="module">
+  for (const device of await navigator.mediaDevices.enumerateDevices()) {
+    ({ audioinput: $audio, videoinput: $video }[
+      device.kind
+    ]?.insertAdjacentHTML(
+      "beforeend",
+      `<option value="({deviceId:'${device.deviceId}'})">${device.label}</option>`
+    ));
+  }
+  let stream, recorder;
+  $audio.onchange = $video.onchange = async () => {
+    // width: { max: 1280 }, height: { max: 720 }, facingMode: { ideal: "environment" },
+    const streamCfg = { audio: eval($audio.value), video: eval($video.value) };
+    if (!streamCfg.audio && !streamCfg.video)
+      return alert("Please select at least input stream.");
+    // https://stackoverflow.com/a/73550841/11338291
+    stream?.getTracks().forEach((t) => (t.stop(), stream.removeTrack(t)));
+    stream = await navigator.mediaDevices.getUserMedia(streamCfg);
+    $preview.srcObject = stream;
+    $preview.play();
+  };
+  $audio.onchange();
+  $detail.onclick = () => {
+    const modify = (el) => (el.value = prompt(el.parentNode.id, el.value));
+    modify($audio.selectedOptions[0]);
+    modify($video.selectedOptions[0]);
+    $audio.onchange();
+  };
+  $trigger.onclick = async () => {
+    if ($trigger.textContent === "Stop") {
+      $trigger.textContent = "Start";
+      return;
+    }
+    $trigger.textContent = "Stop";
+    return alert("Work in progress");
+    // https://peerjs.com/docs/
+    const peer = new Peer("kk-pc1");
+    const peerId = await new Promise((r) => peer.on("open", r));
+    alert("My peer ID is: " + peerId);
+    const call = peer.call("kk-pc1", stream);
+    // return;
+    peer.on("call", (call) => {
+      // Answer the call, providing our mediaStream
+      // call.answer(mediaStream);
+      call.on("stream", (stream) => {
+        // `stream` is the MediaStream of the remote peer.
+        // Here you'd add it to an HTML video/canvas element.
+        $preview.srcObject = stream;
+      });
+    });
+  };
+  // $trigger.onclick = async () => {
+  //   if (!/(^|;)auth=/.test(document.cookie)) return (location = "/media/auth");
+  //   if ($trigger.textContent === "Stop") {
+  //     $trigger.textContent = "Start";
+  //     recorder.stop();
+  //     recorder = null;
+  //     return;
+  //   }
+  //   $trigger.textContent = "Stop";
+  //   recorder = new MediaRecorder(stream);
+  //   recorder.ondataavailable = ({ data }) => {
+  //     fetch("/emergency/upload", {
+  //       // keepalive: true, // default is true
+  //       method: "post",
+  //       headers: { "content-type": data.type },
+  //       body: data,
+  //     }).catch((e) => console.log(e));
+  //   };
+  //   recorder.start(500);
+  // };
+</script>

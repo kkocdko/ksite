@@ -16,6 +16,8 @@ All in one solution for my server.
 
 - `crate` no out-of-service updates.
 
+- `units::sandwich` cut sandwich game with co-op mode, webrtc or server forward fallback.
+
 - `units::spacehuggers` [space-huggers](https://github.com/KilledByAPixel/SpaceHuggers) game with co-op mode, webrtc or server forward fallback.
 
 - `units::admin` acme protocol.
