@@ -54,6 +54,8 @@
 <body>
   <header>
     <button id="$trigger">Start</button>
+    <button id="$t1">TX</button>
+    <button id="$t2">RX</button>
     <button id="$detail">Detail</button>
     <select id="$audio">
       <option value="({})">Default audio</option>
@@ -64,22 +66,45 @@
       <option value="false">No video</option>
     </select>
   </header>
-  <video id="$preview"></video>
+  <video id="$preview" muted controls></video>
+  <!-- <video id="$preview"></video> -->
 </body>
 
-<!-- <script src="https://cdn.jsdelivr.net/npm/peerjs@1.4.7/dist/peerjs.min.js"></script> -->
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.4.7/dist/peerjs.min.js"></script>
 <script type="module">
+  // console.log(await navigator.mediaDevices.enumerateDevices());
+  const sdpTransformer = (type /* offer | answer */) => {
+    const MAX_BITRATE = 20000;
+    const MIN_BITRATE = 18000;
+    const START_BITRATE = 19000;
+    // https://stackoverflow.com/questions/29302617/control-video-send-framerate-on-the-fly-in-webrtc
+    // https://stackoverflow.com/a/57674478/11338291
+    return (sdpStr) => {
+      let s = "";
+      for (const e of sdpStr.split("\r\n")) {
+        s += "\r\n" + e;
+        if (/^a=fmtp:\d*/.test(e)) {
+          s += `;x-google-max-bitrate=${MAX_BITRATE};x-google-min-bitrate=${MIN_BITRATE};x-google-start-bitrate=${START_BITRATE}`;
+        } else if (/^a=mid:(1|video)/.test(e)) {
+          s += `\r\nb=AS:${MAX_BITRATE}`;
+        }
+      }
+      return new RTCSessionDescription({ type, sdp: s.slice(2) }).sdp;
+    };
+  };
   for (const device of await navigator.mediaDevices.enumerateDevices()) {
     ({ audioinput: $audio, videoinput: $video }[
       device.kind
     ]?.insertAdjacentHTML(
       "beforeend",
-      `<option value="({deviceId:'${device.deviceId}'})">${device.label}</option>`
+      `<option value="({deviceId:'${device.deviceId}',width:1920})">${device.label}</option>`
+      // `<option value="({deviceId:'${device.deviceId}'})">${device.label}</option>`
     ));
   }
   let stream, recorder;
   $audio.onchange = $video.onchange = async () => {
     // width: { max: 1280 }, height: { max: 720 }, facingMode: { ideal: "environment" },
+    // https://developer.mozilla.org/en-US/docs/Web/API/MediaTrackConstraints
     const streamCfg = { audio: eval($audio.value), video: eval($video.value) };
     if (!streamCfg.audio && !streamCfg.video)
       return alert("Please select at least input stream.");
@@ -97,46 +122,48 @@
     $audio.onchange();
   };
   $trigger.onclick = async () => {
+    if (!/(^|;)auth=/.test(document.cookie)) return (location = "/media/auth");
     if ($trigger.textContent === "Stop") {
       $trigger.textContent = "Start";
+      recorder.stop();
+      recorder = null;
       return;
     }
     $trigger.textContent = "Stop";
-    return alert("Work in progress");
-    // https://peerjs.com/docs/
-    const peer = new Peer("kk-pc1");
+    recorder = new MediaRecorder(stream);
+    recorder.ondataavailable = ({ data }) => {
+      fetch("/emergency/upload", {
+        // keepalive: true, // default is true
+        method: "post",
+        headers: { "content-type": data.type },
+        body: data,
+      }).catch((e) => console.log(e));
+    };
+    recorder.start(500);
+  };
+  // https://peerjs.com/docs/
+  $t1.onclick = async () => {
+    const peer = new Peer("kk-tx");
     const peerId = await new Promise((r) => peer.on("open", r));
-    alert("My peer ID is: " + peerId);
-    const call = peer.call("kk-pc1", stream);
-    // return;
+    alert(peerId);
+    const call = peer.call("kk-rx", stream, {
+      sdpTransform: sdpTransformer("offer"),
+    });
+  };
+  $t2.onclick = async () => {
+    const peer = new Peer("kk-rx");
+    const peerId = await new Promise((r) => peer.on("open", r));
+    alert(peerId);
     peer.on("call", (call) => {
-      // Answer the call, providing our mediaStream
-      // call.answer(mediaStream);
+      // call.answer(mediaStream); // Answer the call, providing our mediaStream
+      call.answer(undefined, {
+        sdpTransform: sdpTransformer("answer"),
+      });
       call.on("stream", (stream) => {
-        // `stream` is the MediaStream of the remote peer.
-        // Here you'd add it to an HTML video/canvas element.
+        // `stream` is the MediaStream of the remote peer. Here you'd add it to an HTML video/canvas element.
         $preview.srcObject = stream;
+        $preview.play();
       });
     });
   };
-  // $trigger.onclick = async () => {
-  //   if (!/(^|;)auth=/.test(document.cookie)) return (location = "/media/auth");
-  //   if ($trigger.textContent === "Stop") {
-  //     $trigger.textContent = "Start";
-  //     recorder.stop();
-  //     recorder = null;
-  //     return;
-  //   }
-  //   $trigger.textContent = "Stop";
-  //   recorder = new MediaRecorder(stream);
-  //   recorder.ondataavailable = ({ data }) => {
-  //     fetch("/emergency/upload", {
-  //       // keepalive: true, // default is true
-  //       method: "post",
-  //       headers: { "content-type": data.type },
-  //       body: data,
-  //     }).catch((e) => console.log(e));
-  //   };
-  //   recorder.start(500);
-  // };
 </script>
