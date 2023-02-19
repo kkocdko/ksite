@@ -96,6 +96,14 @@ pub fn service() -> Router {
         .layer(middleware::from_fn(auth_layer))
         .route(
             "/media",
-            MethodRouter::new().get(|| async { Html((include_src!("page.html") as [_; 1])[0]) }),
+            MethodRouter::new().get(|| async {
+                const PAGE: [&str; 2] = include_src!("page.html");
+                const PEERJS: [&str; 1] = include_src!("peerjs.js");
+                let mut body = String::new();
+                body += PAGE[0];
+                body += PEERJS[0];
+                body += PAGE[1];
+                Html(body)
+            }),
         )
 }
