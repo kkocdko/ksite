@@ -3,7 +3,7 @@
 <head>
   <meta name="viewport" content="width=device-width" />
   <link rel="icon" href="data:" />
-  <title>Media - ksite</title>
+  <title>Meet - ksite</title>
 </head>
 
 <style>
@@ -58,6 +58,7 @@
 <body>
   <header>
     <button id="$trigger" style="display: none">Start</button>
+    <button id="$tx2">DEMOTX</button>
     <button id="$tx">TX</button>
     <button id="$rx">RX</button>
     <button id="$detail">Detail</button>
@@ -70,32 +71,51 @@
       <option value="false">No video</option>
     </select>
   </header>
-  <video id="$preview" muted controls></video>
-  <!-- <video id="$preview"></video> -->
+  <div></div>
 </body>
 
 <script>
-  /*{slot}*/
+  const pull = async (path) => {
+    while (true) {
+      let data = JSON.parse(localStorage[path] || "[]");
+      let item = data.shift();
+      if (item) {
+        localStorage[path] = JSON.stringify(data);
+        return JSON.parse(item);
+      }
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    // while (true) {
+    //   const t = await fetch(p).then((r) => r.text());
+    //   if (t) {
+    //     await fetch(p, { method: "POST", body: "" });
+    //     return JSON.parse(t);
+    //   }
+    //   await new Promise((r) => setTimeout(r, 200));
+    // }
+  };
+  const push = async (path, item) => {
+    // await fetch(p, { method: "POST", body: JSON.stringify(t) });
+    let data = localStorage[path] ? JSON.parse(localStorage[path]) : [];
+    data.push(JSON.stringify(item));
+    localStorage[path] = JSON.stringify(data);
+  };
 </script>
+
 <script type="module">
-  // navigator.mediaDevices.getDisplayMedia({})
-  // console.log(await navigator.mediaDevices.enumerateDevices());
   const sdpTransform = (sdpStr) => {
     // https://stackoverflow.com/questions/29302617/control-video-send-framerate-on-the-fly-in-webrtc
     // https://stackoverflow.com/a/57674478/11338291
-    const MAX_BITRATE = 12000;
-    const MIN_BITRATE = 10000;
-    const START_BITRATE = 11000;
-    let s = "";
-    for (const e of sdpStr.split("\r\n")) {
-      s += "\r\n" + e;
+    const [MAX, MIN, START] = [12000, 10000, 11000]; // bitrate
+    const ret = sdpStr.split("\r\n").map((e) => {
       if (/^a=fmtp:\d*/.test(e)) {
-        s += `;x-google-max-bitrate=${MAX_BITRATE};x-google-min-bitrate=${MIN_BITRATE};x-google-start-bitrate=${START_BITRATE}`;
+        e += `;x-google-max-bitrate=${MAX};x-google-min-bitrate=${MIN};x-google-start-bitrate=${START}`;
       } else if (/^a=mid:(1|video)/.test(e)) {
-        s += `\r\nb=AS:${MAX_BITRATE}`;
+        e += `\r\nb=AS:${MAX}`;
       }
-    }
-    return s.slice(2);
+      return e;
+    });
+    return ret.join("\r\n");
   };
   for (const device of await navigator.mediaDevices.enumerateDevices()) {
     ({ audioinput: $audio, videoinput: $video }[
@@ -110,14 +130,11 @@
   $audio.onchange = $video.onchange = async () => {
     // width: { max: 1280 }, height: { max: 720 }, facingMode: { ideal: "environment" },
     // https://developer.mozilla.org/en-US/docs/Web/API/MediaTrackConstraints
-    const streamCfg = { audio: eval($audio.value), video: eval($video.value) };
-    if (!streamCfg.audio && !streamCfg.video)
-      return alert("Please select at least input stream.");
-    // https://stackoverflow.com/a/73550841/11338291
     stream?.getTracks().forEach((t) => (t.stop(), stream.removeTrack(t)));
+    const streamCfg = { audio: eval($audio.value), video: eval($video.value) };
+    // https://stackoverflow.com/a/73550841/11338291
     stream = await navigator.mediaDevices.getUserMedia(streamCfg);
     $preview.srcObject = stream;
-    $preview.play();
   };
   $audio.onchange();
   $detail.onclick = () => {
@@ -146,17 +163,49 @@
     };
     recorder.start(500);
   };
+
   $tx.onclick = async () => {
-    const peer = new Peer("kk-tx");
-    alert(await new Promise((r) => peer.on("open", r)));
-    const call = peer.call("kk-rx", stream, { sdpTransform });
+    const pctx = new RTCPeerConnection();
+    pctx.onicecandidate = (e) => push("/media/rx/candidate", e.candidate);
+    // for (const t of stream.getTracks()) pctx.addTrack(t, stream);
+    pctx.addTrack(stream.getVideoTracks()[0], stream);
+
+    const offer = await pctx.createOffer();
+    await push("/media/rx/offer", offer);
+    await pctx.setLocalDescription(offer);
+    (async () => {
+      while (true)
+        await pull("/media/tx/candidate").then((c) => {
+          if (c) {
+            console.log(c);
+            pctx.addIceCandidate(c);
+          }
+        });
+    })();
+    (async () => {
+      while (true)
+        await pull("/media/tx/answer").then((c) => {
+          pctx.setRemoteDescription(c);
+        });
+    })();
   };
   $rx.onclick = async () => {
-    const peer = new Peer("kk-rx");
-    alert(await new Promise((r) => peer.on("open", r)));
-    const call = await new Promise((r) => peer.on("call", r));
-    call.answer(undefined, { sdpTransform }); // call.answer(mediaStream)
-    $preview.srcObject = await new Promise((r) => call.on("stream", r));
-    $preview.play();
+    const pcrx = new RTCPeerConnection();
+    pcrx.onicecandidate = (e) => push("/media/tx/candidate", e.candidate);
+    pcrx.ontrack = (e) => ($preview.srcObject = e.streams[0]);
+    await pcrx.setRemoteDescription(await pull("/media/rx/offer"));
+    const answer = await pcrx.createAnswer();
+    answer.sdp = sdpTransform(answer.sdp);
+    await push("/media/tx/answer", answer);
+    await pcrx.setLocalDescription(answer);
+    (async () => {
+      while (true)
+        await pull("/media/rx/candidate").then((c) => {
+          if (c) {
+            console.log(c);
+            pcrx.addIceCandidate(c);
+          }
+        });
+    })();
   };
 </script>

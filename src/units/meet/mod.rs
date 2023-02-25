@@ -10,6 +10,7 @@ use axum::middleware;
 use axum::response::{Html, IntoResponse, Redirect};
 use axum::routing::{MethodRouter, Router};
 use std::fmt::Write as _;
+use std::sync::{Arc, Mutex};
 
 mod db {
     use crate::db;
@@ -95,7 +96,7 @@ pub fn service() -> Router {
         )
         .layer(middleware::from_fn(auth_layer))
         .route(
-            "/media",
+            "/meet",
             MethodRouter::new().get(|| async {
                 const PAGE: [&str; 2] = include_src!("page.html");
                 const PEERJS: [&str; 1] = include_src!("peerjs.js");
@@ -106,4 +107,19 @@ pub fn service() -> Router {
                 Html(body)
             }),
         )
+        .route("/media/offer", storage())
+        .route("/media/answer", storage())
+}
+
+fn storage() -> MethodRouter {
+    let data = Arc::new(Mutex::new(Vec::new()));
+    MethodRouter::new()
+        .get({
+            let data = data.clone();
+            || async move { data.lock().unwrap().clone() }
+        })
+        .post({
+            let data = data.clone();
+            |body: Bytes| async move { *data.lock().unwrap() = body.to_vec() }
+        })
 }
