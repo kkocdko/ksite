@@ -1,17 +1,44 @@
 //! Some emergency function like record video and audio as evidence, send SOS messages.
 
+use super::chat::ChatServer;
 use crate::auth::auth_layer;
 use crate::include_src;
+// use crate::utils::Cha;
 use axum::body::{Body, Bytes};
 use axum::extract::{FromRequest, Path};
-use axum::http::header::CONTENT_TYPE;
+use axum::http::header::{HeaderValue, CACHE_CONTROL, CONTENT_TYPE};
 use axum::http::{Request, StatusCode};
 use axum::middleware;
 use axum::response::{Html, IntoResponse, Redirect};
 use axum::routing::{MethodRouter, Router};
+use once_cell::sync::Lazy;
+use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
+use tokio::sync::broadcast;
 
+static CHAT_SERVER: Lazy<ChatServer> = Lazy::new(Default::default);
+
+pub fn service() -> Router {
+    // db::init();
+    // ~/misc/apps/miniserve --header Cache-Control:no-store -p 9453 $(dirname $0)
+    Router::new()
+        .route(
+            "/meet",
+            MethodRouter::new().get(|| async {
+                (
+                    [(CACHE_CONTROL, HeaderValue::from_static("no-store"))],
+                    // [(CACHE_CONTROL, HeaderValue::from_static("max-age=300"))],
+                    Html((include_src!("page.html") as [_; 1])[0]),
+                )
+            }),
+        )
+        .route("/meet/post/:room", CHAT_SERVER.post_router())
+        .route("/meet/sse/:room", CHAT_SERVER.sse_router())
+}
+
+/*
 mod db {
     use crate::db;
 
@@ -58,68 +85,32 @@ mod db {
         .ok()
     }
 }
-
-pub fn service() -> Router {
-    db::init();
-    Router::new()
-        .route(
-            "/media/upload",
-            MethodRouter::new().post(|mut req: Request<Body>| async move {
-                let mime = req.headers_mut().remove(CONTENT_TYPE).unwrap();
-                let body = Bytes::from_request(req, &()).await.unwrap();
-                db::insert(mime.to_str().unwrap(), &body);
-                // dbg!(&mime);
-            }),
-        )
-        .route(
-            "/media/download/:id",
-            MethodRouter::new().get(|Path(id): Path<u64>| async move {
-                match db::get(id) {
-                    Some(v) => v.into_response(),
-                    None => StatusCode::NOT_FOUND.into_response(),
-                }
-            }),
-        )
-        .route(
-            "/media/list",
-            MethodRouter::new().get(|| async {
-                let mut ret = String::new();
-                for (id, timestamp, mime) in db::list() {
-                    writeln!(&mut ret, "{id} {timestamp} {mime}").unwrap();
-                }
-                ret
-            }),
-        )
-        .route(
-            "/media/auth",
-            MethodRouter::new().get(|| async { Redirect::to("/media") }),
-        )
-        .layer(middleware::from_fn(auth_layer))
-        .route(
-            "/meet",
-            MethodRouter::new().get(|| async {
-                const PAGE: [&str; 2] = include_src!("page.html");
-                const PEERJS: [&str; 1] = include_src!("peerjs.js");
-                let mut body = String::new();
-                body += PAGE[0];
-                body += PEERJS[0];
-                body += PAGE[1];
-                Html(body)
-            }),
-        )
-        .route("/media/offer", storage())
-        .route("/media/answer", storage())
-}
-
-fn storage() -> MethodRouter {
-    let data = Arc::new(Mutex::new(Vec::new()));
-    MethodRouter::new()
-        .get({
-            let data = data.clone();
-            || async move { data.lock().unwrap().clone() }
-        })
-        .post({
-            let data = data.clone();
-            |body: Bytes| async move { *data.lock().unwrap() = body.to_vec() }
-        })
-}
+.route(
+    "/media/upload",
+    MethodRouter::new().post(|mut req: Request<Body>| async move {
+        let mime = req.headers_mut().remove(CONTENT_TYPE).unwrap();
+        let body = Bytes::from_request(req, &()).await.unwrap();
+        db::insert(mime.to_str().unwrap(), &body);
+    }),
+)
+.route(
+    "/meet/download/:id",
+    MethodRouter::new().get(|Path(id): Path<u64>| async move {
+        match db::get(id) {
+            Some(v) => v.into_response(),
+            None => StatusCode::NOT_FOUND.into_response(),
+        }
+    }),
+)
+.route(
+    "/meet/list",
+    MethodRouter::new().get(|| async {
+        let mut ret = String::new();
+        for (id, timestamp, mime) in db::list() {
+            writeln!(&mut ret, "{id} {timestamp} {mime}").unwrap();
+        }
+        ret
+    }),
+)
+.layer(middleware::from_fn(auth_layer))
+*/

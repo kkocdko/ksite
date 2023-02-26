@@ -47,8 +47,18 @@
     max-width: 100%;
     max-height: 100%;
     padding: 0;
-    box-shadow: 1px 1px #777;
+    box-shadow: 1px 1px #888;
     background: #000;
+  }
+  video.sub {
+    max-width: 30vw;
+    max-height: 30vh;
+    position: absolute;
+    top: 36px;
+    z-index: 2;
+  }
+  video.off {
+    display: none;
   }
   video:fullscreen {
     border: none;
@@ -57,10 +67,8 @@
 
 <body>
   <header>
-    <button id="$trigger" style="display: none">Start</button>
-    <button id="$tx2">DEMOTX</button>
-    <button id="$tx">TX</button>
-    <button id="$rx">RX</button>
+    <button id="$trigger">Start</button>
+    <!-- <button id="$rec">Record</button> -->
     <button id="$detail">Detail</button>
     <select id="$audio">
       <option value="({})">Default audio</option>
@@ -71,38 +79,12 @@
       <option value="false">No video</option>
     </select>
   </header>
-  <div></div>
+  <video id="$local" controls autoplay></video>
+  <video id="$remote" controls autoplay></video>
 </body>
 
-<script>
-  const pull = async (path) => {
-    while (true) {
-      let data = JSON.parse(localStorage[path] || "[]");
-      let item = data.shift();
-      if (item) {
-        localStorage[path] = JSON.stringify(data);
-        return JSON.parse(item);
-      }
-      await new Promise((r) => setTimeout(r, 200));
-    }
-    // while (true) {
-    //   const t = await fetch(p).then((r) => r.text());
-    //   if (t) {
-    //     await fetch(p, { method: "POST", body: "" });
-    //     return JSON.parse(t);
-    //   }
-    //   await new Promise((r) => setTimeout(r, 200));
-    // }
-  };
-  const push = async (path, item) => {
-    // await fetch(p, { method: "POST", body: JSON.stringify(t) });
-    let data = localStorage[path] ? JSON.parse(localStorage[path]) : [];
-    data.push(JSON.stringify(item));
-    localStorage[path] = JSON.stringify(data);
-  };
-</script>
-
 <script type="module">
+  [$local.className, $remote.className] = ["sub", ""];
   const sdpTransform = (sdpStr) => {
     // https://stackoverflow.com/questions/29302617/control-video-send-framerate-on-the-fly-in-webrtc
     // https://stackoverflow.com/a/57674478/11338291
@@ -122,19 +104,19 @@
       device.kind
     ]?.insertAdjacentHTML(
       "beforeend",
-      `<option value="({deviceId:'${device.deviceId}',width:1920,frameRate:30})">${device.label}</option>`
-      // `<option value="({deviceId:'${device.deviceId}'})">${device.label}</option>`
+      // `<option value="({deviceId:'${device.deviceId}',width:1920,frameRate:30})">${device.label}</option>`
+      `<option value="({deviceId:'${device.deviceId}'})">${device.label}</option>`
     ));
   }
-  let stream, recorder;
+  let stream;
   $audio.onchange = $video.onchange = async () => {
+    // https://stackoverflow.com/a/73550841/11338291
+    stream?.getTracks().forEach((t) => (t.stop(), stream.removeTrack(t)));
     // width: { max: 1280 }, height: { max: 720 }, facingMode: { ideal: "environment" },
     // https://developer.mozilla.org/en-US/docs/Web/API/MediaTrackConstraints
-    stream?.getTracks().forEach((t) => (t.stop(), stream.removeTrack(t)));
     const streamCfg = { audio: eval($audio.value), video: eval($video.value) };
-    // https://stackoverflow.com/a/73550841/11338291
     stream = await navigator.mediaDevices.getUserMedia(streamCfg);
-    $preview.srcObject = stream;
+    $local.srcObject = stream;
   };
   $audio.onchange();
   $detail.onclick = () => {
@@ -143,69 +125,77 @@
     modify($video.selectedOptions[0]);
     $audio.onchange();
   };
+  // $trigger.onclick = async () => {
+  //   if (!/(^|;)auth=/.test(document.cookie)) return (location = "/media/auth");
+  //   if ($trigger.textContent === "Stop") {
+  //     $trigger.textContent = "Start";
+  //     recorder.stop();
+  //     recorder = null;
+  //     return;
+  //   }
+  //   $trigger.textContent = "Stop";
+  //   recorder = new MediaRecorder(stream);
+  //   recorder.ondataavailable = ({ data }) => {
+  //     fetch("/emergency/upload", {
+  //       // keepalive: true, // default is true
+  //       method: "post",
+  //       headers: { "content-type": data.type },
+  //       body: data,
+  //     }).catch((e) => console.log(e));
+  //   };
+  //   recorder.start(500);
+  // };
+  let pc, sse;
   $trigger.onclick = async () => {
-    if (!/(^|;)auth=/.test(document.cookie)) return (location = "/media/auth");
     if ($trigger.textContent === "Stop") {
-      $trigger.textContent = "Start";
-      recorder.stop();
-      recorder = null;
-      return;
+      $trigger.textContent = "Connect";
+      pc?.close();
+      pc = null;
+    } else if ($trigger.textContent === "Connect") {
+      $trigger.textContent = "Call";
+      pc = new RTCPeerConnection();
+      pc.onicecandidate = (e) => {
+        const body = JSON.stringify([id, "candidate", e.candidate]);
+        fetch(`/meet/post/${room}`, { method: "POST", body });
+      };
+      // for (const t of stream.getTracks()) pc.addTrack(t, stream);
+      pc.addTrack(stream.getVideoTracks()[0], stream);
+      sse = new EventSource(`/meet/sse/${room}`);
+      await new Promise((r) => (sse.onopen = r));
+      sse.onmessage = async (sseevent) => {
+        
+      };
+    } else if ($trigger.textContent === "Call") {
+      $trigger.textContent = "Stop";
+      const offer = await pc.createOffer();
+      const body = JSON.stringify([id, "offer", offer]);
+      fetch(`/meet/post/${room}`, { method: "POST", body });
+      await pctx.setLocalDescription(offer);
     }
-    $trigger.textContent = "Stop";
-    recorder = new MediaRecorder(stream);
-    recorder.ondataavailable = ({ data }) => {
-      fetch("/emergency/upload", {
-        // keepalive: true, // default is true
-        method: "post",
-        headers: { "content-type": data.type },
-        body: data,
-      }).catch((e) => console.log(e));
-    };
-    recorder.start(500);
   };
-
-  $tx.onclick = async () => {
-    const pctx = new RTCPeerConnection();
-    pctx.onicecandidate = (e) => push("/media/rx/candidate", e.candidate);
-    // for (const t of stream.getTracks()) pctx.addTrack(t, stream);
-    pctx.addTrack(stream.getVideoTracks()[0], stream);
-
-    const offer = await pctx.createOffer();
-    await push("/media/rx/offer", offer);
-    await pctx.setLocalDescription(offer);
-    (async () => {
-      while (true)
-        await pull("/media/tx/candidate").then((c) => {
-          if (c) {
-            console.log(c);
-            pctx.addIceCandidate(c);
-          }
-        });
-    })();
-    (async () => {
-      while (true)
-        await pull("/media/tx/answer").then((c) => {
-          pctx.setRemoteDescription(c);
-        });
-    })();
-  };
-  $rx.onclick = async () => {
-    const pcrx = new RTCPeerConnection();
-    pcrx.onicecandidate = (e) => push("/media/tx/candidate", e.candidate);
-    pcrx.ontrack = (e) => ($preview.srcObject = e.streams[0]);
-    await pcrx.setRemoteDescription(await pull("/media/rx/offer"));
-    const answer = await pcrx.createAnswer();
-    answer.sdp = sdpTransform(answer.sdp);
-    await push("/media/tx/answer", answer);
-    await pcrx.setLocalDescription(answer);
-    (async () => {
-      while (true)
-        await pull("/media/rx/candidate").then((c) => {
-          if (c) {
-            console.log(c);
-            pcrx.addIceCandidate(c);
-          }
-        });
-    })();
-  };
+  //   (async () => {
+  //     while (true)
+  //       await pull("/media/tx/answer").then((c) => {
+  //         pctx.setRemoteDescription(c);
+  //       });
+  //   })();
+  // $rx.onclick = async () => {
+  //   const pcrx = new RTCPeerConnection();
+  //   pcrx.onicecandidate = (e) => push("/media/tx/candidate", e.candidate);
+  //   pcrx.ontrack = (e) => ($preview.srcObject = e.streams[0]);
+  //   await pcrx.setRemoteDescription(await pull("/media/rx/offer"));
+  //   const answer = await pcrx.createAnswer();
+  //   answer.sdp = sdpTransform(answer.sdp);
+  //   await push("/media/tx/answer", answer);
+  //   await pcrx.setLocalDescription(answer);
+  //   (async () => {
+  //     while (true)
+  //       await pull("/media/rx/candidate").then((c) => {
+  //         if (c) {
+  //           console.log(c);
+  //           pcrx.addIceCandidate(c);
+  //         }
+  //       });
+  //   })();
+  // };
 </script>
