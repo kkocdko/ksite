@@ -40,13 +40,11 @@
 
 <body>
   <br />
-  <input id="$send" placeholder="INPUT HERE" />
+  <input id="$send" placeholder="Chat" />
 </body>
 
 <script type="module">
-  if (!isSecureContext)
-    throw alert("needs secure context (https or localhost)");
-
+  if (!isSecureContext) throw alert("needs https or localhost");
   // base64 <-> array buffer
   const b2a = (b) => Uint8Array.from(atob(b), (c) => c.charCodeAt(0));
   const a2b = (a) => btoa(String.fromCharCode(...new Uint8Array(a)));
@@ -57,7 +55,8 @@
     publicExponent: new Uint8Array([1, 0, 1]),
     hash: "SHA-256",
   };
-  const cfg = localStorage.cfg ? JSON.parse(localStorage.cfg) : {};
+  const keepProfile = localStorage.cfg && confirm("Keep previous profile?");
+  const cfg = keepProfile ? JSON.parse(localStorage.cfg) : {};
   if (!cfg.id) {
     const keyPair = await crypto.subtle //
       .generateKey(algo, true, ["encrypt", "decrypt"]);
@@ -73,27 +72,25 @@
     .importKey("jwk", JSON.parse(cfg.privKey), algo, true, ["decrypt"]);
   cfg.decrypt = async (i) =>
     textDec.decode(await crypto.subtle.decrypt(algo, myPrivKey, b2a(i)));
-  const loadFriend = async (friend) => {
+  const initFriend = async (friend) => {
     const pubKey = await crypto.subtle //
       .importKey("jwk", JSON.parse(friend.pubKey), algo, true, ["encrypt"]);
     friend.encrypt = async (i) =>
       a2b(await crypto.subtle.encrypt(algo, pubKey, textEnc.encode(i)));
   };
-  for (const friend of cfg.friends) await loadFriend(friend);
+  for (const friend of cfg.friends) await initFriend(friend);
+  if (!location.hash)
+    location.hash = prompt("Room ID", (Math.random() * 1e5).toFixed());
   const room = location.hash.slice(1);
-  if (!room) {
-    location.hash = prompt("Room ID", Math.round(Math.random() * 1e5));
-    throw location.reload();
-  }
   const sse = new EventSource(`/chat/sse/${room}`);
   await new Promise((r) => (sse.onopen = r));
-  $send.placeholder += `, ROOM ${room}`;
+  $send.placeholder += ` as ${cfg.id} in room ${room}`;
   const post = async (data) => {
     const body = JSON.stringify(data);
     const e = await fetch(`/chat/post/${room}`, { method: "POST", body })
       .then((r) => r.text())
       .catch((e) => e);
-    if (e) alert(`send data failed, error = ${e}`);
+    if (e) alert(`post failed, error = ${e}`);
   };
   const joinRoom = () => post({ op: "join", id: cfg.id, pubKey: cfg.pubKey });
   const sendMsg = (msg) => {
@@ -110,10 +107,10 @@
       $send.parentNode.insertBefore(el, $send).scrollIntoView();
     } else if (data.op === "join") {
       if (cfg.friends.find((v) => v.id === data.id)) return;
-      else if (confirm(`[${data.id}] want to join the room`)) {
+      else if (confirm(`[${data.id}] want to join this room`)) {
         const friend = { id: data.id, pubKey: data.pubKey };
+        initFriend(friend);
         cfg.friends.push(friend);
-        loadFriend(friend);
         joinRoom(); // send new friend a request to gain trust
       }
     }
@@ -126,7 +123,6 @@
   joinRoom();
   onunload = () => {
     sendMsg("[disconnected]");
-    // todo: add clear button
-    // localStorage.cfg = JSON.stringify(cfg);
+    localStorage.cfg = JSON.stringify(cfg);
   };
 </script>
