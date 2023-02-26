@@ -4,9 +4,9 @@ All in one solution for my server.
 
 ## TODO
 
-### 0.8.0
+### 0.8.2
 
-- `units::emergency` record evidence picture, audio and video in real-time, sos request and others.
+- `units::meet` supports real-time cloud record.
 
 - `crate::log` lightweight logging, use `httpdate`. provide a log viewer mode.
 

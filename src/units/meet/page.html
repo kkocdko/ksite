@@ -67,9 +67,7 @@
 
 <body>
   <header>
-    <button id="$trigger">Start</button>
-    <!-- <button id="$rec">Record</button> -->
-    <button id="$detail">Detail</button>
+    <button id="$trigger">Connect</button>
     <select id="$audio">
       <option value="({})">Default audio</option>
       <option value="false">No audio</option>
@@ -78,13 +76,25 @@
       <option value="({})">Default video</option>
       <option value="false">No video</option>
     </select>
+    <select id="$more">
+      <option value hidden>More</option>
+      <!-- <option value="record">Cloud record</option> -->
+      <option value="audio_cfg">Audio config</option>
+      <option value="video_cfg">Video config</option>
+      <option value="video_w1920">Video width to 1920</option>
+      <option value="video_r30">Video framerate to 30</option>
+      <!-- <option value="video_b12000">Video bitrate to 12000</option> -->
+    </select>
+    <button id="$more_w">More</button>
+    <style
+      onload="$more.style.width=$more_w.offsetWidth+'px',$more_w.remove()"
+    ></style>
   </header>
-  <video id="$local" controls autoplay></video>
+  <video id="$local" muted controls autoplay></video>
   <video id="$remote" controls autoplay></video>
 </body>
 
 <script type="module">
-  [$local.className, $remote.className] = ["sub", ""];
   const sdpTransform = (sdpStr) => {
     // https://stackoverflow.com/questions/29302617/control-video-send-framerate-on-the-fly-in-webrtc
     // https://stackoverflow.com/a/57674478/11338291
@@ -99,16 +109,14 @@
     });
     return ret.join("\r\n");
   };
-  for (const device of await navigator.mediaDevices.enumerateDevices()) {
+  for (const device of await navigator.mediaDevices.enumerateDevices())
     ({ audioinput: $audio, videoinput: $video }[
       device.kind
     ]?.insertAdjacentHTML(
       "beforeend",
-      // `<option value="({deviceId:'${device.deviceId}',width:1920,frameRate:30})">${device.label}</option>`
       `<option value="({deviceId:'${device.deviceId}'})">${device.label}</option>`
     ));
-  }
-  let stream;
+  let stream, pc, sse;
   $audio.onchange = $video.onchange = async () => {
     // https://stackoverflow.com/a/73550841/11338291
     stream?.getTracks().forEach((t) => (t.stop(), stream.removeTrack(t)));
@@ -119,83 +127,59 @@
     $local.srcObject = stream;
   };
   $audio.onchange();
-  $detail.onclick = () => {
-    const modify = (el) => (el.value = prompt(el.parentNode.id, el.value));
-    modify($audio.selectedOptions[0]);
-    modify($video.selectedOptions[0]);
-    $audio.onchange();
+  $more.onchange = () => {
+    if ($more.value === "record" && confirm()) {
+    }
+    const modify = (el, f) => (el.selectedOptions[0].value = f(el.value));
+    if ($more.value === "audio_cfg") modify($audio, (v) => prompt("audio", v));
+    if ($more.value === "video_cfg") modify($video, (v) => prompt("video", v));
+    if ($more.value === "video_w1920")
+      modify($video, (v) => v.replace("})", ",width:1920})"));
+    if ($more.value === "video_r30")
+      modify($video, (v) => v.replace("})", ",frameRate:30})"));
+    $more.value = "";
   };
-  // $trigger.onclick = async () => {
-  //   if (!/(^|;)auth=/.test(document.cookie)) return (location = "/media/auth");
-  //   if ($trigger.textContent === "Stop") {
-  //     $trigger.textContent = "Start";
-  //     recorder.stop();
-  //     recorder = null;
-  //     return;
-  //   }
-  //   $trigger.textContent = "Stop";
-  //   recorder = new MediaRecorder(stream);
-  //   recorder.ondataavailable = ({ data }) => {
-  //     fetch("/emergency/upload", {
-  //       // keepalive: true, // default is true
-  //       method: "post",
-  //       headers: { "content-type": data.type },
-  //       body: data,
-  //     }).catch((e) => console.log(e));
-  //   };
-  //   recorder.start(500);
-  // };
-  let pc, sse;
+  if (!location.hash)
+    location.hash = prompt("Room ID", (Math.random() * 1e5).toFixed());
+  const [room, id] = [location.hash.slice(1), crypto.randomUUID()];
+  [$local.className, $remote.className] = ["", "off"];
+  const post = (o) =>
+    fetch(`/meet/post/${room}`, { method: "POST", body: JSON.stringify(o) });
   $trigger.onclick = async () => {
     if ($trigger.textContent === "Stop") {
       $trigger.textContent = "Connect";
-      pc?.close();
-      pc = null;
+      sse.close(), pc.close();
+      [$local.className, $remote.className] = ["", "off"];
     } else if ($trigger.textContent === "Connect") {
       $trigger.textContent = "Call";
       pc = new RTCPeerConnection();
-      pc.onicecandidate = (e) => {
-        const body = JSON.stringify([id, "candidate", e.candidate]);
-        fetch(`/meet/post/${room}`, { method: "POST", body });
+      pc.onicecandidate = (e) => post([id, "candidate", e.candidate]);
+      pc.ontrack = (e) => {
+        [$local.className, $remote.className] = ["sub", ""];
+        $remote.srcObject = e.streams[0];
       };
-      // for (const t of stream.getTracks()) pc.addTrack(t, stream);
-      pc.addTrack(stream.getVideoTracks()[0], stream);
+      for (const t of stream.getTracks()) pc.addTrack(t, stream);
+      // pc.addTrack(stream.getVideoTracks()[0], stream);
       sse = new EventSource(`/meet/sse/${room}`);
-      await new Promise((r) => (sse.onopen = r));
-      sse.onmessage = async (sseevent) => {
-        
+      sse.onmessage = async (e) => {
+        const [from, type, data] = JSON.parse(e.data);
+        if (from === id) return;
+        if (type === "candidate" && data) pc.addIceCandidate(data); // TODO: why error?
+        if (type === "offer" && confirm(`User ${from} call you, answer?`)) {
+          $trigger.textContent = "Stop";
+          await pc.setRemoteDescription(data);
+          const answer = await pc.createAnswer();
+          answer.sdp = sdpTransform(answer.sdp);
+          post([id, "answer", answer]);
+          pc.setLocalDescription(answer);
+        }
+        if (type === "answer") pc.setRemoteDescription(data);
       };
     } else if ($trigger.textContent === "Call") {
       $trigger.textContent = "Stop";
       const offer = await pc.createOffer();
-      const body = JSON.stringify([id, "offer", offer]);
-      fetch(`/meet/post/${room}`, { method: "POST", body });
-      await pctx.setLocalDescription(offer);
+      post([id, "offer", offer]);
+      pc.setLocalDescription(offer);
     }
   };
-  //   (async () => {
-  //     while (true)
-  //       await pull("/media/tx/answer").then((c) => {
-  //         pctx.setRemoteDescription(c);
-  //       });
-  //   })();
-  // $rx.onclick = async () => {
-  //   const pcrx = new RTCPeerConnection();
-  //   pcrx.onicecandidate = (e) => push("/media/tx/candidate", e.candidate);
-  //   pcrx.ontrack = (e) => ($preview.srcObject = e.streams[0]);
-  //   await pcrx.setRemoteDescription(await pull("/media/rx/offer"));
-  //   const answer = await pcrx.createAnswer();
-  //   answer.sdp = sdpTransform(answer.sdp);
-  //   await push("/media/tx/answer", answer);
-  //   await pcrx.setLocalDescription(answer);
-  //   (async () => {
-  //     while (true)
-  //       await pull("/media/rx/candidate").then((c) => {
-  //         if (c) {
-  //           console.log(c);
-  //           pcrx.addIceCandidate(c);
-  //         }
-  //       });
-  //   })();
-  // };
 </script>

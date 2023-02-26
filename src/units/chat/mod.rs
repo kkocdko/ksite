@@ -19,10 +19,10 @@ use tokio::sync::broadcast::{self, Receiver, Sender};
 
 type BroadcastSseFut = Pin<Box<dyn Future<Output = (Option<String>, Receiver<String>)> + Send>>;
 
-struct BroadcastSse(BroadcastSseFut, Box<dyn Fn() -> () + Send>);
+struct BroadcastSse(BroadcastSseFut, Box<dyn Fn() + Send>);
 
 impl BroadcastSse {
-    fn new(rx: Receiver<String>, on_drop: Box<dyn Fn() -> () + Send>) -> Self {
+    fn new(rx: Receiver<String>, on_drop: Box<dyn Fn() + Send>) -> Self {
         Self(Self::make_fut(rx), on_drop)
     }
 
@@ -67,12 +67,10 @@ impl ChatServer {
                 Some(v) => v,
                 None => return "room not exist",
             };
-            let ret = match room.tx.send(msg) {
+            match room.tx.send(msg) {
                 Err(_) => "no receivers exist",
                 Ok(_) => "", // empty response body means succeeded
-            };
-            drop(rooms);
-            ret
+            }
         })
     }
 
@@ -87,7 +85,7 @@ impl ChatServer {
             room.user_count += 1;
             let rx = room.tx.subscribe();
             drop(rooms);
-            let ret = Sse::new(BroadcastSse::new(
+            Sse::new(BroadcastSse::new(
                 rx,
                 Box::new(move || {
                     let mut rooms = rooms_mutex.lock().unwrap();
@@ -98,8 +96,7 @@ impl ChatServer {
                         // println!("> rooms.remove({})", self.id);
                     }
                 }),
-            ));
-            ret
+            ))
         })
     }
 }

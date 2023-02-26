@@ -1,22 +1,11 @@
-//! Some emergency function like record video and audio as evidence, send SOS messages.
+//! WebRTC meeting, supports real-time cloud record.
 
 use super::chat::ChatServer;
-use crate::auth::auth_layer;
 use crate::include_src;
-// use crate::utils::Cha;
-use axum::body::{Body, Bytes};
-use axum::extract::{FromRequest, Path};
-use axum::http::header::{HeaderValue, CACHE_CONTROL, CONTENT_TYPE};
-use axum::http::{Request, StatusCode};
-use axum::middleware;
-use axum::response::{Html, IntoResponse, Redirect};
+use axum::http::header::{HeaderValue, CACHE_CONTROL};
+use axum::response::Html;
 use axum::routing::{MethodRouter, Router};
 use once_cell::sync::Lazy;
-use std::collections::HashMap;
-use std::fmt::Write as _;
-use std::sync::{Arc, Mutex};
-use std::time::SystemTime;
-use tokio::sync::broadcast;
 
 static CHAT_SERVER: Lazy<ChatServer> = Lazy::new(Default::default);
 
@@ -28,8 +17,10 @@ pub fn service() -> Router {
             "/meet",
             MethodRouter::new().get(|| async {
                 (
+                    #[cfg(debug_assertions)]
                     [(CACHE_CONTROL, HeaderValue::from_static("no-store"))],
-                    // [(CACHE_CONTROL, HeaderValue::from_static("max-age=300"))],
+                    #[cfg(not(debug_assertions))]
+                    [(CACHE_CONTROL, HeaderValue::from_static("max-age=300"))],
                     Html((include_src!("page.html") as [_; 1])[0]),
                 )
             }),
@@ -39,6 +30,16 @@ pub fn service() -> Router {
 }
 
 /*
+use crate::auth::auth_layer;
+use axum::body::{Body, Bytes};
+use axum::extract::{FromRequest, Path};
+use axum::http::{Request, StatusCode};
+use axum::middleware;
+use std::collections::HashMap;
+use std::fmt::Write as _;
+use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
+use tokio::sync::broadcast;
 mod db {
     use crate::db;
 

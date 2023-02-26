@@ -75,7 +75,7 @@ fn gen_file_path(rowid: u64) -> PathBuf {
 
 async fn handle(req_path: &str, target: String) -> Response {
     let fetch_target = || async { care!(with_retry(|| fetch(&target), 3, 500).await) };
-    let db_get_result = db_get(&req_path);
+    let db_get_result = db_get(req_path);
     if let Some((rowid, true)) = db_get_result {
         let file = File::open(gen_file_path(rowid)).await.unwrap();
         return FileResponse::new(file).into_response();
@@ -86,12 +86,12 @@ async fn handle(req_path: &str, target: String) -> Response {
             Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
         };
     }
-    db_add(&req_path); // insert first to avoid condition race
+    db_add(req_path); // insert first to avoid condition race
     let mut body = match fetch_target().await {
         Ok(v) => v.into_body(),
         Err(e) => {
             println!("[error] {e:?}");
-            db_del(&req_path);
+            db_del(req_path);
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
     };
