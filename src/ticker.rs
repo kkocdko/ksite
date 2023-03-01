@@ -1,14 +1,7 @@
 use std::sync::atomic::{AtomicI64, Ordering};
-use std::time::UNIX_EPOCH;
+use std::time::{Duration, UNIX_EPOCH};
 
 const ANY: i64 = 99; // must >= 60, terser logic?
-
-fn get_now() -> i64 {
-    // return get_now_fake();
-    // https://doc.rust-lang.org/stable/reference/expressions/operator-expr.html#semantics
-    // > Casting between two integers of the same size (e.g. i32 -> u32) is a no-op
-    UNIX_EPOCH.elapsed().unwrap().as_secs() as _
-}
 
 /// Convert time stamp to (hours, minutes, seconds).
 fn hms(v: i64) -> (i64, i64, i64) {
@@ -105,23 +98,52 @@ impl Ticker {
     }
 }
 
+fn get_now() -> i64 {
+    // return get_now_fake();
+    // https://doc.rust-lang.org/stable/reference/expressions/operator-expr.html#semantics
+    // > Casting between two integers of the same size (e.g. i32 -> u32) is a no-op
+    UNIX_EPOCH.elapsed().unwrap().as_secs() as _
+}
+
 // TODO add fuzzle test
 #[allow(unused)]
 fn get_now_fake() -> i64 {
-    static V: AtomicI64 = AtomicI64::new(0);
-    println!("now = {}", V.load(Ordering::SeqCst));
+    use once_cell::sync::Lazy;
+    // bugtick: Tue, 28 Feb 2023 03:27:50 GMT
+
+    static V: Lazy<AtomicI64> = Lazy::new(|| {
+        AtomicI64::new(
+            httpdate::parse_http_date("Tue, 28 Feb 2023 02:27:50 GMT")
+                .unwrap()
+                .elapsed()
+                .unwrap()
+                .as_secs() as _,
+        )
+    });
+    print!("now = {} ", {
+        let t = V.load(Ordering::SeqCst);
+        httpdate::fmt_http_date(UNIX_EPOCH + Duration::from_secs(t as _))
+    });
     V.fetch_add(1, Ordering::SeqCst)
 }
+
 #[allow(unused)]
 pub async fn fuzzle_test() {
     use std::time::Duration;
-    let interval = Duration::from_secs(1);
+    let interval = Duration::from_millis(50);
+    // let interval = Duration::from_secs(1);
     println!("oscillator interval = {interval:?}");
     let mut interval = tokio::time::interval(interval);
-    let mut ticker = Ticker::new(&[(-1, 12, -1), (3, -1, 24)], 0);
+    let mut ticker = Ticker::new(&[(-1, 4, 0)], 0);
+    // let mut ticker = Ticker::new(&[(-1, 12, -1), (3, -1, 24)], 0);
+    // static TICKER: Lazy<Ticker> = Lazy::new(|| Ticker::new_p8(&[(-1, 4, 0)]));
     loop {
         interval.tick().await;
-        println!("tick");
+        if ticker.tick() {
+            println!("tick");
+        } else {
+            println!("no-tick");
+        }
         // let _ = tokio::join!(
         //     units::magazine::tick(),
         //     units::qqbot::tick(),

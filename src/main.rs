@@ -57,7 +57,7 @@ async fn run() {
         let mut interval = tokio::time::interval(INTERVAL);
         loop {
             interval.tick().await;
-            tokio::time::sleep(Duration::from_secs(i64::MAX as _)).await; // for debug
+            // tokio::time::sleep(Duration::from_secs(i64::MAX as _)).await; // for debug
             care!(tokio::time::timeout(TIMEOUT, tasks()).await).ok();
         }
     };
