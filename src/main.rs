@@ -57,6 +57,10 @@ async fn run() {
         let mut interval = tokio::time::interval(INTERVAL);
         loop {
             interval.tick().await;
+            println!(
+                "interval.tick().await; at {}",
+                httpdate::fmt_http_date(std::time::SystemTime::now())
+            );
             // tokio::time::sleep(Duration::from_secs(i64::MAX as _)).await; // for debug
             care!(tokio::time::timeout(TIMEOUT, tasks()).await).ok();
         }

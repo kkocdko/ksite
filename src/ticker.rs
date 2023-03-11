@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicI64, Ordering};
-use std::time::{Duration, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const ANY: i64 = 99; // must >= 60, terser logic?
 
@@ -44,6 +44,27 @@ fn gen_next(mut now: i64, cfg: (i64, i64, i64)) -> i64 {
     }
 }
 
+fn gen_next_stupid(mut now: i64, cfg: (i64, i64, i64)) -> i64 {
+    now += 1;
+    let (ch, cm, cs) = cfg;
+    loop {
+        let (h, m, s) = hms(now);
+        now = match (
+            h == ch || ch == ANY,
+            m == cm || cm == ANY,
+            s == cs || cs == ANY,
+        ) {
+            // legal
+            (true, true, true) => {
+                return now;
+            }
+
+            // next day
+            _ => now + 1,
+        };
+    }
+}
+
 /// A `cron` like timed task util.
 ///
 /// # Example
@@ -67,6 +88,7 @@ impl Ticker {
         let now = get_now();
         if now >= self.next.load(Ordering::SeqCst) {
             let nexts = self.cfgs.iter().map(|&cfg| gen_next(now, cfg));
+            // let nexts = self.cfgs.iter().map(|&cfg| gen_next_stupid(now, cfg));
             self.next.store(nexts.min().unwrap(), Ordering::SeqCst);
             true
         } else {
@@ -110,6 +132,7 @@ fn get_now() -> i64 {
 fn get_now_fake() -> i64 {
     use once_cell::sync::Lazy;
     // bugtick: Tue, 28 Feb 2023 03:27:50 GMT
+    // bugtick: Thu, 09 Mar 2023 16:04:29 GMT
 
     static V: Lazy<AtomicI64> = Lazy::new(|| {
         AtomicI64::new(
@@ -129,24 +152,44 @@ fn get_now_fake() -> i64 {
 
 #[allow(unused)]
 pub async fn fuzzle_test() {
-    use std::time::Duration;
-    let interval = Duration::from_millis(50);
-    // let interval = Duration::from_secs(1);
-    println!("oscillator interval = {interval:?}");
-    let mut interval = tokio::time::interval(interval);
-    let mut ticker = Ticker::new(&[(-1, 4, 0)], 0);
-    // let mut ticker = Ticker::new(&[(-1, 12, -1), (3, -1, 24)], 0);
-    // static TICKER: Lazy<Ticker> = Lazy::new(|| Ticker::new_p8(&[(-1, 4, 0)]));
+    let c = (ANY, 12, ANY);
+    let mut now = httpdate::parse_http_date("Tue, 28 Feb 2023 02:27:50 GMT")
+        .unwrap()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
     loop {
-        interval.tick().await;
-        if ticker.tick() {
-            println!("tick");
-        } else {
-            println!("no-tick");
+        let next = gen_next(now, c);
+        let next_stupid = gen_next_stupid(now, c);
+        if next != next_stupid {
+            let v1 =
+                httpdate::fmt_http_date(SystemTime::UNIX_EPOCH + Duration::from_secs(next as _));
+            let v2 = httpdate::fmt_http_date(
+                SystemTime::UNIX_EPOCH + Duration::from_secs(next_stupid as _),
+            );
+            println!("should be {v2} , not {v1}")
         }
-        // let _ = tokio::join!(
-        //     units::magazine::tick(),
-        //     units::qqbot::tick(),
-        // );
+        now = next
     }
+
+    // use std::time::Duration;
+    // let interval = Duration::from_millis(50);
+    // // let interval = Duration::from_secs(1);
+    // println!("oscillator interval = {interval:?}");
+    // let mut interval = tokio::time::interval(interval);
+    // let mut ticker = Ticker::new(&[(-1, 4, 0)], 0);
+    // // let mut ticker = Ticker::new(&[(-1, 12, -1), (3, -1, 24)], 0);
+    // // static TICKER: Lazy<Ticker> = Lazy::new(|| Ticker::new_p8(&[(-1, 4, 0)]));
+    // loop {
+    //     interval.tick().await;
+    //     if ticker.tick() {
+    //         println!("tick");
+    //     } else {
+    //         println!("no-tick");
+    //     }
+    //     // let _ = tokio::join!(
+    //     //     units::magazine::tick(),
+    //     //     units::qqbot::tick(),
+    //     // );
+    // }
 }

@@ -122,7 +122,7 @@ async fn refresh() -> Result<()> {
     );
     let mut o = String::new();
     o += PAGE[0];
-    o += &expires;
+    o += &httpdate::fmt_http_date(SystemTime::now());
     o += "<br><br>";
     // let o = tokio::task::spawn_blocking(move || {
     care!(r.0.map(|v| generate(&v, &mut o))).ok();
