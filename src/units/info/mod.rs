@@ -42,9 +42,9 @@ async fn get_handler() -> impl IntoResponse {
 
     o += concat!(
         env!("CARGO_PKG_NAME"),
-        " version: ",
+        " version : ",
         env!("CARGO_PKG_VERSION"),
-        "\nsqlite version: ",
+        "\nsqlite version : ",
     );
     o += rusqlite::version();
     o += "\n";

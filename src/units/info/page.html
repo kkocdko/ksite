@@ -28,4 +28,9 @@
   if ((await (await fetch("/info/p")).text()) !== "pong") throw 1;
   const duration = Math.round(performance.now() - now);
   $v.textContent += `client <-> server : ${duration} ms\n`;
+  $v.textContent = $v.textContent.replace(/(?<=uptime : )\d+\ss/, (v, t) => {
+    [v, t] = [+v.slice(0, -1), ""];
+    const n = (u, f) => ((t = `${v % f}${u} ` + t), (v = (v / f).toFixed()));
+    return n("s", 60), n("m", 60), n("h", 60), n("d", 24), t;
+  });
 </script>
