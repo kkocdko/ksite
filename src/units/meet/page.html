@@ -134,10 +134,11 @@
     if ($more.value === "audio_cfg") modify($audio, (v) => prompt("audio", v));
     if ($more.value === "video_cfg") modify($video, (v) => prompt("video", v));
     if ($more.value === "video_w1920")
-      modify($video, (v) => v.replace("})", ",width:1920})"));
+      modify($video, (v) => v.replace("({", "({width:1920,"));
     if ($more.value === "video_r30")
-      modify($video, (v) => v.replace("})", ",frameRate:30})"));
+      modify($video, (v) => v.replace("({", "({frameRate:30,"));
     $more.value = "";
+    $audio.onchange();
   };
   if (!location.hash)
     location.hash = prompt("Room ID", (Math.random() * 1e5).toFixed());
