@@ -1,8 +1,7 @@
 //! Collections of my favorite news source.
 
-use crate::ticker::Ticker;
 use crate::utils::{fetch_text, OptionResult};
-use crate::{care, include_src};
+use crate::{care, include_src, ticker};
 use anyhow::Result;
 use axum::body::Bytes;
 use axum::http::header::{HeaderName, HeaderValue};
@@ -168,11 +167,8 @@ pub fn service() -> Router {
     )
 }
 
-static TICKER: Lazy<Ticker> = Lazy::new(|| Ticker::new_p8(&[(-1, 4, 0)]));
 pub async fn tick() {
-    if !TICKER.tick() {
-        return;
-    }
+    ticker!(8, "XX:04:00");
 
     care!(refresh().await).ok();
 }

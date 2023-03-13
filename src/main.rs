@@ -8,14 +8,15 @@ mod utils;
 use std::net::SocketAddr;
 use std::time::Duration;
 
-#[global_allocator]
-static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc; // or rpmalloc::RpMalloc
+// #[global_allocator]
+// static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc; // or rpmalloc::RpMalloc
 
 fn main() {
     launcher::launch(run);
 }
 
 async fn run() {
+    // return ticker::test2();
     // return ticker::fuzzle_test().await;
     // return units::paste_next::dev().await;
     println!("crate::run\nauth key = {}", auth::auth_key());
@@ -37,7 +38,6 @@ async fn run() {
             // .merge(units::paste_next::service())
             // .merge(units::proxy::service())
             .merge(units::qqbot::service());
-
         // .into_make_service_with_connect_info::<SocketAddr>();
         // axum::Server::bind(&addr).serve(app.into_make_service()).await.unwrap();
         tls::serve(&addr, app).await;
@@ -57,19 +57,15 @@ async fn run() {
         let mut interval = tokio::time::interval(INTERVAL);
         loop {
             interval.tick().await;
-            println!(
-                "interval.tick().await; at {}",
-                httpdate::fmt_http_date(std::time::SystemTime::now())
-            );
-            // tokio::time::sleep(Duration::from_secs(i64::MAX as _)).await; // for debug
             care!(tokio::time::timeout(TIMEOUT, tasks()).await).ok();
+            let stamp = httpdate::fmt_http_date(std::time::SystemTime::now());
+            println!("oscillator loop bottom, at {stamp}");
         }
     };
 
     // let tasks = tokio::task::LocalSet::new();
     // tasks.spawn_local(units::magazine::tick());
     // tasks.spawn_local(units::qqbot::tick());
-
     // TODO: benchmark with tls enabled always failed on linux (but it's normal on windows)
     // seems a problem of rustls. any idea to fix this?
     // tokio::spawn(async {

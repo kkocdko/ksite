@@ -2,9 +2,8 @@
 
 mod commands;
 use crate::auth::auth_layer;
-use crate::ticker::Ticker;
 use crate::utils::{fetch_text, log_escape, OptionResult};
-use crate::{care, include_src};
+use crate::{care, include_src, ticker};
 use anyhow::Result;
 use axum::body::Bytes;
 use axum::extract::RawQuery;
@@ -110,7 +109,7 @@ macro_rules! push_log {
 
 static QR: Mutex<Bytes> = Mutex::new(Bytes::new());
 static CLIENT: Lazy<Arc<Client>> = Lazy::new(|| {
-    push_log!("init client. if you want to login, please refresh the page");
+    push_log!("init client");
     let device = match db::cfg_get_str(db::K_DEVICE) {
         Some(v) => serde_json::from_str(&v).unwrap(),
         None => {
@@ -297,10 +296,7 @@ pub async fn notify(msg: &str) -> Result<()> {
 
 pub fn service() -> Router {
     db::init();
-
-    if db::cfg_get(db::K_TOKEN).is_some() {
-        CLIENT.get_status(); // init client
-    }
+    CLIENT.get_status(); // init client
 
     async fn post_handler(q: RawQuery, body: Bytes) {
         let q = q.0.unwrap();
@@ -323,8 +319,6 @@ pub fn service() -> Router {
     }
 
     async fn get_handler() -> Html<String> {
-        CLIENT.get_status(); // init client
-
         const PAGE: [&str; 2] = include_src!("page.html");
         let mut body = String::new();
         body += PAGE[0];
@@ -381,11 +375,8 @@ macro_rules! up_notify {
     };
 }
 
-static TICKER: Lazy<Ticker> = Lazy::new(|| Ticker::new_p8(&[(-1, 8, 0), (-1, 38, 0)]));
 pub async fn tick() {
-    if !TICKER.tick() {
-        return;
-    }
+    ticker!(8, "XX:08:00", "XX:38:00");
 
     db::log_clean();
 
