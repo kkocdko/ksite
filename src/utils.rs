@@ -18,6 +18,19 @@ use tokio::io;
 use tokio::sync::mpsc;
 use tokio_rustls::rustls::{ClientConfig, OwnedTrustAnchor, RootCertStore};
 
+#[macro_export]
+macro_rules! log {
+    // TRAC | INFO | WARN | ERRO
+    ($level:tt : $($arg:tt)*) => {
+        let stamp = std::time::UNIX_EPOCH.elapsed().unwrap().as_secs() as u64;
+        print!("[{stamp}] [{}] ", stringify!($level));
+        println!($($arg)*);
+    };
+    ($($arg:tt)*) => {
+        $crate::log!(INFO : $($arg)*);
+    };
+}
+
 pub trait OptionResult<T> {
     fn e(self) -> Result<T>;
 }
@@ -169,10 +182,10 @@ pub async fn fetch(request: impl ToRequest) -> Result<Response<Body>, hyper::Err
 pub async fn fetch_data(request: impl ToRequest) -> Result<Vec<u8>> {
     // let request = request.into_request();
     // let a = format!("{}", request.uri());
-    // println!("begin:  {a}");
+    // log!("begin:  {a}");
     let response = fetch(request).await?;
     let body = read_body(response.into_body()).await;
-    // println!("finish: {a}");
+    // log!("finish: {a}");
     Ok(body)
 }
 
@@ -314,7 +327,7 @@ macro_rules! care {
     ($result:expr) => {{
         let result = $result;
         if let Err(e) = &result {
-            eprintln!("[cared error] {}:{} {:?}", file!(), line!(), e);
+            $crate::log!(ERRO : "[cared error] {}:{} {:?}", file!(), line!(), e);
         }
         result
     }};
@@ -531,7 +544,7 @@ pub fn _detect_str_in_binary() {
         if m {
             let i1 = (i - 8).clamp(0, s.len() - 1);
             let i2 = (i + 64).clamp(0, s.len() - 1);
-            println!(">>> {:?}", String::from_utf8_lossy(&s[i1..=i2]));
+            log!(">>> {:?}", String::from_utf8_lossy(&s[i1..=i2]));
         }
     }
 }
@@ -564,7 +577,7 @@ pub fn _detect_str_in_binary() {
 //     let v = encoder.finish().unwrap();
 //     let mut crc = flate2::Crc::new();
 //     crc.update(body.as_bytes());
-//     println!(
+//     log!(
 //         "{:02x?}\n{:02x?}\n{:02x?}\n",
 //         crc.sum().to_be_bytes(),
 //         &v[..12],

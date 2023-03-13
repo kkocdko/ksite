@@ -1,7 +1,7 @@
 //! Collections of my favorite news source.
 
 use crate::utils::{fetch_text, OptionResult};
-use crate::{care, include_src, ticker};
+use crate::{care, include_src, log, ticker};
 use anyhow::Result;
 use axum::body::Bytes;
 use axum::http::header::{HeaderName, HeaderValue};
@@ -86,32 +86,27 @@ static CACHE: Lazy<Mutex<Res>> = Lazy::new(|| {
 
 async fn refresh() -> Result<()> {
     let expires = httpdate::fmt_http_date(SystemTime::now() + Duration::from_secs(3600));
-    /*
-    https://rsshub.app
-    https://rsshub.uneasy.win
-    https://rsshub.rssforever.com
-    https://rsshub.moeyy.cn
-    https://rss.itggg.cn
-    http://39.107.244.19:9422
-    */
     async fn rss(p: &str) -> Result<String, ()> {
         let prefixs = [
+            "https://rsshub.moeyy.cn",
             "https://rsshub.rssforever.com",
+            "http://rsshub.uneasy.win",
             "https://rsshub.feeded.xyz",
-            "http://39.107.244.19:9422",
+            "https://rsshub.app",
         ];
         for prefix in prefixs {
-            let ret = fetch_text(&(prefix.to_string() + p)).await;
-            if let Ok(v) = ret {
-                if v.starts_with("<?xml") {
-                    return Ok(v);
+            let url = prefix.to_string() + p;
+            match fetch_text(&url).await {
+                Ok(v) if v.starts_with("<?xml") => return Ok(v),
+                e => {
+                    log!(ERRO : "magazine fetch failed, url = {url}");
+                    care!(e).ok();
                 }
-            }
+            };
         }
-        return Err(());
+        Err(())
     }
     let r = tokio::join!(
-        // rss!("/leetcode/dailyquestion/solution/en?limit=3"),
         rss("/bbc?limit=5"),
         rss("/hackernews?limit=5"), // &mode=fulltext
         rss("/zhihu/daily?limit=7"),
@@ -124,12 +119,12 @@ async fn refresh() -> Result<()> {
     o += &httpdate::fmt_http_date(SystemTime::now());
     o += "<br><br>";
     // let o = tokio::task::spawn_blocking(move || {
-    care!(r.0.map(|v| generate(&v, &mut o))).ok();
-    care!(r.1.map(|v| generate(&v, &mut o))).ok();
-    care!(r.2.map(|v| generate(&v, &mut o))).ok();
-    care!(r.3.map(|v| generate(&v, &mut o))).ok();
-    care!(r.4.map(|v| generate(&v, &mut o))).ok();
-    care!(r.5.map(|v| generate(&v, &mut o))).ok();
+    r.0.map(|v| generate(&v, &mut o)).ok();
+    r.1.map(|v| generate(&v, &mut o)).ok();
+    r.2.map(|v| generate(&v, &mut o)).ok();
+    r.3.map(|v| generate(&v, &mut o)).ok();
+    r.4.map(|v| generate(&v, &mut o)).ok();
+    r.5.map(|v| generate(&v, &mut o)).ok();
     // care!(r.6.map(|v| generate(&v, &mut o))).ok();
     o += PAGE[1];
     // use std::io::Write as _;

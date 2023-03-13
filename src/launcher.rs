@@ -1,5 +1,6 @@
 //! Protect the process, do auto-restart and more.
 
+use crate::log;
 use std::env;
 use std::fs::File;
 use std::future::Future;
@@ -20,7 +21,7 @@ where
             .block_on(main());
         return;
     }
-    println!(concat!(
+    log!(concat!(
         env!("CARGO_PKG_NAME"),
         " v",
         env!("CARGO_PKG_VERSION"),

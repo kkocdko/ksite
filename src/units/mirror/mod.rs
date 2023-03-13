@@ -1,7 +1,7 @@
 //! Lazy mirror for caching linux distros' packages.
 
 use crate::utils::{fetch, log_escape, with_retry, FileResponse, MpscResponse};
-use crate::{care, db, include_src};
+use crate::{care, db, include_src, log};
 use axum::body::HttpBody;
 use axum::extract::Path;
 use axum::http::StatusCode;
@@ -90,7 +90,7 @@ async fn handle(req_path: &str, target: String) -> Response {
     let mut body = match fetch_target().await {
         Ok(v) => v.into_body(),
         Err(e) => {
-            println!("[error] {e:?}");
+            log!(ERRO : "{e:?}");
             db_del(req_path);
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
@@ -109,7 +109,7 @@ async fn handle(req_path: &str, target: String) -> Response {
                     tx.send(Ok(buf)).await.ok(); // ignore error if rx closed
                 }
                 Err(e) => {
-                    println!("[error] {e:?}");
+                    log!(ERRO : "{e:?}");
                     let io_err_str = StatusCode::INTERNAL_SERVER_ERROR.as_str();
                     let io_err = std::io::Error::new(std::io::ErrorKind::Other, io_err_str);
                     tx.send(Err(io_err)).await.ok();

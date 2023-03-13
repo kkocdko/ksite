@@ -54,7 +54,7 @@ impl Ticker {
         let now = get_now();
         let next = self.next.load(Ordering::SeqCst);
         let ret = now >= next && next != 0;
-        // println!("now = {now}, next = {next}, ret = {ret}");
+        // log!("now = {now}, next = {next}, ret = {ret}");
         if now >= next {
             let nexts = self.cfgs.iter().map(|&cfg| gen_next(now, cfg));
             self.next.store(nexts.min().unwrap(), Ordering::SeqCst);
@@ -66,7 +66,7 @@ impl Ticker {
 #[macro_export]
 macro_rules! ticker {
     ($zone:expr, $($pattern:expr),*) => {
-        use crate::ticker::*;
+        use $crate::ticker::*;
         use std::sync::atomic::AtomicU64;
         const N: usize = [$($pattern),*].len();
         static CFGS: [(u64, u64, u64); N] = parse_patterns($zone, [$($pattern),*]);
@@ -145,7 +145,7 @@ mod test_helper {
 
     pub fn date2stamp(s: &str) -> u64 {
         let t = httpdate::parse_http_date(s).unwrap();
-        t.duration_since(UNIX_EPOCH).unwrap().as_secs() as u64
+        t.duration_since(UNIX_EPOCH).unwrap().as_secs()
     }
     pub fn stamp2date(t: u64) -> String {
         httpdate::fmt_http_date(UNIX_EPOCH + Duration::from_secs(t as _))
@@ -163,13 +163,13 @@ pub async fn fuzzle_test() {
     //     if next != next_stupid {
     //         let v1 = test_helper::stamp2date(next as _);
     //         let v2 = test_helper::stamp2date(next_stupid as _);
-    //         println!("should be {v2} , not {v1}")
+    //         log!("should be {v2} , not {v1}")
     //     }
     //     now = next;
     //     // let v1 = test_helper::stamp2httpdate(next as _);
-    //     // println!("should be {v1}");
+    //     // log!("should be {v1}");
     //     if now >= end {
-    //         println!("end");
+    //         log!("end");
     //         std::process::exit(0);
     //     }
     // }
@@ -178,7 +178,7 @@ pub async fn fuzzle_test() {
     // use std::time::Duration;
     // let interval = Duration::from_millis(50);
     // // let interval = Duration::from_secs(1);
-    // println!("oscillator interval = {interval:?}");
+    // log!("oscillator interval = {interval:?}");
     // let mut interval = tokio::time::interval(interval);
     // let mut ticker = Ticker::new(&[(-1, 4, 0)], 0);
     // // let mut ticker = Ticker::new(&[(-1, 12, -1), (3, -1, 24)], 0);
@@ -186,9 +186,9 @@ pub async fn fuzzle_test() {
     // loop {
     //     interval.tick().await;
     //     if ticker.tick() {
-    //         println!("tick");
+    //         log!("tick");
     //     } else {
-    //         println!("no-tick");
+    //         log!("no-tick");
     //     }
     //     // let _ = tokio::join!(
     //     //     units::magazine::tick(),

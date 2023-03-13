@@ -1,5 +1,6 @@
 //! TLS & HTTPS support for the server.
 
+use crate::log;
 use crate::units::admin::db_get;
 use axum::routing::Router;
 use hyper::server::accept::Accept;
@@ -63,7 +64,7 @@ pub async fn serve(addr: &SocketAddr, app: Router) {
             vec![Certificate(
                 db_get("ssl_cert")
                     .or_else(|| {
-                        println!("using default ssl cert / key");
+                        log!(WARN : "using default ssl cert / key");
                         Some(default_cert::CERT.into())
                     })
                     .unwrap(),
@@ -71,7 +72,7 @@ pub async fn serve(addr: &SocketAddr, app: Router) {
             PrivateKey(
                 db_get("ssl_key")
                     .or_else(|| {
-                        println!("using default ssl cert / key");
+                        log!(WARN : "using default ssl cert / key");
                         Some(default_cert::KEY.into())
                     })
                     .unwrap(),

@@ -3,7 +3,7 @@
 mod commands;
 use crate::auth::auth_layer;
 use crate::utils::{fetch_text, log_escape, OptionResult};
-use crate::{care, include_src, ticker};
+use crate::{care, include_src, log, ticker};
 use anyhow::Result;
 use axum::body::Bytes;
 use axum::extract::RawQuery;
@@ -257,7 +257,7 @@ async fn on_event(event: QEvent) {
                     care!(result).ok();
                 }
             }
-            // println!("\n\x1b[93m[ksite]\x1b[0m {}", e.inner.elements);
+            // log!("\n\x1b[93m[ksite]\x1b[0m {}", e.inner.elements);
             let mut recent = RECENT.lock().unwrap();
             recent.push((e.time, e.seqs, e.group_name, e.group_card, msg));
             let len = recent.len();
@@ -301,7 +301,7 @@ pub fn service() -> Router {
     async fn post_handler(q: RawQuery, body: Bytes) {
         let q = q.0.unwrap();
         let k = q.as_str();
-        println!("units::qqbot received op {k}");
+        log!("units::qqbot received op {k}");
         match k {
             "set_device_json" => {
                 db::cfg_set("device_json", &body);
@@ -313,7 +313,7 @@ pub fn service() -> Router {
                 db::cfg_set("notify_groups", &body);
             }
             _ => {
-                println!("units::qqbot unknown op");
+                log!(ERRO : "units::qqbot unknown op");
             }
         }
     }

@@ -1,7 +1,7 @@
 //! Admin console.
 
 use crate::auth::auth_layer;
-use crate::{db, include_src};
+use crate::{db, include_src, log};
 use axum::body::Bytes;
 use axum::extract::RawQuery;
 use axum::middleware;
@@ -50,7 +50,7 @@ pub fn db_del(k: &str) {
 async fn post_handler(q: RawQuery, body: Bytes) {
     let q = q.0.unwrap();
     let k = q.as_str();
-    println!("units::admin received op {k}");
+    log!("units::admin received op {k}");
     match k {
         "trigger_noop" => {
             // do nothing
@@ -72,7 +72,7 @@ async fn post_handler(q: RawQuery, body: Bytes) {
             db_set("ssl_key", &body);
         }
         _ => {
-            println!("units::admin unknown op");
+            log!(ERRO : "units::admin unknown op");
         }
     }
 }

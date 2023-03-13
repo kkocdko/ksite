@@ -357,7 +357,7 @@ fn to_any_case(s: &[u8]) -> Vec<&[u8]> {
 fn test_to_any_case() {
     fn test_once(i: &[u8]) {
         // for part in to_any_case(i) {
-        //     println!("part = {}", std::str::from_utf8(part).unwrap());
+        //     log!("part = {}", std::str::from_utf8(part).unwrap());
         // }
 
         use heck::{ToSnakeCase, ToUpperCamelCase};

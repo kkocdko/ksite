@@ -93,7 +93,7 @@ impl ChatServer {
                     room.user_count -= 1;
                     if room.user_count == 0 {
                         rooms.remove(&id);
-                        // println!("> rooms.remove({})", self.id);
+                        // log!("> rooms.remove({})", self.id);
                     }
                 }),
             ))

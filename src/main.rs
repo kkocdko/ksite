@@ -19,13 +19,14 @@ async fn run() {
     // return ticker::test2();
     // return ticker::fuzzle_test().await;
     // return units::paste_next::dev().await;
-    println!("crate::run\nauth key = {}", auth::auth_key());
+    log!("crate::run");
+    log!("auth key = {}", auth::auth_key());
 
     // db_upgrade(); // uncomment this if we need to upgrade database
 
     let server = async {
         let addr = SocketAddr::from(([0, 0, 0, 0], 9304)); // server address here
-        println!("server address = {addr}");
+        log!("server address = {addr}");
 
         let app = axum::Router::new()
             .merge(units::admin::service())
@@ -46,7 +47,7 @@ async fn run() {
     let oscillator = async {
         const INTERVAL: Duration = Duration::from_secs(60);
         const TIMEOUT: Duration = Duration::from_secs(45);
-        println!("oscillator interval = {INTERVAL:?}, timeout = {TIMEOUT:?}");
+        log!("oscillator interval = {INTERVAL:?}, timeout = {TIMEOUT:?}");
         async fn tasks() {
             tokio::join!(
                 units::magazine::tick(),
@@ -59,7 +60,7 @@ async fn run() {
             interval.tick().await;
             care!(tokio::time::timeout(TIMEOUT, tasks()).await).ok();
             let stamp = httpdate::fmt_http_date(std::time::SystemTime::now());
-            println!("oscillator loop bottom, at {stamp}");
+            log!("oscillator loop bottom, at {stamp}");
         }
     };
 
@@ -94,7 +95,7 @@ fn db_upgrade() {
         db_get("version"),
         Some((v,)) if v == CURRENT_VER.as_bytes()
     ) {
-        println!("upgrade database structure to v{CURRENT_VER}");
+        log!("upgrade database structure to v{CURRENT_VER}");
         db_set("version", CURRENT_VER.as_bytes());
         db!("DROP TABLE health_list").unwrap();
     }
