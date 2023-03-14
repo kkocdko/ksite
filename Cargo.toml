@@ -53,6 +53,6 @@ webpki-roots = "0.22"
 
 [patch.crates-io]
 # ricq = { path = "/home/kkocdko/misc/code/ricq/ricq" }
-ricq = { rev = "b76db0f", git = "https://github.com/kkocdko/ricq" } # lite patch
+ricq = { rev = "f942fdb", git = "https://github.com/kkocdko/ricq" } # lite patch
 prost-build = { path = "src/crates/prost-gen" } # for `ricq-core`
 tracing = { path = "src/crates/tracing-fake" }

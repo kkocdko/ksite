@@ -123,7 +123,7 @@ static CLIENT: Lazy<Arc<Client>> = Lazy::new(|| {
     };
     let client = Arc::new(Client::new(
         device,
-        Protocol::MacOS.into(),
+        Protocol::AndroidWatch.into(),
         on_event as fn(_) -> _,
     ));
     tokio::spawn(async {
@@ -241,8 +241,8 @@ async fn prefix_matched(i: &str) -> bool {
 }
 
 async fn on_event(event: QEvent) {
-    #[allow(clippy::type_complexity)]
-    static RECENT: Mutex<Vec<(i32, Vec<i32>, String, String, String)>> = Mutex::new(Vec::new());
+    // #[allow(clippy::type_complexity)]
+    // static RECENT: Mutex<Vec<(i32, Vec<i32>, String, String, String)>> = Mutex::new(Vec::new());
     match event {
         QEvent::GroupMessage(e) => {
             let e = e.inner;
@@ -257,6 +257,7 @@ async fn on_event(event: QEvent) {
                     care!(result).ok();
                 }
             }
+            /*
             // log!("\n\x1b[93m[ksite]\x1b[0m {}", e.inner.elements);
             let mut recent = RECENT.lock().unwrap();
             recent.push((e.time, e.seqs, e.group_name, e.group_card, msg));
@@ -267,8 +268,10 @@ async fn on_event(event: QEvent) {
                 recent.retain(|v| e.time - v.0 <= 120 + 5);
                 // push_log!("cleaned {} expired messages", len - recent.len());
             }
+            */
         }
         // the AndroidWatch protocol will not receive recall event
+        /*
         QEvent::GroupMessageRecall(e) => {
             let recent = RECENT.lock().unwrap();
             if let Some((_, _, group, user, content)) =
@@ -277,6 +280,7 @@ async fn on_event(event: QEvent) {
                 push_log!("recalled message = {group} : {user} : {content}");
             }
         }
+        */
         QEvent::Login(uin) => {
             push_log!("current account = {uin}");
         }
