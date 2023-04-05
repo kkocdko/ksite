@@ -121,9 +121,27 @@ static CLIENT: Lazy<Arc<Client>> = Lazy::new(|| {
             device
         }
     };
+    const ANDROID_PAD: ricq::version::Version = ricq::version::Version {
+        apk_id: "com.tencent.qqlite",
+        app_id: 537152242,
+        sub_app_id: 537152242,
+        sort_version_name: "8.9.35",
+        build_ver: "8.9.35.10440",
+        build_time: 1676531414,
+        apk_sign: &[
+            0xA6, 0xB7, 0x45, 0xBF, 0x24, 0xA2, 0xC2, 0x77, 0x52, 0x77, 0x16, 0xF6, 0xF3, 0x6E,
+            0xB6, 0x8D,
+        ],
+        sdk_version: "6.0.0.253",
+        sso_version: 19,
+        misc_bitmap: 150470524,
+        sub_sig_map: 66560,
+        main_sig_map: 150470524,
+        protocol: Protocol::AndroidPhone,
+    };
     let client = Arc::new(Client::new(
         device,
-        Protocol::AndroidWatch.into(),
+        ANDROID_PAD.into(),
         on_event as fn(_) -> _,
     ));
     tokio::spawn(async {
@@ -226,29 +244,15 @@ fn bot_msg(content: &str) -> MessageChain {
     MessageChain::new(ricq::msg::elem::Text::new(format!("[BOT] {content}")))
 }
 
-async fn prefix_matched(i: &str) -> bool {
-    static PREFIX: Mutex<String> = Mutex::new(String::new());
-    let is_prefix_uninit = { PREFIX.lock().unwrap().is_empty() };
-    let prefix = if is_prefix_uninit {
-        let v = format!("[@{}]", CLIENT.account_info.read().await.nickname);
-        let mut prefix = PREFIX.lock().unwrap();
-        *prefix = v;
-        prefix
-    } else {
-        PREFIX.lock().unwrap()
-    };
-    i.starts_with(&*prefix)
-}
-
 async fn on_event(event: QEvent) {
-    // #[allow(clippy::type_complexity)]
-    // static RECENT: Mutex<Vec<(i32, Vec<i32>, String, String, String)>> = Mutex::new(Vec::new());
+    #[allow(clippy::type_complexity)]
+    static RECENT: Mutex<Vec<(i32, Vec<i32>, String, String, String)>> = Mutex::new(Vec::new());
     match event {
         QEvent::GroupMessage(e) => {
             let e = e.inner;
             let msg = e.elements.to_string();
-            if prefix_matched(&msg).await {
-                let msg_parts = msg.split_whitespace().skip(1).collect();
+            if let Some(msg) = msg.strip_prefix('/') {
+                let msg_parts = msg.split_whitespace().collect();
                 if let Ok(reply) =
                     care!(commands::on_group_msg(e.group_code, msg_parts, &CLIENT).await)
                 {
@@ -257,7 +261,6 @@ async fn on_event(event: QEvent) {
                     care!(result).ok();
                 }
             }
-            /*
             // log!("\n\x1b[93m[ksite]\x1b[0m {}", e.inner.elements);
             let mut recent = RECENT.lock().unwrap();
             recent.push((e.time, e.seqs, e.group_name, e.group_card, msg));
@@ -268,10 +271,8 @@ async fn on_event(event: QEvent) {
                 recent.retain(|v| e.time - v.0 <= 120 + 5);
                 // push_log!("cleaned {} expired messages", len - recent.len());
             }
-            */
         }
         // the AndroidWatch protocol will not receive recall event
-        /*
         QEvent::GroupMessageRecall(e) => {
             let recent = RECENT.lock().unwrap();
             if let Some((_, _, group, user, content)) =
@@ -280,7 +281,6 @@ async fn on_event(event: QEvent) {
                 push_log!("recalled message = {group} : {user} : {content}");
             }
         }
-        */
         QEvent::Login(uin) => {
             push_log!("current account = {uin}");
         }
