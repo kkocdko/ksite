@@ -121,7 +121,8 @@ static CLIENT: Lazy<Arc<Client>> = Lazy::new(|| {
             device
         }
     };
-    const ANDROID_PAD: ricq::version::Version = ricq::version::Version {
+    // android watch + android pad
+    const MIXED_VER_INFO: ricq::version::Version = ricq::version::Version {
         apk_id: "com.tencent.qqlite",
         app_id: 537152242,
         sub_app_id: 537152242,
@@ -139,11 +140,7 @@ static CLIENT: Lazy<Arc<Client>> = Lazy::new(|| {
         main_sig_map: 150470524,
         protocol: Protocol::AndroidPhone,
     };
-    let client = Arc::new(Client::new(
-        device,
-        ANDROID_PAD.into(),
-        on_event as fn(_) -> _,
-    ));
+    let client = Arc::new(Client::new(device, MIXED_VER_INFO, on_event as fn(_) -> _));
     tokio::spawn(async {
         tokio::time::sleep(Duration::from_millis(100)).await;
         let mut last = UNIX_EPOCH.elapsed().unwrap().as_secs();
@@ -251,7 +248,7 @@ async fn on_event(event: QEvent) {
         QEvent::GroupMessage(e) => {
             let e = e.inner;
             let msg = e.elements.to_string();
-            if let Some(msg) = msg.strip_prefix('/') {
+            if let Some(msg) = msg.strip_prefix('#') {
                 let msg_parts = msg.split_whitespace().collect();
                 if let Ok(reply) =
                     care!(commands::on_group_msg(e.group_code, msg_parts, &CLIENT).await)
