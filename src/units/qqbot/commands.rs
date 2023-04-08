@@ -17,6 +17,7 @@ pub async fn on_group_msg(
 ) -> Result<String> {
     static REPLIES: Lazy<Mutex<HashMap<String, String>>> = Lazy::new(Default::default);
     Ok(match msg_parts[..] {
+        ["帮助"] | ["help"] => "参阅 https://github.com/kkocdko/ksite/blob/main/src/units/qqbot/commands.rs#:~:text=match%20msg_parts".into(),
         ["运行平台"] => concat!(
             env!("CARGO_PKG_NAME"),
             " v",
@@ -41,7 +42,7 @@ pub async fn on_group_msg(
         //     let r = r.split("htm\">").nth(i).e()?.split_once('<').e()?;
         //     r.0.into()
         // }
-        ["RAND", from, to] | ["随机数", from, to] => {
+        ["rand", from, to] | ["随机数", from, to] => {
             let range = from.parse::<i64>()?..=to.parse()?;
             let v = thread_rng().gen_range(range);
             format!("{v} in range [{from},{to}]")
@@ -50,17 +51,17 @@ pub async fn on_group_msg(
             let v = thread_rng().gen_range(0..=1);
             format!("你抽中了 {}", [a, b][v])
         }
-        ["BTC"] | ["比特币"] => {
+        ["btc"] | ["比特币"] => {
             let url = "https://chain.so/api/v2/get_info/BTC";
             let price = fetch_json(url, "/data/price").await?;
             format!("1 BTC = {} USD", price.trim_end_matches('0'))
         }
-        ["ETH"] | ["以太坊"] | ["以太币"] => {
+        ["eth"] | ["以太坊"] | ["以太币"] => {
             let url = "https://api.blockchair.com/ethereum/stats";
             let price = fetch_json(url, "/data/market_price_usd").await?;
             format!("1 ETH = {} USD", price.trim_end_matches('0'))
         }
-        ["DOGE"] | ["狗狗币"] => {
+        ["doge"] | ["狗狗币"] => {
             let url = "https://api.blockchair.com/dogecoin/stats";
             let price = fetch_json(url, "/data/market_price_usd").await?;
             format!("1 DOGE = {} USD", price.trim_end_matches('0'))
