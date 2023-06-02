@@ -6,11 +6,11 @@ All in one solution for my server.
 
 ### 0.8.2
 
-- `units::meet` supports real-time cloud record.
-
 - `crate::log` lightweight logging, use `httpdate`. provide a log viewer.
 
 ### 0.9.0
+
+- `units::meet` supports real-time cloud record.
 
 - `crate` proactive traffic restriction.
 

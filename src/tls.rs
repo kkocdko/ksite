@@ -2,6 +2,7 @@
 
 use crate::log;
 use crate::units::admin::db_get;
+use axum::extract::connect_info::IntoMakeServiceWithConnectInfo;
 use axum::routing::Router;
 use hyper::server::accept::Accept;
 use hyper::server::conn::{AddrIncoming, Http};
@@ -15,6 +16,7 @@ use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio_rustls::rustls::{Certificate, PrivateKey, ServerConfig};
 use tokio_rustls::TlsAcceptor;
+use tower::MakeService;
 
 /// Serve the services over TLS.
 ///
@@ -49,13 +51,13 @@ use tokio_rustls::TlsAcceptor;
 /// * https://github.com/hyperium/hyper/blob/v0.14.20/src/server/server.rs#L176
 /// * https://github.com/tokio-rs/axum/tree/axum-v0.5.15/examples/low-level-rustls
 /// * https://github.com/programatik29/axum-server
-pub async fn serve(addr: &SocketAddr, app: Router) {
+pub async fn serve(addr: &SocketAddr, mut app: IntoMakeServiceWithConnectInfo<Router, SocketAddr>) {
     static IS_FIRST_CALL: AtomicBool = AtomicBool::new(true);
     assert!(IS_FIRST_CALL.load(Ordering::SeqCst), "called twice");
     IS_FIRST_CALL.store(false, Ordering::SeqCst);
 
     // make the clone() cheaper. https://docs.rs/axum/0.6.1/src/axum/routing/mod.rs.html#538-542
-    let app = app.with_state(());
+    // let app = app.with_state(());
 
     let mut tls_cfg = ServerConfig::builder()
         .with_safe_defaults()
@@ -96,15 +98,14 @@ pub async fn serve(addr: &SocketAddr, app: Router) {
 
     let mut listener = AddrIncoming::bind(addr).unwrap();
 
-    // Event loop
+    // event loop
     loop {
         let mut stream = match poll_fn(|cx| Pin::new(&mut listener).poll_accept(cx)).await {
             Some(Ok(v)) => v,
             // e => panic!("{e:?}"),
             _ => continue, // ignore error here
         };
-
-        let svc = app.clone(); // axum's Router implemented the HttpService trait
+        let svc = app.make_service(&stream);
         tokio::spawn(tokio::time::timeout(TIMEOUT, async move {
             // redirect HTTP to HTTPS
             let mut flag = [0]; // expect 0x16, TLS handshake
@@ -118,7 +119,7 @@ pub async fn serve(addr: &SocketAddr, app: Router) {
 
             if let Ok(tls_stream) = tls_acceptor.accept(stream).await {
                 protocol
-                    .serve_connection(tls_stream, svc)
+                    .serve_connection(tls_stream, svc.await.unwrap())
                     // .with_upgrades() // allow WebSocket
                     .await
                     .ok();

@@ -49,6 +49,10 @@ async fn get_handler() -> impl IntoResponse {
     o += rusqlite::version();
     o += "\n";
 
+    // o += "os : ";
+    // o += &SYS_VER;
+    // o += "\n";
+
     o += "uptime : ";
     o += &(now - START_TIME.load(Ordering::SeqCst)).to_string();
     o += " s\n";

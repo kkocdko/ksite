@@ -1,5 +1,6 @@
 mod auth;
 mod database;
+mod governor;
 mod launcher;
 mod ticker;
 mod tls;
@@ -7,6 +8,8 @@ mod units;
 mod utils;
 use std::net::SocketAddr;
 use std::time::Duration;
+
+use axum::middleware;
 
 // #[global_allocator]
 // static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc; // or rpmalloc::RpMalloc
@@ -38,9 +41,10 @@ async fn run() {
             .merge(units::paste::service())
             // .merge(units::paste_next::service())
             // .merge(units::proxy::service())
-            .merge(units::qqbot::service());
-        // .into_make_service_with_connect_info::<SocketAddr>();
-        // axum::Server::bind(&addr).serve(app.into_make_service()).await.unwrap();
+            .merge(units::qqbot::service())
+            // .layer(middleware::from_fn(governor::governor_layer))
+            .into_make_service_with_connect_info::<SocketAddr>();
+        // axum::Server::bind(&addr).serve(app).await.unwrap();
         tls::serve(&addr, app).await;
     };
 
