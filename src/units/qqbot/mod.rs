@@ -123,24 +123,40 @@ static CLIENT: Lazy<Arc<Client>> = Lazy::new(|| {
     };
     // android watch + android pad
     const MIXED_VER_INFO: ricq::version::Version = ricq::version::Version {
-        apk_id: "com.tencent.qqlite",
-        app_id: 537152242,
-        sub_app_id: 537152242,
-        sort_version_name: "8.9.35",
-        build_ver: "8.9.35.10440",
-        build_time: 1676531414,
+        apk_id: "com.tencent.mobileqq",
+        app_id: 537118044,
+        sub_app_id: 537118044,
+        sort_version_name: "8.8.88.7083",
+        build_ver: "8.8.88.7083",
+        build_time: 1648004515,
         apk_sign: &[
             0xA6, 0xB7, 0x45, 0xBF, 0x24, 0xA2, 0xC2, 0x77, 0x52, 0x77, 0x16, 0xF6, 0xF3, 0x6E,
             0xB6, 0x8D,
         ],
-        sdk_version: "6.0.0.253",
-        sso_version: 19,
+        sdk_version: "6.0.0.2497",
+        sso_version: 18,
         misc_bitmap: 150470524,
         sub_sig_map: 66560,
-        main_sig_map: 150470524,
-        protocol: Protocol::AndroidPhone,
+        main_sig_map: 16724722,
+        protocol: Protocol::AndroidPad,
     };
-    let client = Arc::new(Client::new(device, MIXED_VER_INFO, on_event as fn(_) -> _));
+    // {
+    //     "apk_id": "com.tencent.mobileqq",
+    //     "app_id": 537118044,
+    //     "sub_app_id": 537118044,
+    //     "app_key": "0S200MNJT807V3GE",
+    //     "sort_version_name": "8.8.88.7083",
+    //     "build_time": 1648004515,
+    //     "apk_sign": "a6b745bf24a2c277527716f6f36eb68d",
+    //     "sdk_version": "6.0.0.2497",
+    //     "sso_version": 18,
+    //     "misc_bitmap": 150470524,
+    //     "main_sig_map": 16724722,
+    //     "sub_sig_map": 66560,
+    //     "dump_time": 1683193286,
+    //     "protocol_type": 6
+    //   }
+    let client = Arc::new(Client::new(device, Protocol::AndroidWatch.into(), on_event as fn(_) -> _));
     tokio::spawn(async {
         tokio::time::sleep(Duration::from_millis(100)).await;
         let mut last = UNIX_EPOCH.elapsed().unwrap().as_secs();
@@ -275,7 +291,7 @@ async fn on_event(event: QEvent) {
             if let Some((_, _, group, user, content)) =
                 recent.iter().find(|v| v.1.contains(&e.inner.msg_seq))
             {
-                push_log!("recalled message = {group} : {user} : {content}");
+                push_log!("recalled = {group} : {user} : {content}");
             }
         }
         QEvent::Login(uin) => {
