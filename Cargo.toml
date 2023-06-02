@@ -48,11 +48,12 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "fs"] 
 tokio-rustls = "0.24"
 tokio-util = { version = "0.7", features = ["io"] }
 webpki-roots = "0.23"
+tower = "0.4"
 # mimalloc = { version = "0.1", default-features = false }
 # rpmalloc = "0.2"
 
 [patch.crates-io]
 # ricq = { path = "/home/kkocdko/misc/code/ricq/ricq" }
-ricq = { rev = "3bb9d50", git = "https://github.com/kkocdko/ricq" } # lite patch
+ricq = { rev = "5182cb7", git = "https://github.com/lz1998/ricq" }
 prost-build = { path = "src/crates/prost-gen" } # for `ricq-core`
 tracing = { path = "src/crates/tracing-fake" }
