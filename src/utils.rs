@@ -23,7 +23,7 @@ macro_rules! log {
     // TRAC | INFO | WARN | ERRO
     ($level:tt : $($arg:tt)*) => {
         let stamp = std::time::UNIX_EPOCH.elapsed().unwrap().as_secs() as u64;
-        print!("[{stamp}] [{}] ", stringify!($level));
+        print!("[{stamp}:{}] ", stringify!($level));
         println!($($arg)*);
     };
     ($($arg:tt)*) => {
@@ -173,7 +173,8 @@ impl ToRequest for &String {
 
 /// Send a `Request` and return the response. Allow both HTTPS and HTTP.
 ///
-/// Unlike `reqwest` crate, this function dose not follow redirect.
+/// This function is used to replace `reqwest` crate to reduce binary size.
+/// But unlike `reqwest`, this function dose not follow redirect.
 pub async fn fetch(request: impl ToRequest) -> Result<Response<Body>, hyper::Error> {
     CLIENT.request(request.into_request()).await
 }

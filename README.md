@@ -10,6 +10,8 @@ All in one solution for my server.
 
 ### 0.9.0
 
+- functions like frp
+
 - `units::meet` supports real-time cloud record.
 
 - `crate` proactive traffic restriction.
@@ -22,9 +24,15 @@ All in one solution for my server.
 
 - `units::paste_next` (see the comments in its code).
 
-- `crate::database` pre-compile the sql statements and remove sql compiler in sqlite?
+- `units::?` convert office files to PDF by ms office rpc?
 
-- `units::?` convert office files to PDF by ms office rpc.
+### 0.10.0
+
+- `crate::tls` use wolfssl.
+
+- `crate::database` an simple wrapper / orm, try proc-macro.
+
+- `crate::database` pre-compile the sql statements and remove sql compiler in sqlite.
 
 ## Build
 

@@ -156,7 +156,11 @@ static CLIENT: Lazy<Arc<Client>> = Lazy::new(|| {
     //     "dump_time": 1683193286,
     //     "protocol_type": 6
     //   }
-    let client = Arc::new(Client::new(device, Protocol::AndroidWatch.into(), on_event as fn(_) -> _));
+    let client = Arc::new(Client::new(
+        device,
+        Protocol::AndroidWatch.into(),
+        on_event as fn(_) -> _,
+    ));
     tokio::spawn(async {
         tokio::time::sleep(Duration::from_millis(100)).await;
         let mut last = UNIX_EPOCH.elapsed().unwrap().as_secs();
