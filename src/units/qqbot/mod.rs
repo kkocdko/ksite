@@ -122,7 +122,7 @@ static CLIENT: Lazy<Arc<Client>> = Lazy::new(|| {
         }
     };
     // android watch + android pad
-    const MIXED_VER_INFO: ricq::version::Version = ricq::version::Version {
+    const _MIXED_VER_INFO: ricq::version::Version = ricq::version::Version {
         apk_id: "com.tencent.mobileqq",
         app_id: 537118044,
         sub_app_id: 537118044,

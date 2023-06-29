@@ -2,21 +2,27 @@
 
 use crate::log;
 use crate::units::admin::db_get;
-use axum::extract::connect_info::IntoMakeServiceWithConnectInfo;
-use axum::routing::Router;
-use hyper::server::accept::Accept;
-use hyper::server::conn::{AddrIncoming, Http};
+use hyper::server::conn::Http;
 use std::future::poll_fn;
 use std::mem::MaybeUninit;
 use std::net::SocketAddr;
-use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio_rustls::rustls::{Certificate, PrivateKey, ServerConfig};
 use tokio_rustls::TlsAcceptor;
-use tower::MakeService;
+
+/*
+https://github.com/sfackler/rust-openssl
+https://github.com/tokio-rs/tokio-openssl/blob/master/build.rs
+https://github.com/tokio-rs/tokio-openssl/blob/master/src/lib.rs
+https://github.com/sfackler/hyper-openssl/blob/master/src/lib.rs
+
+1. tokio-openssl
+2. tokio-openssl -> tokio-wolfssl
+3. hyper-openssl -> hyper-wolfssl
+*/
 
 /// Serve the services over TLS.
 ///
@@ -51,7 +57,7 @@ use tower::MakeService;
 /// * https://github.com/hyperium/hyper/blob/v0.14.20/src/server/server.rs#L176
 /// * https://github.com/tokio-rs/axum/tree/axum-v0.5.15/examples/low-level-rustls
 /// * https://github.com/programatik29/axum-server
-pub async fn serve(addr: &SocketAddr, mut app: IntoMakeServiceWithConnectInfo<Router, SocketAddr>) {
+pub async fn serve(addr: &SocketAddr, svc: axum::Router) {
     static IS_FIRST_CALL: AtomicBool = AtomicBool::new(true);
     assert!(IS_FIRST_CALL.load(Ordering::SeqCst), "called twice");
     IS_FIRST_CALL.store(false, Ordering::SeqCst);
@@ -96,16 +102,16 @@ pub async fn serve(addr: &SocketAddr, mut app: IntoMakeServiceWithConnectInfo<Ro
         PROTOCOL.assume_init_ref()
     };
 
-    let mut listener = AddrIncoming::bind(addr).unwrap();
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
 
     // event loop
     loop {
-        let mut stream = match poll_fn(|cx| Pin::new(&mut listener).poll_accept(cx)).await {
-            Some(Ok(v)) => v,
+        let (mut stream, saddr) = match listener.accept().await {
+            Ok(v) => v,
             // e => panic!("{e:?}"),
-            _ => continue, // ignore error here
+            _ => continue, // ignore error here?
         };
-        let svc = app.make_service(&stream);
+        let svc = svc.clone();
         tokio::spawn(tokio::time::timeout(TIMEOUT, async move {
             // redirect HTTP to HTTPS
             let mut flag = [0]; // expect 0x16, TLS handshake
@@ -119,7 +125,7 @@ pub async fn serve(addr: &SocketAddr, mut app: IntoMakeServiceWithConnectInfo<Ro
 
             if let Ok(tls_stream) = tls_acceptor.accept(stream).await {
                 protocol
-                    .serve_connection(tls_stream, svc.await.unwrap())
+                    .serve_connection(tls_stream, svc)
                     // .with_upgrades() // allow WebSocket
                     .await
                     .ok();
