@@ -3,15 +3,15 @@
 use crate::log;
 use crate::units::admin::db_get;
 use hyper::server::conn::Http;
+use openssl::ssl::{Ssl, SslAcceptor,  SslMethod};
 use std::future::poll_fn;
 use std::mem::MaybeUninit;
 use std::net::SocketAddr;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
-use tokio_rustls::rustls::{Certificate, PrivateKey, ServerConfig};
-use tokio_rustls::TlsAcceptor;
+use tokio_openssl::SslStream;
 
 /*
 https://github.com/sfackler/rust-openssl
@@ -65,37 +65,71 @@ pub async fn serve(addr: &SocketAddr, svc: axum::Router) {
     // make the clone() cheaper. https://docs.rs/axum/0.6.1/src/axum/routing/mod.rs.html#538-542
     // let app = app.with_state(());
 
-    let mut tls_cfg = ServerConfig::builder()
-        .with_safe_defaults()
-        .with_no_client_auth()
-        .with_single_cert(
-            vec![Certificate(
-                db_get("ssl_cert")
+    // let mut tls_cfg = ServerConfig::builder()
+    //     .with_safe_defaults()
+    //     .with_no_client_auth()
+    //     .with_single_cert(
+    //         vec![Certificate(
+    //             db_get("ssl_cert")
+    //                 .or_else(|| {
+    //                     log!(WARN : "using default ssl cert / key");
+    //                     Some(default_cert::CERT.into())
+    //                 })
+    //                 .unwrap(),
+    //         )],
+    //         PrivateKey(
+    //             db_get("ssl_key")
+    //                 .or_else(|| {
+    //                     log!(WARN : "using default ssl cert / key");
+    //                     Some(default_cert::KEY.into())
+    //                 })
+    //                 .unwrap(),
+    //         ),
+    //     )
+    //     .unwrap();
+    // enable http2, needs hyper feature "http2"
+    // tls_cfg.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+
+    // safety: this fn called only once, so we don't need once_cell::sync::Lazy.
+
+    // let tls_acceptor = unsafe {
+    //     static mut TLS_ACCEPTOR: MaybeUninit<TlsAcceptor> = MaybeUninit::uninit();
+    //     TLS_ACCEPTOR.write(TlsAcceptor::from(Arc::new(tls_cfg)));
+    //     TLS_ACCEPTOR.assume_init_ref()
+    // };
+
+    let mut tls_builder = SslAcceptor::mozilla_modern_v5(SslMethod::tls()).unwrap();
+    tls_builder
+        .set_certificate(
+            &openssl::x509::X509::from_der(
+                &db_get("ssl_cert")
                     .or_else(|| {
                         log!(WARN : "using default ssl cert / key");
                         Some(default_cert::CERT.into())
                     })
                     .unwrap(),
-            )],
-            PrivateKey(
-                db_get("ssl_key")
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    tls_builder
+        .set_private_key(
+            &openssl::pkey::PKey::private_key_from_der(
+                &db_get("ssl_key")
                     .or_else(|| {
                         log!(WARN : "using default ssl cert / key");
                         Some(default_cert::KEY.into())
                     })
                     .unwrap(),
-            ),
+            )
+            .unwrap(),
         )
         .unwrap();
-    // enable http2, needs hyper feature "http2"
-    tls_cfg.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
 
-    // safety: this fn called only once, so we don't need once_cell::sync::Lazy.
-    let tls_acceptor = unsafe {
-        static mut TLS_ACCEPTOR: MaybeUninit<TlsAcceptor> = MaybeUninit::uninit();
-        TLS_ACCEPTOR.write(TlsAcceptor::from(Arc::new(tls_cfg)));
-        TLS_ACCEPTOR.assume_init_ref()
-    };
+    tls_builder.check_private_key().unwrap();
+
+    let acceptor = tls_builder.build();
+
     let protocol = unsafe {
         static mut PROTOCOL: MaybeUninit<Http> = MaybeUninit::uninit();
         PROTOCOL.write(Http::new());
@@ -112,6 +146,8 @@ pub async fn serve(addr: &SocketAddr, svc: axum::Router) {
             _ => continue, // ignore error here?
         };
         let svc = svc.clone();
+        let acceptor = acceptor.clone();
+        let ssl = Ssl::new(acceptor.context()).unwrap();
         tokio::spawn(tokio::time::timeout(TIMEOUT, async move {
             // redirect HTTP to HTTPS
             let mut flag = [0]; // expect 0x16, TLS handshake
@@ -123,13 +159,15 @@ pub async fn serve(addr: &SocketAddr, svc: axum::Router) {
                 return;
             }
 
-            if let Ok(tls_stream) = tls_acceptor.accept(stream).await {
-                protocol
-                    .serve_connection(tls_stream, svc)
-                    // .with_upgrades() // allow WebSocket
-                    .await
-                    .ok();
+            let mut tls_stream = SslStream::new(ssl, stream).unwrap();
+            if Pin::new(&mut tls_stream).accept().await.is_err(){
+                return ;
             }
+            protocol
+                .serve_connection(tls_stream, svc)
+                // .with_upgrades() // allow WebSocket
+                .await
+                .ok();
         }));
     }
 }

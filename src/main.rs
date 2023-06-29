@@ -44,7 +44,7 @@ async fn run() {
             .with_state(());
         // .layer(middleware::from_fn(governor::governor_layer))
         // .into_make_service_with_connect_info::<SocketAddr>();
-        // axum::Server::bind(&addr).serve(app).await.unwrap();
+        // axum::Server::bind(&addr).serve(app.into_make_service()).await.unwrap();
         tls::serve(&addr, app).await;
     };
 
