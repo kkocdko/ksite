@@ -40,8 +40,7 @@ async fn run() {
             .merge(units::paste::service())
             // .merge(units::paste_next::service())
             // .merge(units::proxy::service())
-            .merge(units::qqbot::service())
-            .with_state(());
+            .merge(units::qqbot::service());
         // .layer(middleware::from_fn(governor::governor_layer))
         // .into_make_service_with_connect_info::<SocketAddr>();
         // axum::Server::bind(&addr).serve(app).await.unwrap();

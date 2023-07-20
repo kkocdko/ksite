@@ -1,7 +1,8 @@
 //! TLS & HTTPS support for the server.
 
-use crate::log;
+use crate::care;
 use crate::units::admin::db_get;
+use crate::utils::OptionResult;
 use hyper::server::conn::Http;
 use std::future::poll_fn;
 use std::mem::MaybeUninit;
@@ -10,6 +11,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
+use tokio_rustls::rustls::cipher_suite::*;
+use tokio_rustls::rustls::version::TLS13;
 use tokio_rustls::rustls::{Certificate, PrivateKey, ServerConfig};
 use tokio_rustls::TlsAcceptor;
 
@@ -47,37 +50,27 @@ use tokio_rustls::TlsAcceptor;
 /// * https://github.com/tokio-rs/axum/tree/axum-v0.5.15/examples/low-level-rustls
 /// * https://github.com/programatik29/axum-server
 pub async fn serve(addr: &SocketAddr, svc: axum::Router) {
+    let svc = svc.with_state(()); // make the clone() cheaper. https://docs.rs/axum/0.6.1/src/axum/routing/mod.rs.html#538-542
+
     static IS_FIRST_CALL: AtomicBool = AtomicBool::new(true);
     assert!(IS_FIRST_CALL.load(Ordering::SeqCst), "called twice");
     IS_FIRST_CALL.store(false, Ordering::SeqCst);
 
-    // make the clone() cheaper. https://docs.rs/axum/0.6.1/src/axum/routing/mod.rs.html#538-542
-    // let app = app.with_state(());
-
+    let tls_cert_asn1 = care!(db_get("ssl_cert").e()).unwrap_or_else(|_| default_cert::CERT.into());
+    let tls_key_asn1 = care!(db_get("ssl_key").e()).unwrap_or_else(|_| default_cert::KEY.into());
     let mut tls_cfg = ServerConfig::builder()
-        .with_safe_defaults()
+        .with_cipher_suites(&[
+            // TLS13_CHACHA20_POLY1305_SHA256,
+            TLS13_AES_128_GCM_SHA256,
+            TLS13_AES_256_GCM_SHA384,
+        ])
+        .with_safe_default_kx_groups()
+        .with_protocol_versions(&[&TLS13])
+        .unwrap()
         .with_no_client_auth()
-        .with_single_cert(
-            vec![Certificate(
-                db_get("ssl_cert")
-                    .or_else(|| {
-                        log!(WARN : "using default ssl cert / key");
-                        Some(default_cert::CERT.into())
-                    })
-                    .unwrap(),
-            )],
-            PrivateKey(
-                db_get("ssl_key")
-                    .or_else(|| {
-                        log!(WARN : "using default ssl cert / key");
-                        Some(default_cert::KEY.into())
-                    })
-                    .unwrap(),
-            ),
-        )
+        .with_single_cert(vec![Certificate(tls_cert_asn1)], PrivateKey(tls_key_asn1))
         .unwrap();
-    // enable http2, needs hyper feature "http2"
-    tls_cfg.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+    tls_cfg.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()]; // enable http2, needs hyper feature "http2"
 
     // safety: this fn called only once, so we don't need once_cell::sync::Lazy.
     let tls_acceptor = unsafe {
@@ -111,7 +104,6 @@ pub async fn serve(addr: &SocketAddr, svc: axum::Router) {
                 stream.shutdown().await.ok(); // remember to close stream
                 return;
             }
-
             if let Ok(tls_stream) = tls_acceptor.accept(stream).await {
                 protocol
                     .serve_connection(tls_stream, svc)
