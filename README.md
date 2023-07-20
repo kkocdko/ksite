@@ -4,11 +4,31 @@ All in one solution for my server.
 
 ## TODO
 
-### 0.8.2
+### 0.9.0
+
+- `crate::tls` use wolfssl.
+
+```sh
+./powerctl high
+./rewrk --host https://127.0.0.1:9304/admin --connections 64 --threads 4 --duration 6s
+# >>>>> openssl
+# Beginning round 1...
+# Benchmarking 64 connections @ https://127.0.0.1:9304/admin for 6 second(s)
+#   Latencies:
+#     Avg      Stdev    Min      Max
+#     1.07ms   0.67ms   0.05ms   42.53ms
+#   Requests:
+#     Total: 358408  Req/Sec: 59796.40
+#   Transfer:
+#     Total: 289.98 MB Transfer Rate: 48.38 MB/Sec
+# >>>>> openssl-minus
+```
+
+### 0.9.1
 
 - `crate::log` lightweight logging, use `httpdate`. provide a log viewer.
 
-### 0.9.0
+### 0.10.1
 
 - functions like frp
 
@@ -27,8 +47,6 @@ All in one solution for my server.
 - `units::?` convert office files to PDF by ms office rpc?
 
 ### 0.10.0
-
-- `crate::tls` use wolfssl.
 
 - `crate::database` an simple wrapper / orm, try proc-macro.
 
