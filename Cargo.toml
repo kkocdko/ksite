@@ -6,8 +6,8 @@ edition = "2021"
 [profile.release]
 panic = "abort" # CAUTIONS! cause tokio worker abort
 strip = true
-lto = "fat"
-codegen-units = 1
+# lto = "fat"
+# codegen-units = 1
 # opt-level = "z"
 
 # Best check speed, `cargo check --profile=ci`
@@ -21,13 +21,6 @@ incremental = false
 codegen-units = 256
 
 # Best incremental build speed, less disk usage, `mold -run cargo run`
-[profile.dev]
-# debug = false # this switch disabled backtrace
-panic = "abort"
-[profile.dev.package."*"]
-debug = false
-strip = true
-opt-level = "z"
 
 [dependencies]
 anyhow = "1"
@@ -51,6 +44,9 @@ tower = "0.4"
 webpki-roots = "0.23"
 # mimalloc = { version = "0.1", default-features = false }
 # rpmalloc = "0.2"
+tlsimple = { version = "0.1.5", path = "/home/kkocdko/misc/code/tlsimple" }
+#tokio-openssl="*"
+#openssl="*"
 
 [patch.crates-io]
 # ricq = { path = "/home/kkocdko/misc/code/ricq/ricq" }

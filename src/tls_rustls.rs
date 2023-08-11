@@ -11,8 +11,11 @@ use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
-use tlsimple::{TlsConfig, TlsStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio_rustls::rustls::cipher_suite::*;
+use tokio_rustls::rustls::version::TLS13;
+use tokio_rustls::rustls::{Certificate, PrivateKey, ServerConfig};
+use tokio_rustls::TlsAcceptor;
 
 /// Serve the services over TLS.
 ///
@@ -53,9 +56,20 @@ pub async fn serve(addr: &SocketAddr, svc: axum::Router) {
     static IS_FIRST_CALL: AtomicBool = AtomicBool::new(true);
     assert!(IS_FIRST_CALL.swap(false, Ordering::SeqCst), "called twice");
 
-    let tls_cert_der = care!(db_get("ssl_cert").e()).unwrap_or_else(|_| default_cert::CERT.into());
-    let tls_key_der = care!(db_get("ssl_key").e()).unwrap_or_else(|_| default_cert::KEY.into());
-    let tls_config = Arc::new(TlsConfig::new(&tls_cert_der, &tls_key_der));
+    let tls_cert_asn1 = care!(db_get("ssl_cert").e()).unwrap_or_else(|_| default_cert::CERT.into());
+    let tls_key_asn1 = care!(db_get("ssl_key").e()).unwrap_or_else(|_| default_cert::KEY.into());
+    let mut tls_cfg = ServerConfig::builder()
+        .with_cipher_suites(&[TLS13_AES_128_GCM_SHA256, TLS13_AES_256_GCM_SHA384])
+        .with_safe_default_kx_groups()
+        .with_protocol_versions(&[&TLS13])
+        .unwrap()
+        .with_no_client_auth()
+        .with_single_cert(vec![Certificate(tls_cert_asn1)], PrivateKey(tls_key_asn1))
+        .unwrap();
+    tls_cfg.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()]; // enable http2, needs hyper feature "http2"
+
+    let tls_acceptor = ManuallyDrop::new(Box::new(TlsAcceptor::from(Arc::new(tls_cfg))));
+    let tls_acceptor: &TlsAcceptor = unsafe { &*(tls_acceptor.as_ref() as *const _) };
 
     let protocol = ManuallyDrop::new(Box::new(Http::new()));
     let protocol: &Http = unsafe { &*(protocol.as_ref() as *const _) };
@@ -64,14 +78,12 @@ pub async fn serve(addr: &SocketAddr, svc: axum::Router) {
 
     // event loop
     loop {
-        let (mut stream, socket_addr) = match listener.accept().await {
+        let (mut stream, saddr) = match listener.accept().await {
             Ok(v) => v,
+            // e => panic!("{e:?}"),
             _ => continue, // ignore error here?
         };
-        dbg!(socket_addr);
         let svc = svc.clone();
-
-        let tls_config = Arc::clone(&tls_config);
         tokio::spawn(tokio::time::timeout(TIMEOUT, async move {
             // redirect HTTP to HTTPS
             let mut flag = [0]; // expect 0x16, TLS handshake
@@ -82,13 +94,13 @@ pub async fn serve(addr: &SocketAddr, svc: axum::Router) {
                 stream.shutdown().await.ok(); // remember to close stream
                 return;
             }
-            let mut tls_stream = TlsStream::new_async(&tls_config, &mut stream);
-            // tls_stream.accept();
-            protocol
-                .serve_connection(tls_stream, svc)
-                // .with_upgrades() // allow WebSocket
-                .await
-                .ok();
+            if let Ok(tls_stream) = tls_acceptor.accept(stream).await {
+                protocol
+                    .serve_connection(tls_stream, svc)
+                    // .with_upgrades() // allow WebSocket
+                    .await
+                    .ok();
+            }
         }));
     }
 }
