@@ -6,7 +6,6 @@ use futures_core::ready;
 use hyper::body::HttpBody;
 use hyper::client::HttpConnector;
 use hyper::{Body, Client, Request};
-use hyper_rustls::HttpsConnector;
 use once_cell::sync::Lazy;
 use std::future::Future;
 use std::pin::Pin;
@@ -16,7 +15,6 @@ use std::time::UNIX_EPOCH;
 use tokio::fs::File;
 use tokio::io;
 use tokio::sync::mpsc;
-use tokio_rustls::rustls::{ClientConfig, OwnedTrustAnchor, RootCertStore};
 
 #[macro_export]
 macro_rules! log {
@@ -127,28 +125,41 @@ pub async fn read_body(mut body: Body) -> Vec<u8> {
     v
 }
 
+// use hyper_rustls::HttpsConnector;
+// use tokio_rustls::rustls::{ClientConfig, OwnedTrustAnchor, RootCertStore};
+// static CLIENT: Lazy<Client<HttpsConnector<HttpConnector>>> = Lazy::new(|| {
+//     // https://github.com/seanmonstar/reqwest/blob/v0.11.11/src/async_impl/client.rs#L340
+//     let root_cert_store = RootCertStore {
+//         roots: { webpki_roots::TLS_SERVER_ROOTS.0.iter() }
+//             .map(|trust_anchor| {
+//                 OwnedTrustAnchor::from_subject_spki_name_constraints(
+//                     trust_anchor.subject,
+//                     trust_anchor.spki,
+//                     trust_anchor.name_constraints,
+//                 )
+//             })
+//             .collect(),
+//     };
+//     let mut tls_cfg = ClientConfig::builder()
+//         .with_safe_defaults()
+//         .with_root_certificates(root_cert_store)
+//         .with_no_client_auth();
+//     tls_cfg.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+//     let mut http_conn = HttpConnector::new();
+//     http_conn.enforce_http(false); // allow HTTPS
+//     let connector = HttpsConnector::from((http_conn, tls_cfg));
+//     Client::builder().build(connector)
+// });
+
+use tlsimple::{HttpsConnector, TlsConfig};
 static CLIENT: Lazy<Client<HttpsConnector<HttpConnector>>> = Lazy::new(|| {
-    // https://github.com/seanmonstar/reqwest/blob/v0.11.11/src/async_impl/client.rs#L340
-    let root_cert_store = RootCertStore {
-        roots: { webpki_roots::TLS_SERVER_ROOTS.0.iter() }
-            .map(|trust_anchor| {
-                OwnedTrustAnchor::from_subject_spki_name_constraints(
-                    trust_anchor.subject,
-                    trust_anchor.spki,
-                    trust_anchor.name_constraints,
-                )
-            })
-            .collect(),
-    };
-    let mut tls_cfg = ClientConfig::builder()
-        .with_safe_defaults()
-        .with_root_certificates(root_cert_store)
-        .with_no_client_auth();
-    tls_cfg.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
     let mut http_conn = HttpConnector::new();
     http_conn.enforce_http(false); // allow HTTPS
-    let connector = HttpsConnector::from((http_conn, tls_cfg));
-    Client::builder().build(connector)
+    mod default_cert {
+        include!("tls.defaults.rs");
+    }
+    let https_conn = HttpsConnector::new(http_conn, TlsConfig::new_client(default_cert::CERT));
+    Client::builder().build(https_conn)
 });
 
 pub trait ToRequest {

@@ -3,9 +3,9 @@ mod database;
 // mod governor;
 mod launcher;
 mod ticker;
-mod tls_rustls;
+// mod tls_rustls;
+mod tls_tlsimple;
 // mod tls_openssl;
-mod tls;
 mod units;
 mod utils;
 use std::net::SocketAddr;
@@ -36,7 +36,7 @@ async fn run() {
             .merge(units::admin::service())
             .merge(units::chat::service())
             .merge(units::info::service())
-            // .merge(units::magazine::service())
+            .merge(units::magazine::service())
             .merge(units::meet::service())
             // .merge(units::mirror::service())
             .merge(units::paste::service())
@@ -46,7 +46,7 @@ async fn run() {
         // .layer(middleware::from_fn(governor::governor_layer))
         // .into_make_service_with_connect_info::<SocketAddr>();
         // axum::Server::bind(&addr).serve(app.into_make_service()).await.unwrap();
-        tls::serve(&addr, app).await;
+        tls_tlsimple::serve(&addr, app).await;
         // tls_rustls::serve(&addr, app).await;
     };
 
@@ -65,8 +65,8 @@ async fn run() {
         loop {
             interval.tick().await;
             care!(tokio::time::timeout(TIMEOUT, tasks()).await).ok();
-            let stamp = httpdate::fmt_http_date(std::time::SystemTime::now());
-            log!("oscillator loop bottom, at {stamp}");
+            // let stamp = httpdate::fmt_http_date(std::time::SystemTime::now());
+            // log!("oscillator loop bottom, at {stamp}");
         }
     };
 

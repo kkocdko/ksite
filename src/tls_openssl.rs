@@ -3,7 +3,7 @@
 use crate::log;
 use crate::units::admin::db_get;
 use hyper::server::conn::Http;
-use openssl::ssl::{Ssl, SslAcceptor,  SslMethod};
+use openssl::ssl::{Ssl, SslAcceptor, SslMethod};
 use std::future::poll_fn;
 use std::mem::MaybeUninit;
 use std::net::SocketAddr;
@@ -160,8 +160,8 @@ pub async fn serve(addr: &SocketAddr, svc: axum::Router) {
             }
 
             let mut tls_stream = SslStream::new(ssl, stream).unwrap();
-            if Pin::new(&mut tls_stream).accept().await.is_err(){
-                return ;
+            if Pin::new(&mut tls_stream).accept().await.is_err() {
+                return;
             }
             // tls_stream.shutdown()
             protocol

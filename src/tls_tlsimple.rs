@@ -5,7 +5,7 @@ use crate::units::admin::db_get;
 use crate::utils::OptionResult;
 use hyper::server::conn::Http;
 use std::future::poll_fn;
-use std::mem;
+use std::mem::{self, size_of};
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -55,7 +55,7 @@ pub async fn serve(addr: &SocketAddr, svc: axum::Router) {
 
     let tls_cert_der = care!(db_get("ssl_cert").e()).unwrap_or_else(|_| default_cert::CERT.into());
     let tls_key_der = care!(db_get("ssl_key").e()).unwrap_or_else(|_| default_cert::KEY.into());
-    let tls_config = Arc::new(TlsConfig::new(&tls_cert_der, &tls_key_der));
+    let tls_config = TlsConfig::new_server(&tls_cert_der, &tls_key_der, tlsimple::alpn::H1);
 
     let protocol = ManuallyDrop::new(Box::new(Http::new()));
     let protocol: &Http = unsafe { &*(protocol.as_ref() as *const _) };
@@ -63,7 +63,15 @@ pub async fn serve(addr: &SocketAddr, svc: axum::Router) {
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
 
     // event loop
+    // let mut tls_config_bak: [u8; size_of::<TlsConfig>()] =
+    //     unsafe { std::mem::transmute_copy(&(**tls_config)) };
     loop {
+        // let mut tls_config_bak_next: [u8; size_of::<TlsConfig>()] =
+        //     unsafe { std::mem::transmute_copy(&(**tls_config)) };
+        // if tls_config_bak != tls_config_bak_next {
+        //     println!(">>> tls_config_bak != tls_config_bak_next");
+        // }
+
         let (mut stream, socket_addr) = match listener.accept().await {
             Ok(v) => v,
             _ => continue, // ignore error here?
@@ -71,7 +79,7 @@ pub async fn serve(addr: &SocketAddr, svc: axum::Router) {
         dbg!(socket_addr);
         let svc = svc.clone();
 
-        let tls_config = Arc::clone(&tls_config);
+        let tls_config = tls_config.clone();
         tokio::spawn(tokio::time::timeout(TIMEOUT, async move {
             // redirect HTTP to HTTPS
             let mut flag = [0]; // expect 0x16, TLS handshake
@@ -82,7 +90,7 @@ pub async fn serve(addr: &SocketAddr, svc: axum::Router) {
                 stream.shutdown().await.ok(); // remember to close stream
                 return;
             }
-            let mut tls_stream = TlsStream::new_async(&tls_config, &mut stream);
+            let tls_stream = TlsStream::new_async(tls_config, &mut stream);
             // tls_stream.accept();
             protocol
                 .serve_connection(tls_stream, svc)
