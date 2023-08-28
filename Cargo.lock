@@ -801,7 +801,7 @@ dependencies = [
 [[package]]
 name = "ricq"
 version = "0.1.20"
-source = "git+https://github.com/lz1998/ricq?rev=b2572c5#b2572c58f561c6830534c237938b1b9b7caa0ef8"
+source = "git+https://github.com/lz1998/ricq?rev=034c12258e34160e8ae433761c1d3b59a67ba334#034c12258e34160e8ae433761c1d3b59a67ba334"
 dependencies = [
  "async-trait",
  "bytes",
@@ -823,7 +823,7 @@ dependencies = [
 [[package]]
 name = "ricq-core"
 version = "0.1.20"
-source = "git+https://github.com/lz1998/ricq?rev=b2572c5#b2572c58f561c6830534c237938b1b9b7caa0ef8"
+source = "git+https://github.com/lz1998/ricq?rev=034c12258e34160e8ae433761c1d3b59a67ba334#034c12258e34160e8ae433761c1d3b59a67ba334"
 dependencies = [
  "byteorder",
  "bytes",
@@ -1007,11 +1007,12 @@ dependencies = [
 
 [[package]]
 name = "tlsimple"
-version = "0.1.5"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "74fcd64bc05d3dab9296dfb39238f0e909ee300f5ae32f71eede40f10e522eaa"
 dependencies = [
  "cc",
  "hyper",
- "once_cell",
  "tokio",
 ]
 

@@ -3,9 +3,7 @@ mod database;
 // mod governor;
 mod launcher;
 mod ticker;
-// mod tls_rustls;
-mod tls_tlsimple;
-// mod tls_openssl;
+mod tls;
 mod units;
 mod utils;
 use std::net::SocketAddr;
@@ -46,8 +44,7 @@ async fn run() {
         // .layer(middleware::from_fn(governor::governor_layer))
         // .into_make_service_with_connect_info::<SocketAddr>();
         // axum::Server::bind(&addr).serve(app.into_make_service()).await.unwrap();
-        tls_tlsimple::serve(&addr, app).await;
-        // tls_rustls::serve(&addr, app).await;
+        tls::serve(&addr, app).await;
     };
 
     let oscillator = async {

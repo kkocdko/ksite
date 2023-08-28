@@ -44,24 +44,15 @@ hyper = { version = "0.14", features = ["client"] }
 once_cell = "1"
 rand = "0.8"
 # ricq = "=0.1.20" # unstable, fixed version here
-ricq = { rev = "b2572c5", git = "https://github.com/lz1998/ricq" }
+ricq = { rev = "034c12258e34160e8ae433761c1d3b59a67ba334", git = "https://github.com/lz1998/ricq" }
 rusqlite = { version = "0.29", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "fs"] }
 tokio-util = { version = "0.7", features = ["io"] }
 tower = "0.4"
-# mimalloc = { version = "0.1", default-features = false }
-# rpmalloc = "0.2"
-
-tlsimple = { version = "0.1.5", path = "/home/kkocdko/misc/code/tlsimple" }
-
-# hyper-rustls = { version = "0.24", default-features = false }
-# tokio-rustls = "0.24"
-# webpki-roots = "0.23"
-
-# tokio-openssl="*"
-# openssl="*"
+tlsimple = "0.2"
+# tlsimple = { version = "0.1.4", path = "/home/kkocdko/misc/code/tlsimple" }
 
 [patch.crates-io]
 # ricq = { path = "/home/kkocdko/misc/code/ricq/ricq" }

@@ -1,18 +1,15 @@
 //! TLS & HTTPS support for the server.
 
-use crate::care;
+use crate::log;
 use crate::units::admin::db_get;
-use crate::utils::OptionResult;
 use hyper::server::conn::Http;
 use std::future::poll_fn;
-use std::mem::{self, size_of};
-use std::mem::{ManuallyDrop, MaybeUninit};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::OnceLock;
 use std::time::Duration;
-use tlsimple::{TlsConfig, TlsStream};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tlsimple::{alpn, TlsConfig, TlsStream};
+use tokio::io::AsyncWriteExt;
 
 /// Serve the services over TLS.
 ///
@@ -50,35 +47,33 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 pub async fn serve(addr: &SocketAddr, svc: axum::Router) {
     let svc = svc.with_state(()); // make the clone() cheaper. https://docs.rs/axum/0.6.1/src/axum/routing/mod.rs.html#538-542
 
-    static IS_FIRST_CALL: AtomicBool = AtomicBool::new(true);
-    assert!(IS_FIRST_CALL.swap(false, Ordering::SeqCst), "called twice");
-
-    let tls_cert_der = care!(db_get("ssl_cert").e()).unwrap_or_else(|_| default_cert::CERT.into());
-    let tls_key_der = care!(db_get("ssl_key").e()).unwrap_or_else(|_| default_cert::KEY.into());
-    let tls_config = TlsConfig::new_server(&tls_cert_der, &tls_key_der, tlsimple::alpn::H1);
-
-    let protocol = ManuallyDrop::new(Box::new(Http::new()));
-    let protocol: &Http = unsafe { &*(protocol.as_ref() as *const _) };
-
+    fn get_with_warn(k: &str, default: &[u8]) -> Vec<u8> {
+        db_get(k).unwrap_or_else(|| {
+            log!(WARN: "using default cert and key");
+            Vec::from(default)
+        })
+    }
+    let tls_cert_der = get_with_warn("ssl_cert", default_cert::CERT);
+    let tls_key_der = get_with_warn("ssl_key", default_cert::KEY);
+    let tls_config = TlsConfig::new_server(tls_cert_der, tls_key_der, Some(alpn::H1));
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
 
-    // event loop
-    // let mut tls_config_bak: [u8; size_of::<TlsConfig>()] =
-    //     unsafe { std::mem::transmute_copy(&(**tls_config)) };
-    loop {
-        // let mut tls_config_bak_next: [u8; size_of::<TlsConfig>()] =
-        //     unsafe { std::mem::transmute_copy(&(**tls_config)) };
-        // if tls_config_bak != tls_config_bak_next {
-        //     println!(">>> tls_config_bak != tls_config_bak_next");
-        // }
+    fn protocol_get() -> &'static Http {
+        static PROTOCOL: OnceLock<Http> = OnceLock::new();
+        PROTOCOL.get_or_init(|| {
+            let mut protocol = Http::new();
+            protocol.http1_keep_alive(false);
+            protocol
+        })
+    }
 
-        let (mut stream, socket_addr) = match listener.accept().await {
+    loop {
+        let (mut stream, _socket_addr) = match listener.accept().await {
             Ok(v) => v,
             _ => continue, // ignore error here?
         };
-        dbg!(socket_addr);
+        // dbg!(socket_addr);
         let svc = svc.clone();
-
         let tls_config = tls_config.clone();
         tokio::spawn(tokio::time::timeout(TIMEOUT, async move {
             // redirect HTTP to HTTPS
@@ -91,8 +86,7 @@ pub async fn serve(addr: &SocketAddr, svc: axum::Router) {
                 return;
             }
             let tls_stream = TlsStream::new_async(tls_config, &mut stream);
-            // tls_stream.accept();
-            protocol
+            protocol_get()
                 .serve_connection(tls_stream, svc)
                 // .with_upgrades() // allow WebSocket
                 .await

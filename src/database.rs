@@ -6,6 +6,7 @@ use std::time::UNIX_EPOCH;
 
 fn file_path() -> PathBuf {
     std::env::current_exe().unwrap().with_extension("db")
+    // "/home/kkocdko/misc/code/ksite/.vscode/bak/ksite.db".into()
 }
 
 fn load() -> Connection {

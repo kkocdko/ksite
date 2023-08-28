@@ -2,13 +2,11 @@ use anyhow::Result;
 use axum::body::Bytes;
 use axum::http::header::HeaderMap;
 use axum::response::{IntoResponse, Response};
-use futures_core::ready;
 use hyper::body::HttpBody;
-use hyper::client::HttpConnector;
-use hyper::{Body, Client, Request};
-use once_cell::sync::Lazy;
+use hyper::{Body, Request};
 use std::future::Future;
 use std::pin::Pin;
+use std::task::ready;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use std::time::UNIX_EPOCH;
@@ -108,93 +106,33 @@ pub fn html_escape(v: &str) -> String {
     askama_escape::escape(v, askama_escape::Html).to_string()
 }
 
-/// Read `hyper::Body` into `Vec<u8>`, returns emply if reached the limit size (2 MiB).
-///
-/// Simpler than `hyper::body::to_bytes`.
-pub async fn read_body(mut body: Body) -> Vec<u8> {
-    // TODO: reimplement?
-    let mut v = Vec::new();
-    while let Some(Ok(bytes)) = body.data().await {
-        v.append(&mut bytes.into());
-        // 2 MiB
-        if v.len() > 2048 * 1024 {
-            v.clear();
-            break;
-        }
-    }
-    v
-}
-
-// use hyper_rustls::HttpsConnector;
-// use tokio_rustls::rustls::{ClientConfig, OwnedTrustAnchor, RootCertStore};
-// static CLIENT: Lazy<Client<HttpsConnector<HttpConnector>>> = Lazy::new(|| {
-//     // https://github.com/seanmonstar/reqwest/blob/v0.11.11/src/async_impl/client.rs#L340
-//     let root_cert_store = RootCertStore {
-//         roots: { webpki_roots::TLS_SERVER_ROOTS.0.iter() }
-//             .map(|trust_anchor| {
-//                 OwnedTrustAnchor::from_subject_spki_name_constraints(
-//                     trust_anchor.subject,
-//                     trust_anchor.spki,
-//                     trust_anchor.name_constraints,
-//                 )
-//             })
-//             .collect(),
-//     };
-//     let mut tls_cfg = ClientConfig::builder()
-//         .with_safe_defaults()
-//         .with_root_certificates(root_cert_store)
-//         .with_no_client_auth();
-//     tls_cfg.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
-//     let mut http_conn = HttpConnector::new();
-//     http_conn.enforce_http(false); // allow HTTPS
-//     let connector = HttpsConnector::from((http_conn, tls_cfg));
-//     Client::builder().build(connector)
-// });
-
-use tlsimple::{HttpsConnector, TlsConfig};
-static CLIENT: Lazy<Client<HttpsConnector<HttpConnector>>> = Lazy::new(|| {
-    let mut http_conn = HttpConnector::new();
-    http_conn.enforce_http(false); // allow HTTPS
-    mod default_cert {
-        include!("tls.defaults.rs");
-    }
-    let https_conn = HttpsConnector::new(http_conn, TlsConfig::new_client(default_cert::CERT));
-    Client::builder().build(https_conn)
-});
-
-pub trait ToRequest {
-    fn into_request(self) -> Request<Body>;
-}
-impl ToRequest for Request<Body> {
-    fn into_request(self) -> Request<Body> {
-        self
-    }
-}
-impl ToRequest for &str {
-    fn into_request(self) -> Request<Body> {
-        let ret = Request::get(encode_uri(self)).body(Body::empty()).unwrap();
-        ret.into_request()
-    }
-}
-impl ToRequest for &String {
-    fn into_request(self) -> Request<Body> {
-        self.as_str().into_request()
-    }
+pub fn str2req(s: impl AsRef<str>) -> Request<Body> {
+    let uri = encode_uri(s.as_ref());
+    Request::get(uri).body(Body::empty()).unwrap()
 }
 
 /// Send a `Request` and return the response. Allow both HTTPS and HTTP.
 ///
 /// This function is used to replace `reqwest` crate to reduce binary size.
 /// But unlike `reqwest`, this function dose not follow redirect.
-pub async fn fetch(request: impl ToRequest) -> Result<Response<Body>, hyper::Error> {
-    CLIENT.request(request.into_request()).await
-}
+pub use tlsimple::fetch;
 
 /// Fetch a URI, returns as `Vec<u8>`.
-pub async fn fetch_data(request: impl ToRequest) -> Result<Vec<u8>> {
-    // let request = request.into_request();
-    // let a = format!("{}", request.uri());
-    // log!("begin:  {a}");
+pub async fn fetch_data(request: Request<Body>) -> Result<Vec<u8>> {
+    // Simpler than `hyper::body::to_bytes`.
+    async fn read_body(mut body: Body) -> Vec<u8> {
+        // TODO: reimplement?
+        let mut v = Vec::new();
+        while let Some(Ok(bytes)) = body.data().await {
+            v.append(&mut bytes.into());
+            // 2 MiB
+            if v.len() > 2048 * 1024 {
+                v.clear();
+                break;
+            }
+        }
+        v
+    }
     let response = fetch(request).await?;
     let body = read_body(response.into_body()).await;
     // log!("finish: {a}");
@@ -202,7 +140,7 @@ pub async fn fetch_data(request: impl ToRequest) -> Result<Vec<u8>> {
 }
 
 /// Fetch a URI, returns as text.
-pub async fn fetch_text(request: impl ToRequest) -> Result<String> {
+pub async fn fetch_text(request: Request<Body>) -> Result<String> {
     let body = fetch_data(request).await?;
     Ok(String::from_utf8(body)?)
 }
@@ -218,7 +156,7 @@ pub async fn fetch_text(request: impl ToRequest) -> Result<String> {
 /// // or this? { "data": { "size": 1024 } }
 /// assert_eq!(v, Ok("1024".to_string())); // the same result!
 /// ```
-pub async fn fetch_json(request: impl ToRequest, pointer: &str) -> Result<String> {
+pub async fn fetch_json(request: Request<Body>, pointer: &str) -> Result<String> {
     let text = fetch_text(request).await?;
     let v = serde_json::from_str::<serde_json::Value>(&text)?;
     let v = v
