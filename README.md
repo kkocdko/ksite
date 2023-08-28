@@ -4,7 +4,7 @@ All in one solution for my server.
 
 ## TODO
 
-### 0.9.1
+### 0.9.2
 
 - `crate::log` lightweight logging, use `httpdate`. provide a log viewer.
 

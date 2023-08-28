@@ -268,6 +268,7 @@ async fn on_event(event: QEvent) {
         QEvent::GroupMessage(e) => {
             let e = e.inner;
             let msg = e.elements.to_string();
+            log!(INFO: "{msg}");
             if let Some(msg) = msg.strip_prefix('#') {
                 let msg_parts = msg.split_whitespace().collect();
                 if let Ok(reply) =
