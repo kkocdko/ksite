@@ -2,7 +2,7 @@
 
 mod commands;
 use crate::auth::auth_layer;
-use crate::utils::{fetch_text, log_escape, OptionResult};
+use crate::utils::{fetch_text, log_escape, str2req, OptionResult};
 use crate::{care, include_src, log, ticker};
 use anyhow::Result;
 use axum::body::Bytes;
@@ -371,7 +371,7 @@ impl UpNotify {
     // https://github.com/rust-lang/rust-clippy/issues/6446
     #[allow(clippy::await_holding_lock)]
     async fn trigger(&self) {
-        let v = care!(fetch_text(self.query_url).await, return);
+        let v = care!(fetch_text(str2req(self.query_url)).await, return);
         let v = v.rsplit_once(".nupkg").and_then(|v| v.0.rsplit_once('/'));
         let v = care!(v.e(), return).1;
         let mut last = self.last.lock().unwrap();

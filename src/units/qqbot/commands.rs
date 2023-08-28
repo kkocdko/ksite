@@ -1,4 +1,4 @@
-use crate::utils::{elapse, fetch_json, fetch_text};
+use crate::utils::{elapse, fetch_json, fetch_text, str2req};
 use anyhow::Result;
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
@@ -30,11 +30,11 @@ pub async fn on_group_msg(
         // ["高考倒计时"] => format!("距 2023 高考仅 {:.3} 天", -elapse(16860996e2)),
         ["驶向深蓝"] => {
             let url = "https://api.lovelive.tools/api/SweetNothings?genderType=M";
-            fetch_text(url).await?
+            fetch_text(str2req(url)).await?
         }
         ["吟诗"] => {
             let url = "https://v1.jinrishici.com/all.json";
-            fetch_json(url, "/content").await?
+            fetch_json(str2req(url), "/content").await?
         }
         // ["新闻"] => {
         //     let i = thread_rng().gen_range(3..20);
@@ -53,17 +53,17 @@ pub async fn on_group_msg(
         }
         ["btc"] | ["比特币"] => {
             let url = "https://chain.so/api/v2/get_info/BTC";
-            let price = fetch_json(url, "/data/price").await?;
+            let price = fetch_json(str2req(url), "/data/price").await?;
             format!("1 BTC = {} USD", price.trim_end_matches('0'))
         }
         ["eth"] | ["以太坊"] | ["以太币"] => {
             let url = "https://api.blockchair.com/ethereum/stats";
-            let price = fetch_json(url, "/data/market_price_usd").await?;
+            let price = fetch_json(str2req(url), "/data/market_price_usd").await?;
             format!("1 ETH = {} USD", price.trim_end_matches('0'))
         }
         ["doge"] | ["狗狗币"] => {
             let url = "https://api.blockchair.com/dogecoin/stats";
-            let price = fetch_json(url, "/data/market_price_usd").await?;
+            let price = fetch_json(str2req(url), "/data/market_price_usd").await?;
             format!("1 DOGE = {} USD", price.trim_end_matches('0'))
         }
         ["我有个朋友", name, "说", content] => {
@@ -93,14 +93,14 @@ pub async fn on_group_msg(
         }
         ["垃圾分类", i] => {
             let url = format!("https://api.muxiaoguo.cn/api/lajifl?m={i}");
-            match fetch_json(&url, "/data/type").await {
+            match fetch_json(str2req(url), "/data/type").await {
                 Ok(v) => format!("{i} {v}"),
                 Err(_) => format!("鬼知道 {i} 是什么垃圾呢"),
             }
         }
         ["聊天", i, ..] => {
             let url = format!("https://api.ownthink.com/bot?spoken={i}");
-            fetch_json(&url, "/data/info/text").await?
+            fetch_json(str2req(url), "/data/info/text").await?
         }
         ["设置回复", k, v] => {
             REPLIES.lock().unwrap().insert(k.into(), v.into());

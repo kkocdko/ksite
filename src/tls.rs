@@ -5,7 +5,6 @@ use crate::units::admin::db_get;
 use hyper::server::conn::Http;
 use std::future::poll_fn;
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 use std::time::Duration;
 use tlsimple::{alpn, TlsConfig, TlsStream};

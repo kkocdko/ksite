@@ -88,6 +88,7 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::task::ready;
 use std::task::{Context, Poll};
 use std::time::UNIX_EPOCH;
 use tokio::fs::File;
@@ -529,7 +530,7 @@ mod misc {
             cx: &mut Context,
         ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
             let mut fut = unsafe { Pin::new_unchecked(&mut self.get_mut().fut) };
-            let (buf, result, file) = futures_core::ready!(Pin::new(&mut fut).poll(cx));
+            let (buf, result, file) = ready!(Pin::new(&mut fut).poll(cx));
             match result {
                 Err(e) => Poll::Ready(Some(Err(e))),
                 Ok(0) => Poll::Ready(None),

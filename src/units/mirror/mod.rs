@@ -1,6 +1,6 @@
 //! Lazy mirror for caching linux distros' packages.
 
-use crate::utils::{fetch, log_escape, with_retry, FileResponse, MpscResponse};
+use crate::utils::{fetch, log_escape, str2req, with_retry, FileResponse, MpscResponse};
 use crate::{care, db, include_src, log};
 use axum::body::HttpBody;
 use axum::extract::Path;
@@ -74,7 +74,7 @@ fn gen_file_path(rowid: u64) -> PathBuf {
 }
 
 async fn handle(req_path: &str, target: String) -> Response {
-    let fetch_target = || async { care!(with_retry(|| fetch(&target), 3, 500).await) };
+    let fetch_target = || async { care!(with_retry(|| fetch(str2req(&target)), 3, 500).await) };
     let db_get_result = db_get(req_path);
     if let Some((rowid, true)) = db_get_result {
         let file = File::open(gen_file_path(rowid)).await.unwrap();

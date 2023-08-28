@@ -1,6 +1,6 @@
 //! Collections of my favorite news source.
 
-use crate::utils::{fetch_text, OptionResult};
+use crate::utils::{fetch_text, str2req, OptionResult};
 use crate::{care, include_src, log, ticker};
 use anyhow::Result;
 use axum::body::Bytes;
@@ -95,17 +95,16 @@ async fn refresh() -> Result<()> {
             "https://rsshub.app",
         ];
         for prefix in prefixs {
-            let url = prefix.to_string() + p;
-            match fetch_text(&url).await {
+            let req = str2req(prefix.to_string() + p);
+            match fetch_text(req).await {
                 Ok(v) if v.starts_with("<?xml") => return Ok(v),
-                e => {
-                    log!(ERRO : "magazine fetch failed, url = {url}");
-                    care!(e).ok();
-                }
+                _ => {}
             };
         }
+        log!(ERRO : "magazine fetch failed, p = {p}");
         Err(())
     }
+    // tokio::task::JoinSe
     let r = tokio::join!(
         rss("/bbc?limit=5"),
         rss("/hackernews?limit=5"), // &mode=fulltext

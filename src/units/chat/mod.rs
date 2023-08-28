@@ -8,12 +8,13 @@ use axum::http::HeaderValue;
 use axum::response::sse::{Event as SseEvent, Sse};
 use axum::response::Html;
 use axum::routing::{MethodRouter, Router};
-use futures_core::{ready, Stream};
+use futures_core::Stream;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
+use std::task::ready;
 use std::task::{Context, Poll};
 use tokio::sync::broadcast::{self, Receiver, Sender};
 

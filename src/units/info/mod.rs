@@ -1,7 +1,7 @@
 //! Provide server info.
 
 use crate::include_src;
-use crate::utils::fetch_text;
+use crate::utils::{fetch_text, str2req};
 use axum::http::header::{CACHE_CONTROL, REFRESH};
 use axum::response::{Html, IntoResponse};
 use axum::routing::{MethodRouter, Router};
@@ -24,7 +24,8 @@ static LATENCY_ALIYUN: AtomicI64 = AtomicI64::new(0);
 
 async fn refresh(uri: &str, data: &AtomicI64) {
     let instant = Instant::now();
-    match tokio::time::timeout(Duration::from_secs(3), fetch_text(uri)).await {
+    let req = str2req(uri);
+    match tokio::time::timeout(Duration::from_secs(3), fetch_text(req)).await {
         Ok(Ok(_)) => data.store(instant.elapsed().as_millis() as _, Ordering::SeqCst),
         Ok(Err(_)) => data.store(-9, Ordering::SeqCst), // network error
         Err(_) => data.store(-7, Ordering::SeqCst),     // timeout
