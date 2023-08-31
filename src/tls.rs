@@ -54,7 +54,7 @@ pub async fn serve(addr: &SocketAddr, svc: axum::Router) {
     }
     let tls_cert_der = get_with_warn("ssl_cert", default_cert::CERT);
     let tls_key_der = get_with_warn("ssl_key", default_cert::KEY);
-    let tls_config = TlsConfig::new_server(tls_cert_der, tls_key_der, Some(alpn::H1));
+    let tls_config = TlsConfig::new_server(tls_cert_der, tls_key_der, Some(alpn::H2H1));
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
 
     fn protocol_get() -> &'static Http {
