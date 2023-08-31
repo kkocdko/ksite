@@ -6,6 +6,7 @@ use hyper::body::HttpBody;
 use hyper::{Body, Request};
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::OnceLock;
 use std::task::ready;
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -13,6 +14,28 @@ use std::time::UNIX_EPOCH;
 use tokio::fs::File;
 use tokio::io;
 use tokio::sync::mpsc;
+
+/// [`std::sync::LazyLock`](https://doc.rust-lang.org/stable/std/sync/struct.LazyLock.html)
+pub struct LazyLock<T> {
+    f: fn() -> T,
+    v: OnceLock<T>,
+}
+
+impl<T> LazyLock<T> {
+    pub const fn new(f: fn() -> T) -> Self {
+        Self {
+            f,
+            v: OnceLock::new(),
+        }
+    }
+}
+
+impl<T> std::ops::Deref for LazyLock<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        self.v.get_or_init(self.f)
+    }
+}
 
 #[macro_export]
 macro_rules! log {
@@ -241,11 +264,8 @@ impl HttpBody for FileResponse {
                 // if buf.len() != Self::BUF_CAPACITY {
                 //     dbg!(buf.len());
                 // }
-                Poll::Ready(Some(Ok(std::mem::replace(
-                    buf,
-                    Vec::with_capacity(Self::BUF_CAPACITY),
-                )
-                .into())))
+                let next_buf = Vec::with_capacity(Self::BUF_CAPACITY);
+                Poll::Ready(Some(Ok(std::mem::replace(buf, next_buf).into())))
             }
         }
     }
@@ -452,8 +472,8 @@ macro_rules! strip_str {
     }};
 }
 
-#[macro_export]
 /// Include a source code file, with solt detect and blank strip.
+#[macro_export]
 macro_rules! include_src {
     ($s:expr) => {{
         use $crate::utils::str_const_ops_::*;
@@ -480,6 +500,7 @@ pub fn _test_include_page() {
 }
 
 /// Detect the `strip_str` works or not.
+#[allow(unused)]
 pub fn _detect_str_in_binary() {
     let s = std::fs::read("ksite").unwrap();
     let p = b"DELETE FROM health_log";
@@ -499,19 +520,6 @@ pub fn _detect_str_in_binary() {
     }
 }
 
-// pub trait InServerErr<T> {
-//     /// Produce `Result<T, Response>` for handlers.
-//     fn ise(self) -> Result<T, Response>;
-// }
-
-// impl<T, E> InServerErr<T> for Result<T, E> {
-//     fn ise(self) -> Result<T, Response> {
-//         self.map_err(|_| "SERVER INNER ERROR".into_response())
-//     }
-// }
-
-// type MyResult<T> = std::result::Result<T, std::boxed::Box<dyn std::fmt::Debug>>;
-
 // MethodRouter::new().get(
 //     |u: WebSocketUpgrade, c: ConnectInfo<SocketAddr>| async move {
 //         if c.0.ip() != IpAddr::V4(Ipv4Addr::LOCALHOST) {
@@ -520,17 +528,3 @@ pub fn _detect_str_in_binary() {
 //         u.on_upgrade(ws_handler)
 //     },
 // )
-
-// fn _explore(body: String) {
-//     let mut encoder = ZlibEncoder::new(vec![1], Compression::none());
-//     encoder.write_all(body.as_bytes()).ok();
-//     let v = encoder.finish().unwrap();
-//     let mut crc = flate2::Crc::new();
-//     crc.update(body.as_bytes());
-//     log!(
-//         "{:02x?}\n{:02x?}\n{:02x?}\n",
-//         crc.sum().to_be_bytes(),
-//         &v[..12],
-//         &v[v.len() - 12..]
-//     );
-// }

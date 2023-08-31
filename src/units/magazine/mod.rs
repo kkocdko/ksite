@@ -1,6 +1,6 @@
 //! Collections of my favorite news source.
 
-use crate::utils::{fetch_text, str2req, OptionResult};
+use crate::utils::{fetch_text, str2req, LazyLock, OptionResult};
 use crate::{care, include_src, log, ticker};
 use anyhow::Result;
 use axum::body::Bytes;
@@ -8,7 +8,6 @@ use axum::http::header::{HeaderName, HeaderValue};
 use axum::http::header::{CACHE_CONTROL, EXPIRES, REFRESH};
 use axum::response::Html;
 use axum::routing::{MethodRouter, Router};
-use once_cell::sync::Lazy;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
@@ -72,7 +71,7 @@ type Res = ([(HeaderName, HeaderValue); 2], Html<Bytes>);
 
 const PAGE: [&str; 2] = include_src!("page.html");
 
-static CACHE: Lazy<Mutex<Res>> = Lazy::new(|| {
+static CACHE: LazyLock<Mutex<Res>> = LazyLock::new(|| {
     let body = format!("{}<h2>Magazine is generating ...</h2>{}", PAGE[0], PAGE[1]);
     // with small data, Mutex seems faster than RwLock
     Mutex::new((

@@ -564,7 +564,6 @@ dependencies = [
  "tlsimple",
  "tokio",
  "tokio-util",
- "tower",
 ]
 
 [[package]]
@@ -598,9 +597,9 @@ checksum = "490cc448043f947bae3cbee9c203358d62dbee0db12107a74be5c30ccfd09771"
 
 [[package]]
 name = "memchr"
-version = "2.6.0"
+version = "2.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76fc44e2588d5b436dbc3c6cf62aef290f90dab6235744a93dfe1cc18f451e2c"
+checksum = "5486aed0026218e61b8a01d5fbd5a0a134649abb71a0e53b7bc088529dced86e"
 
 [[package]]
 name = "mime"
@@ -1007,9 +1006,9 @@ dependencies = [
 
 [[package]]
 name = "tlsimple"
-version = "0.2.0"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74fcd64bc05d3dab9296dfb39238f0e909ee300f5ae32f71eede40f10e522eaa"
+checksum = "370e059f09e8cc8b0cc49785dd20249ca30f932b101e13ac244532d1f45e1eaa"
 dependencies = [
  "cc",
  "hyper",
@@ -1071,7 +1070,6 @@ dependencies = [
  "tokio",
  "tower-layer",
  "tower-service",
- "tracing",
 ]
 
 [[package]]

@@ -8,7 +8,6 @@ mod units;
 mod utils;
 use std::net::SocketAddr;
 use std::time::Duration;
-// use axum::middleware;
 
 // #[global_allocator]
 // static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc; // or rpmalloc::RpMalloc
@@ -21,6 +20,7 @@ async fn run() {
     // return ticker::test2();
     // return ticker::fuzzle_test().await;
     // return units::paste_next::dev().await;
+
     log!("crate::run");
     log!("auth key = {}", auth::auth_key());
 
@@ -67,25 +67,11 @@ async fn run() {
         }
     };
 
-    // let tasks = tokio::task::LocalSet::new();
-    // tasks.spawn_local(units::magazine::tick());
-    // tasks.spawn_local(units::qqbot::tick());
-    // TODO: benchmark with tls enabled always failed on linux (but it's normal on windows)
-    // seems a problem of rustls. any idea to fix this?
-    // tokio::spawn(async {
-    //     tokio::time::sleep(Duration::from_millis(1000)).await;
-    //     loop {
-    //         tokio::time::sleep(Duration::from_millis(500)).await;
-    //         let a = utils::fetch_text("https://127.0.0.1:9304/info").await;
-    //         dbg!(a).ok();
-    //     }
-    // });
-
     tokio::join!(server, oscillator);
 }
 
 /// Deal with database upgrade.
-#[cfg(feature = "db_upgrade")]
+#[cfg(feature = "db-upgrade")]
 fn db_upgrade() {
     const CURRENT_VER: &str = env!("CARGO_PKG_VERSION");
     fn db_set(k: &str, v: &[u8]) {

@@ -6,9 +6,9 @@ edition = "2021"
 [profile.release]
 panic = "abort" # CAUTIONS! cause tokio worker abort
 strip = true
-# lto = "fat"
-# codegen-units = 1
-# opt-level = "z"
+lto = "fat"
+codegen-units = 1
+opt-level = "z"
 
 # Best check speed, `cargo check --profile=ci`
 [profile.ci]
@@ -23,15 +23,10 @@ codegen-units = 256
 # Best incremental build speed, less disk usage, `mold -run cargo run`
 [profile.dev]
 # debug = false # this switch disabled backtrace
-# panic = "abort"
 [profile.dev.package."*"]
 debug = false
 strip = true
 opt-level = "z"
-[profile.dev.package."tlsimple"]
-debug = true
-strip = false
-opt-level = 0
 
 [dependencies]
 anyhow = "1"
@@ -43,14 +38,12 @@ httpdate = "1"
 hyper = { version = "0.14", features = ["client"] }
 once_cell = "1"
 rand = "0.8"
-# ricq = "=0.1.20" # unstable, fixed version here
 ricq = { rev = "034c12258e34160e8ae433761c1d3b59a67ba334", git = "https://github.com/lz1998/ricq" }
 rusqlite = { version = "0.29", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "fs"] }
 tokio-util = { version = "0.7", features = ["io"] }
-tower = "0.4"
 tlsimple = "0.2"
 # tlsimple = { version = "0.1.4", path = "/home/kkocdko/misc/code/tlsimple" }
 
