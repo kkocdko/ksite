@@ -262,13 +262,15 @@ fn bot_msg(content: &str) -> MessageChain {
 }
 
 async fn on_event(event: QEvent) {
+    /* >>> recall_log
     #[allow(clippy::type_complexity)]
     static RECENT: Mutex<Vec<(i32, Vec<i32>, String, String, String)>> = Mutex::new(Vec::new());
+    */
     match event {
         QEvent::GroupMessage(e) => {
             let e = e.inner;
             let msg = e.elements.to_string();
-            log!(INFO: "{msg}");
+            // log!(INFO: "{msg}");
             if let Some(msg) = msg.strip_prefix('#') {
                 let msg_parts = msg.split_whitespace().collect();
                 if let Ok(reply) =
@@ -280,6 +282,7 @@ async fn on_event(event: QEvent) {
                 }
             }
             // log!("\n\x1b[93m[ksite]\x1b[0m {}", e.inner.elements);
+            /* >>> recall_log
             let mut recent = RECENT.lock().unwrap();
             recent.push((e.time, e.seqs, e.group_name, e.group_card, msg));
             let len = recent.len();
@@ -289,8 +292,10 @@ async fn on_event(event: QEvent) {
                 recent.retain(|v| e.time - v.0 <= 120 + 5);
                 // push_log!("cleaned {} expired messages", len - recent.len());
             }
+            */
         }
         // the AndroidWatch protocol will not receive recall event
+        /* >>> recall_log
         QEvent::GroupMessageRecall(e) => {
             let recent = RECENT.lock().unwrap();
             if let Some((_, _, group, user, content)) =
@@ -299,6 +304,7 @@ async fn on_event(event: QEvent) {
                 push_log!("recalled = {group} : {user} : {content}");
             }
         }
+        */
         QEvent::Login(uin) => {
             push_log!("current account = {uin}");
         }
