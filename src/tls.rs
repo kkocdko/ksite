@@ -60,8 +60,8 @@ pub async fn serve(addr: &SocketAddr, svc: axum::Router) {
     fn protocol_get() -> &'static Http {
         static PROTOCOL: OnceLock<Http> = OnceLock::new();
         PROTOCOL.get_or_init(|| {
-            let mut protocol = Http::new();
-            protocol.http1_keep_alive(false);
+            let protocol = Http::new();
+            // protocol.http1_keep_alive(false);
             protocol
         })
     }

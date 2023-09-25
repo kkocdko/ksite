@@ -1,6 +1,8 @@
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::time::{Duration, UNIX_EPOCH};
 
+// Tue, 05 Sep 2023 15:05:25 GMT
+
 const ANY: u64 = 99; // must >= 60, terser logic?
 
 fn gen_next(mut now: u64, cfg: (u64, u64, u64)) -> u64 {
@@ -65,7 +67,7 @@ impl Ticker {
 
 #[macro_export]
 macro_rules! ticker {
-    ($zone:expr, $($pattern:expr),*) => {
+    ($zone:literal, $($pattern:expr),*) => {
         use $crate::ticker::*;
         use std::sync::atomic::AtomicU64;
         const N: usize = [$($pattern),*].len();
