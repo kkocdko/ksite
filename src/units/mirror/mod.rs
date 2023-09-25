@@ -156,10 +156,21 @@ pub fn service() -> Router {
                 // http://mirrors.ustc.edu.cn/fedora/
                 // http://mirrors.tuna.tsinghua.edu.cn/fedora/
                 if let Some(r) = p.strip_prefix("fedora/") {
-                    return handle(&p, format!("http://mirrors.ustc.edu.cn/fedora/{r}")).await;
+                    // return handle(&p, format!("http://mirrors.ustc.edu.cn/fedora/{r}")).await;
+                    return handle(&p, format!("http://mirror.23m.com/fedora/linux/{r}")).await;
                 }
                 if let Some(r) = p.strip_prefix("ubuntu/") {
                     return handle(&p, format!("http://mirrors.ustc.edu.cn/ubuntu/{r}")).await;
+                }
+                if let Some(r) = p.strip_prefix("debian/") {
+                    return handle(&p, format!("http://mirrors.ustc.edu.cn/debian/{r}")).await;
+                }
+                if let Some(r) = p.strip_prefix("debian-security/") {
+                    return handle(
+                        &p,
+                        format!("http://mirrors.ustc.edu.cn/debian-security/{r}"),
+                    )
+                    .await;
                 }
                 StatusCode::NOT_FOUND.into_response()
             }),
