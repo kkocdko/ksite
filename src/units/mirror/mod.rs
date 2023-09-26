@@ -22,54 +22,49 @@ mod db {
         let sql = strip_str! {"
             CREATE TABLE IF NOT EXISTS mirror (path BLOB PRIMARY KEY, time INTEGER, finished INTEGER)
         "};
-        let params = rusqlite::params![];
         let mut stmd = db.prepare(sql).unwrap();
-        stmd.execute(params).unwrap();
+        stmd.execute(()).unwrap();
     }
     pub fn get(path: &str) -> Option<(u64, bool)> {
         let db = DB.lock().unwrap();
         let sql = strip_str! {"
             SELECT rowid, finished FROM mirror WHERE path = ?
         "};
-        let params = rusqlite::params![path.as_bytes()];
         let mut stmd = db.prepare_cached(sql).unwrap();
-        stmd.query_row(params, |r| Ok((r.get(0)?, r.get(1)?))).ok()
+        stmd.query_row((path.as_bytes(),), |r| Ok((r.get(0)?, r.get(1)?)))
+            .ok()
     }
     pub fn add(path: &str) {
         let db = DB.lock().unwrap();
         let sql = strip_str! {"
             INSERT INTO mirror VALUES (?, strftime('%s', 'now'), 0)
         "};
-        let params = rusqlite::params![path.as_bytes()];
         let mut stmd = db.prepare_cached(sql).unwrap();
-        stmd.execute(params).unwrap();
+        stmd.execute((path.as_bytes(),)).unwrap();
     }
     pub fn set_finished(path: &str) {
         let db = DB.lock().unwrap();
         let sql = strip_str! {"
             UPDATE mirror SET finished = 1 WHERE path = ?
         "};
-        let params = rusqlite::params![path.as_bytes()];
         let mut stmd = db.prepare_cached(sql).unwrap();
-        stmd.execute(params).unwrap();
+        stmd.execute((path.as_bytes(),)).unwrap();
     }
     pub fn del(path: &str) {
         let db = DB.lock().unwrap();
         let sql = strip_str! {"
             DELETE FROM mirror WHERE path = ?
         "};
-        let params = rusqlite::params![path.as_bytes()];
         let mut stmd = db.prepare_cached(sql).unwrap();
-        stmd.execute(params).unwrap();
+        stmd.execute((path.as_bytes(),)).unwrap();
     }
     pub fn list() -> Vec<(u64, String)> {
         let db = DB.lock().unwrap();
         let sql = strip_str! {"
             SELECT rowid, path FROM mirror
         "};
-        let params = rusqlite::params![];
         let mut stmd = db.prepare_cached(sql).unwrap();
-        stmd.query_map(params, |r| {
+        stmd.query_map((), |r| {
             Ok((r.get(0)?, String::from_utf8(r.get(1)?).unwrap()))
         })
         .unwrap()

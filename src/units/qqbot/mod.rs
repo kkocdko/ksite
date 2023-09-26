@@ -32,10 +32,9 @@ mod db {
             "CREATE TABLE IF NOT EXISTS qqbot_cfg (k BLOB PRIMARY KEY, v BLOB)",
             "INSERT OR IGNORE INTO qqbot_cfg VALUES (cast('notify_groups' AS BLOB), X'')",
         ];
-        let params = rusqlite::params![];
         for sql in sqls {
             let mut stmd = db.prepare(sql).unwrap();
-            stmd.execute(params).unwrap();
+            stmd.execute(()).unwrap();
         }
         // format: notify_groups = b"7652318,17931963,123132"
     }
@@ -44,18 +43,16 @@ mod db {
         let sql = strip_str! {"
             INSERT INTO qqbot_log VALUES (strftime('%s', 'now'), ?)
         "};
-        let params = rusqlite::params![content.as_bytes()];
         let mut stmd = db.prepare_cached(sql).unwrap();
-        stmd.execute(params).unwrap();
+        stmd.execute((content.as_bytes(),)).unwrap();
     }
     pub fn log_list() -> Vec<(u64, String)> {
         let db = DB.lock().unwrap();
         let sql = strip_str! {"
             SELECT * FROM qqbot_log
         "};
-        let params = rusqlite::params![];
         let mut stmd = db.prepare_cached(sql).unwrap();
-        stmd.query_map(params, |r| {
+        stmd.query_map((), |r| {
             Ok((r.get(0)?, String::from_utf8(r.get(1)?).unwrap()))
         })
         .unwrap()
@@ -67,27 +64,24 @@ mod db {
         let sql = strip_str! {"
             DELETE FROM qqbot_log WHERE strftime('%s', 'now') - time > 3600 * 24 * 3
         "};
-        let params = rusqlite::params![];
         let mut stmd = db.prepare_cached(sql).unwrap();
-        stmd.execute(params).unwrap();
+        stmd.execute(()).unwrap();
     }
     pub fn cfg_set(k: &str, v: &[u8]) {
         let db = DB.lock().unwrap();
         let sql = strip_str! {"
             REPLACE INTO qqbot_cfg VALUES (?, ?)
         "};
-        let params = rusqlite::params![k.as_bytes(), v];
         let mut stmd = db.prepare_cached(sql).unwrap();
-        stmd.execute(params).unwrap();
+        stmd.execute((k.as_bytes(), v)).unwrap();
     }
     pub fn cfg_get(k: &str) -> Option<Vec<u8>> {
         let db = DB.lock().unwrap();
         let sql = strip_str! {"
             SELECT v FROM qqbot_cfg WHERE k = ?
         "};
-        let params = rusqlite::params![k.as_bytes()];
         let mut stmd = db.prepare_cached(sql).unwrap();
-        stmd.query_row(params, |r| r.get(0)).ok()
+        stmd.query_row((k.as_bytes(),), |r| r.get(0)).ok()
     }
     pub fn cfg_get_str(k: &str) -> Option<String> {
         Some(String::from_utf8(cfg_get(k)?).unwrap())

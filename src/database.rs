@@ -25,7 +25,7 @@ pub static DB: Lazy<Mutex<Connection>> = Lazy::new(|| {
         "PRAGMA locking_mode=EXCLUSIVE",
     ];
     for sql in sqls {
-        match db.execute(sql, rusqlite::params![]) {
+        match db.execute(sql, ()) {
             Ok(_) | Err(rusqlite::Error::ExecuteReturnedResults) => 0,
             e => e.unwrap(),
         };
@@ -37,7 +37,7 @@ pub fn backup() {
     let db = DB.lock().unwrap();
 
     // shrink
-    db.execute("VACUUM", rusqlite::params![]).unwrap();
+    db.execute("VACUUM", ()).unwrap();
 
     std::fs::copy(
         file_path(),

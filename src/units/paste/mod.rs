@@ -17,27 +17,24 @@ pub mod db {
         let sql = strip_str! {"
             CREATE TABLE IF NOT EXISTS paste (id INTEGER PRIMARY KEY, data BLOB)
         "};
-        let params = rusqlite::params![];
         let mut stmd = db.prepare(sql).unwrap();
-        stmd.execute(params).unwrap();
+        stmd.execute(()).unwrap();
     }
     pub fn set(id: u64, data: &str) {
         let db = DB.lock().unwrap();
         let sql = strip_str! {"
             REPLACE INTO paste VALUES (?, ?)
         "};
-        let params = rusqlite::params![id, data.as_bytes()];
-        let mut stmd = db.prepare(sql).unwrap();
-        stmd.execute(params).unwrap();
+        let mut stmd = db.prepare_cached(sql).unwrap();
+        stmd.execute((id, data.as_bytes())).unwrap();
     }
     pub fn get(id: u64) -> Option<String> {
         let db = DB.lock().unwrap();
         let sql = strip_str! {"
             SELECT data FROM paste WHERE id = ?
         "};
-        let params = rusqlite::params![id];
         let mut stmd = db.prepare_cached(sql).unwrap();
-        stmd.query_row(params, |r| Ok(String::from_utf8(r.get(0)?).unwrap()))
+        stmd.query_row((id,), |r| Ok(String::from_utf8(r.get(0)?).unwrap()))
             .ok()
     }
 }

@@ -16,36 +16,32 @@ pub mod db {
         let sql = strip_str! {"
             CREATE TABLE IF NOT EXISTS admin (k BLOB PRIMARY KEY, v BLOB)
         "};
-        let params = rusqlite::params![];
         let mut stmd = db.prepare(sql).unwrap();
-        stmd.execute(params).unwrap();
+        stmd.execute(()).unwrap();
     }
     pub fn set(k: &str, v: &[u8]) {
         let db = DB.lock().unwrap();
         let sql = strip_str! {"
             REPLACE INTO admin VALUES (?, ?)
         "};
-        let params = rusqlite::params![k.as_bytes(), v];
-        let mut stmd = db.prepare(sql).unwrap();
-        stmd.execute(params).unwrap();
+        let mut stmd = db.prepare_cached(sql).unwrap();
+        stmd.execute((k.as_bytes(), v)).unwrap();
     }
     pub fn get(k: &str) -> Option<Vec<u8>> {
         let db = DB.lock().unwrap();
         let sql = strip_str! {"
             SELECT v FROM admin WHERE k = ?
         "};
-        let params = rusqlite::params![k.as_bytes()];
         let mut stmd = db.prepare_cached(sql).unwrap();
-        stmd.query_row(params, |r| r.get(0)).ok()
+        stmd.query_row((k.as_bytes(),), |r| r.get(0)).ok()
     }
     pub fn del(k: &str) {
         let db = DB.lock().unwrap();
         let sql = strip_str! {"
             DELETE FROM admin WHERE k = ?
         "};
-        let params = rusqlite::params![k.as_bytes()];
         let mut stmd = db.prepare_cached(sql).unwrap();
-        stmd.execute(params).unwrap();
+        stmd.execute((k.as_bytes(),)).unwrap();
     }
 }
 
