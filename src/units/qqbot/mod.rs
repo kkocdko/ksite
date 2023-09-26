@@ -20,79 +20,75 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, UNIX_EPOCH};
 
 mod db {
-    use crate::db;
-
+    use crate::database::DB;
+    use crate::strip_str;
     pub const K_DEVICE: &str = "device_json";
     pub const K_TOKEN: &str = "token_json";
     pub const K_NOTIFY_GROUPS: &str = "notify_groups";
-
     pub fn init() {
-        db!("
-            CREATE TABLE IF NOT EXISTS qqbot_log
-            (time INTEGER, content BLOB);
-            CREATE TABLE IF NOT EXISTS qqbot_cfg
-            (k BLOB PRIMARY KEY, v BLOB);
-            INSERT OR IGNORE INTO qqbot_cfg VALUES
-            (X'6e6f746966795f67726f757073', X'');
-        ")
-        .unwrap();
-        // javascript: [...'abc'].map(v=>v.charCodeAt(0).toString(16).padStart(2,'0')).join('')
+        let db = DB.lock().unwrap();
+        let sqls = [
+            "CREATE TABLE IF NOT EXISTS qqbot_log (time INTEGER, content BLOB)",
+            "CREATE TABLE IF NOT EXISTS qqbot_cfg (k BLOB PRIMARY KEY, v BLOB)",
+            "INSERT OR IGNORE INTO qqbot_cfg VALUES (cast('notify_groups' AS BLOB), X'')",
+        ];
+        let params = rusqlite::params![];
+        for sql in sqls {
+            let mut stmd = db.prepare(sql).unwrap();
+            stmd.execute(params).unwrap();
+        }
         // format: notify_groups = b"7652318,17931963,123132"
     }
-
     pub fn log_insert(content: &str) {
-        db!(
-            "
-            INSERT INTO qqbot_log
-            VALUES (strftime('%s', 'now'), ?1)
-            ",
-            [content.as_bytes()]
-        )
-        .unwrap();
+        let db = DB.lock().unwrap();
+        let sql = strip_str! {"
+            INSERT INTO qqbot_log VALUES (strftime('%s', 'now'), ?)
+        "};
+        let params = rusqlite::params![content.as_bytes()];
+        let mut stmd = db.prepare_cached(sql).unwrap();
+        stmd.execute(params).unwrap();
     }
-
-    pub fn log_get() -> Vec<(u64, String)> {
-        db!(
-            "
+    pub fn log_list() -> Vec<(u64, String)> {
+        let db = DB.lock().unwrap();
+        let sql = strip_str! {"
             SELECT * FROM qqbot_log
-            ",
-            [],
-            |r| Ok((r.get(0)?, String::from_utf8(r.get(1)?).unwrap()))
-        )
+        "};
+        let params = rusqlite::params![];
+        let mut stmd = db.prepare_cached(sql).unwrap();
+        stmd.query_map(params, |r| {
+            Ok((r.get(0)?, String::from_utf8(r.get(1)?).unwrap()))
+        })
         .unwrap()
+        .map(|v| v.unwrap())
+        .collect()
     }
-
     pub fn log_clean() {
-        db!("
-            DELETE FROM qqbot_log
-            WHERE strftime('%s', 'now') - time > 3600 * 24 * 3
-        ")
-        .unwrap();
+        let db = DB.lock().unwrap();
+        let sql = strip_str! {"
+            DELETE FROM qqbot_log WHERE strftime('%s', 'now') - time > 3600 * 24 * 3
+        "};
+        let params = rusqlite::params![];
+        let mut stmd = db.prepare_cached(sql).unwrap();
+        stmd.execute(params).unwrap();
     }
-
     pub fn cfg_set(k: &str, v: &[u8]) {
-        db!(
-            "
-            REPLACE INTO qqbot_cfg
-            VALUES (?1, ?2)
-            ",
-            [k.as_bytes(), v]
-        )
-        .unwrap();
+        let db = DB.lock().unwrap();
+        let sql = strip_str! {"
+            REPLACE INTO qqbot_cfg VALUES (?, ?)
+        "};
+        let params = rusqlite::params![k.as_bytes(), v];
+        let mut stmd = db.prepare_cached(sql).unwrap();
+        stmd.execute(params).unwrap();
     }
-
     pub fn cfg_get(k: &str) -> Option<Vec<u8>> {
-        db!(
-            "
-            SELECT v FROM qqbot_cfg
-            WHERE k = ?
-            ",
-            [k.as_bytes()],
-            *|r| r.get(0)
-        )
-        .ok()
+        let db = DB.lock().unwrap();
+        let sql = strip_str! {"
+            SELECT v FROM qqbot_cfg WHERE k = ?
+        "};
+        let params = rusqlite::params![k.as_bytes()];
+        let mut stmd = db.prepare_cached(sql).unwrap();
+        stmd.query_row(params, |r| r.get(0)).ok()
     }
-
     pub fn cfg_get_str(k: &str) -> Option<String> {
         Some(String::from_utf8(cfg_get(k)?).unwrap())
     }
@@ -350,7 +346,7 @@ pub fn service() -> Router {
         const PAGE: [&str; 2] = include_src!("page.html");
         let mut body = String::new();
         body += PAGE[0];
-        for (time, content) in db::log_get().into_iter().rev() {
+        for (time, content) in db::log_list().into_iter().rev() {
             writeln!(&mut body, "{time} | {content}").unwrap();
         }
         body += PAGE[1];

@@ -1,7 +1,7 @@
 // Provide auth middleware.
 
 use crate::include_src;
-use crate::units::admin::db_get;
+use crate::units::admin::db as db_admin;
 use axum::body::{Body, Bytes};
 use axum::http::header::{HeaderValue, COOKIE};
 use axum::http::{Request, StatusCode};
@@ -13,7 +13,7 @@ use std::io::Write as _;
 static AUTH_COOKIE: Lazy<HeaderValue> = Lazy::new(|| {
     let mut inner = Vec::new();
     inner.extend(b"auth=");
-    match db_get("auth_key") {
+    match db_admin::get("auth_key") {
         Some(v) => inner.extend(v.as_slice()),
         None => write!(&mut inner, "{:x}", rand::random::<u128>()).unwrap(),
     }

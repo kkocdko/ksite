@@ -30,7 +30,7 @@ fn db_list_set(id: u64, password: &str, data: &str) {
     db!(
         "
         REPLACE INTO health_list
-        VALUES (?1, ?2, ?3)
+        VALUES (?, ?, ?)
         ",
         [id, password, data]
     )

@@ -1,7 +1,7 @@
 //! Lazy mirror for caching linux distros' packages.
 
 use crate::utils::{fetch, log_escape, str2req, with_retry, FileResponse, MpscResponse};
-use crate::{care, db, include_src, log};
+use crate::{care, include_src, log};
 use axum::body::HttpBody;
 use axum::extract::Path;
 use axum::http::StatusCode;
@@ -14,48 +14,68 @@ use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 
-fn db_init() {
-    db!(
-        "CREATE TABLE IF NOT EXISTS mirror (path BLOB PRIMARY KEY, time INTEGER, finished INTEGER)"
-    )
-    .unwrap();
-}
-
-fn db_get(path: &str) -> Option<(u64, bool)> {
-    db!(
-        "SELECT rowid, finished FROM mirror WHERE path = ?1",
-        [path.as_bytes()],
-        *|r| Ok((r.get(0)?, r.get(1)?))
-    )
-    .ok()
-}
-
-fn db_add(path: &str) {
-    db!(
-        "INSERT INTO mirror VALUES (?1, strftime('%s', 'now'), 0)",
-        [path.as_bytes()]
-    )
-    .unwrap();
-}
-
-fn db_set_finished(path: &str) {
-    db!(
-        "UPDATE mirror SET finished = 1 WHERE path = ?1",
-        [path.as_bytes()]
-    )
-    .unwrap();
-}
-
-fn db_del(path: &str) {
-    db!("DELETE FROM mirror WHERE path = ?", [path.as_bytes()]).unwrap();
-}
-
-fn db_list() -> Vec<(u64, String)> {
-    db!("SELECT rowid, path FROM mirror", [], |r| Ok((
-        r.get(0)?,
-        String::from_utf8(r.get(1)?).unwrap()
-    )))
-    .unwrap()
+mod db {
+    use crate::database::DB;
+    use crate::strip_str;
+    pub fn init() {
+        let db = DB.lock().unwrap();
+        let sql = strip_str! {"
+            CREATE TABLE IF NOT EXISTS mirror (path BLOB PRIMARY KEY, time INTEGER, finished INTEGER)
+        "};
+        let params = rusqlite::params![];
+        let mut stmd = db.prepare(sql).unwrap();
+        stmd.execute(params).unwrap();
+    }
+    pub fn get(path: &str) -> Option<(u64, bool)> {
+        let db = DB.lock().unwrap();
+        let sql = strip_str! {"
+            SELECT rowid, finished FROM mirror WHERE path = ?
+        "};
+        let params = rusqlite::params![path.as_bytes()];
+        let mut stmd = db.prepare_cached(sql).unwrap();
+        stmd.query_row(params, |r| Ok((r.get(0)?, r.get(1)?))).ok()
+    }
+    pub fn add(path: &str) {
+        let db = DB.lock().unwrap();
+        let sql = strip_str! {"
+            INSERT INTO mirror VALUES (?, strftime('%s', 'now'), 0)
+        "};
+        let params = rusqlite::params![path.as_bytes()];
+        let mut stmd = db.prepare_cached(sql).unwrap();
+        stmd.execute(params).unwrap();
+    }
+    pub fn set_finished(path: &str) {
+        let db = DB.lock().unwrap();
+        let sql = strip_str! {"
+            UPDATE mirror SET finished = 1 WHERE path = ?
+        "};
+        let params = rusqlite::params![path.as_bytes()];
+        let mut stmd = db.prepare_cached(sql).unwrap();
+        stmd.execute(params).unwrap();
+    }
+    pub fn del(path: &str) {
+        let db = DB.lock().unwrap();
+        let sql = strip_str! {"
+            DELETE FROM mirror WHERE path = ?
+        "};
+        let params = rusqlite::params![path.as_bytes()];
+        let mut stmd = db.prepare_cached(sql).unwrap();
+        stmd.execute(params).unwrap();
+    }
+    pub fn list() -> Vec<(u64, String)> {
+        let db = DB.lock().unwrap();
+        let sql = strip_str! {"
+            SELECT rowid, path FROM mirror
+        "};
+        let params = rusqlite::params![];
+        let mut stmd = db.prepare_cached(sql).unwrap();
+        stmd.query_map(params, |r| {
+            Ok((r.get(0)?, String::from_utf8(r.get(1)?).unwrap()))
+        })
+        .unwrap()
+        .map(|v| v.unwrap())
+        .collect()
+    }
 }
 
 fn gen_file_path(rowid: u64) -> PathBuf {
@@ -75,7 +95,7 @@ fn gen_file_path(rowid: u64) -> PathBuf {
 
 async fn handle(req_path: &str, target: String) -> Response {
     let fetch_target = || async { care!(with_retry(|| fetch(str2req(&target)), 3, 500).await) };
-    let db_get_result = db_get(req_path);
+    let db_get_result = db::get(req_path);
     if let Some((rowid, true)) = db_get_result {
         let file = File::open(gen_file_path(rowid)).await.unwrap();
         return FileResponse::new(file).into_response();
@@ -86,12 +106,12 @@ async fn handle(req_path: &str, target: String) -> Response {
             Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
         };
     }
-    db_add(req_path); // insert first to avoid condition race
+    db::add(req_path); // insert first to avoid condition race
     let mut body = match fetch_target().await {
         Ok(v) => v.into_body(),
         Err(e) => {
             log!(ERRO : "{e:?}");
-            db_del(req_path);
+            db::del(req_path);
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
     };
@@ -99,7 +119,7 @@ async fn handle(req_path: &str, target: String) -> Response {
     let req_path = req_path.to_owned();
     // even if the connection closed, the store process still running
     tokio::spawn(async move {
-        let rowid = db_get(&req_path).unwrap().0;
+        let rowid = db::get(&req_path).unwrap().0;
         let file_path = gen_file_path(rowid);
         let mut file = File::create(&file_path).await.unwrap();
         while let Some(result) = body.data().await {
@@ -117,18 +137,18 @@ async fn handle(req_path: &str, target: String) -> Response {
                     file.set_len(0).await.unwrap();
                     drop(file);
                     tokio::fs::remove_file(&file_path).await.unwrap();
-                    db_del(&req_path);
+                    db::del(&req_path);
                     return;
                 }
             }
         }
-        db_set_finished(&req_path);
+        db::set_finished(&req_path);
     });
     MpscResponse::new(rx).into_response()
 }
 
 pub fn service() -> Router {
-    db_init();
+    db::init();
     Router::new()
         .route(
             "/mirror",
@@ -136,7 +156,7 @@ pub fn service() -> Router {
                 const PAGE: [&str; 2] = include_src!("page.html");
                 let mut ret = String::new();
                 ret += PAGE[0];
-                let mut list = db_list();
+                let mut list = db::list();
                 for (number, _) in &mut list {
                     *number = std::fs::metadata(gen_file_path(*number)).unwrap().len();
                 }

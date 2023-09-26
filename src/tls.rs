@@ -1,7 +1,7 @@
 //! TLS & HTTPS support for the server.
 
 use crate::log;
-use crate::units::admin::db_get;
+use crate::units::admin::db as db_admin;
 use hyper::server::conn::Http;
 use std::future::poll_fn;
 use std::net::SocketAddr;
@@ -47,7 +47,7 @@ pub async fn serve(addr: &SocketAddr, svc: axum::Router) {
     let svc = svc.with_state(()); // make the clone() cheaper. https://docs.rs/axum/0.6.1/src/axum/routing/mod.rs.html#538-542
 
     fn get_with_warn(k: &str, default: &[u8]) -> Vec<u8> {
-        db_get(k).unwrap_or_else(|| {
+        db_admin::get(k).unwrap_or_else(|| {
             log!(WARN: "using default cert and key");
             Vec::from(default)
         })
