@@ -83,7 +83,7 @@ pub fn service() -> Router {
     Router::new().route(
         "/admin",
         MethodRouter::new()
-            .get(|| async { Html((include_src!("page.html") as [_; 1])[0]) })
+            .get(Html((include_src!("page.html") as [_; 1])[0]))
             .post(post_handler)
             .layer(middleware::from_fn(auth_layer)),
     )

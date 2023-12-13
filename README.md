@@ -12,6 +12,8 @@ All in one solution for my server.
 
 - functions like frp
 
+- `units::paste` better performance.
+
 - `units::meet` supports real-time cloud record.
 
 - `crate` proactive traffic restriction.

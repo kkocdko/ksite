@@ -101,5 +101,5 @@ pub fn service() -> Router {
     );
     Router::new()
         .route("/info", MethodRouter::new().get(get_handler))
-        .route("/info/p", MethodRouter::new().get(|| async { "pong" })) // the "/ping" cause error?
+        .route("/info/p", MethodRouter::new().get("pong")) // the "/ping" cause error?
 }

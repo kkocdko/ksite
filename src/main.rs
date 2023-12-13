@@ -12,6 +12,30 @@ use std::time::Duration;
 // #[global_allocator]
 // static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc; // or rpmalloc::RpMalloc
 
+async fn aa() {
+    use std::sync::Mutex;
+    // static LIST: [(&str, Mutex<String>); -(0 - 1 - 1) as _] = [
+    //     ("a", Mutex::new(String::new())),
+    //     ("b", Mutex::new(String::new())),
+    // ];
+    macro_rules! foo {
+        ( $($y:expr),+ ) => {
+            const fn ret_one<T>(_:&T)->i32{1}
+            const fn ret_mutex<T>(_:&T)->Mutex<String>{Mutex::new(String::new())}
+            const LEN: usize = -(-$( ret_one(&$y) )-+) as _;
+            static LAST: [Mutex<String>; LEN] = [$( ret_mutex(&$y) ),+];
+            async fn what(i:usize){
+                let last = LAST[i].lock().unwrap();
+            }
+            tokio::join!(
+                $( what(ret_one(&$y) as _) ),+
+            );
+        };
+    }
+    foo!(1, 1, 4, 5, 1, 4);
+    // https://github.com/rust-lang/rust/issues/83527
+}
+
 fn main() {
     launcher::launch(run);
 }
@@ -42,8 +66,11 @@ async fn run() {
         log!("auth key = {}", auth::auth_key());
         let addr = SocketAddr::from(([0, 0, 0, 0], 9304)); // server address here
         log!("server address = {addr}");
-        // axum::Server::bind(&addr).serve(app.into_make_service()).await.unwrap();
-        tls::serve(&addr, app).await;
+        axum::Server::bind(&addr)
+            .serve(app.into_make_service())
+            .await
+            .unwrap();
+        // tls::serve(&addr, app).await;
     };
 
     let oscillator = async {
@@ -59,6 +86,7 @@ async fn run() {
         }
         let mut interval = tokio::time::interval(INTERVAL);
         loop {
+            units::qqbot::tick().await;
             interval.tick().await;
             care!(tokio::time::timeout(TIMEOUT, tasks()).await).ok();
             // let stamp = httpdate::fmt_http_date(std::time::SystemTime::now());

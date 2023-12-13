@@ -15,6 +15,7 @@ use ricq::client::{Connector as _, DefaultConnector, NetworkStatus};
 use ricq::handler::QEvent;
 use ricq::msg::MessageChain;
 use ricq::{Client, Device, LoginResponse, Protocol, QRCodeState};
+use std::cell::Cell;
 use std::fmt::Write as _;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, UNIX_EPOCH};
@@ -359,57 +360,61 @@ pub fn service() -> Router {
         .layer(middleware::from_fn(auth_layer))
 }
 
-struct UpNotify {
-    query_url: &'static str,
-    last: Mutex<String>,
-}
-
-impl UpNotify {
-    // https://github.com/rust-lang/rust-clippy/issues/6446
-    #[allow(clippy::await_holding_lock)]
-    async fn trigger(&self) {
-        let v = care!(fetch_text(str2req(self.query_url)).await, return);
-        let v = v.rsplit_once(".nupkg").and_then(|v| v.0.rsplit_once('/'));
-        let v = care!(v.e(), return).1;
-        let mut last = self.last.lock().unwrap();
-        if *last == v {
-            // do nothing
-        } else if last.is_empty() {
-            *last = v.to_string();
-        } else {
-            *last = v.to_string();
-            drop(last); // avoid the mutex guard alive cross await point
-            care!(notify(&v.to_lowercase()).await, ());
-        }
-    }
-}
-
-macro_rules! up_notify {
-    ($pkg_id:literal) => {
-        UpNotify {
-            query_url: concat!("https://community.chocolatey.org/api/v2/package/", $pkg_id),
-            last: Mutex::new(String::new()),
-        }
-    };
-}
-
 pub async fn tick() {
-    ticker!(8, "XX:08:00", "XX:38:00");
+    use std::sync::Mutex;
+    // ticker!(8, "XX:08:00", "XX:38:00");
 
-    db::log_clean();
+    // db::log_clean();
+    // Python is a programming language that lets you work quickly and integrate systems more effectively.
 
-    static UP_CHROME: UpNotify = up_notify!("googlechrome");
-    static UP_VSCODE: UpNotify = up_notify!("vscode");
-    static UP_RUST: UpNotify = up_notify!("rust");
-    let _ = tokio::join!(
-        // needless to spawn
-        UP_CHROME.trigger(),
-        UP_VSCODE.trigger(),
-        UP_RUST.trigger()
+    async fn fake_notify(msg: &str) -> Result<()> {
+        // log!(INFO: "fake_notify msg = {msg}");
+        Ok(())
+    }
+    dbg!(
+        fetch_text(str2req(
+            "https://archlinux.org/packages/extra/x86_64/chromium/json/"
+        ))
+        .await
+    );
+    return;
+    macro_rules! foo {
+        ( $($y:expr),+ ) => {
+            const fn ret_one<T>(_:&T)->i32{1}
+            const fn ret_mutex<T>(_:&T)->Mutex<String>{Mutex::new(String::new())}
+            const LEN: usize = -(-$( ret_one(&$y) )-+) as _;
+            static LAST: [Mutex<String>; LEN] = [$( ret_mutex(&$y) ),+];
+            async fn trigger2((name, desc, url): (&str, &str, &str), i: usize){
+                let v = care!(fetch_text(str2req(url)).await, return);
+                dbg!(&v);
+                let v = v.rsplit_once(".nupkg").and_then(|v| v.0.rsplit_once('/')); // TODO
+                let v = care!(v.e(), return).1;
+                let mut last = LAST[i].lock().unwrap();
+                if last.is_empty() {
+                    *last = v.to_string();
+                } else if *last != v {
+                    *last = v.to_string();
+                    drop(last); // avoid the mutex guard alive cross await point
+                    care!(fake_notify(&format!("{name} {v} released!\n\n{desc}")).await, ());
+                    // care!(notify(&v.to_lowercase()).await, ());
+                }
+            }
+            let mut i = 0;
+            tokio::join!($( trigger2($y, #[allow(unused_assignments)] { let ret = i; i += 1; ret }) ),+);
+        };
+    }
+    foo!(
+        ("Chrome", "Chrome is the official web browser from Google, built to be fast, secure, and customizable.", "https://archlinux.org/packages/extra/x86_64/chromium/json/"),
+        ("Firefox", "The browsers that put your privacy first — and always have.", "https://archlinux.org/packages/extra/x86_64/firefox/json/"),
+        ("VSCode", "Code editing. Redefined.", "https://archlinux.org/packages/extra/x86_64/code/json/"),
+        ("Python", "Python is a programming language that lets you work quickly and integrate systems more effectively.", "https://archlinux.org/packages/core/x86_64/python/json/"),
+        ("Rust", "A language empowering everyone to build reliable and efficient software.", "https://archlinux.org/packages/extra/x86_64/rust/json/"),
+        ("Golang", "Build simple, secure, scalable systems with Go.", "https://archlinux.org/packages/extra/x86_64/go/json/")
     );
 }
 
 /*
+https://archlinux.org/packages/?sort=&q=chromium&maintainer=&flagged=
 https://api.winget.run/v2/packages/Google/Chrome
 https://github.com/ScoopInstaller/Extras/blob/master/bucket/vscode.json
 https://github.com/ScoopInstaller/Main/blob/master/bucket/rust.json

@@ -12,10 +12,12 @@ pub static DB: Lazy<Mutex<Connection>> = Lazy::new(|| {
     // "/home/kkocdko/misc/code/ksite/.vscode/bak/ksite.db".into()
     let db = Connection::open(file_path()).unwrap();
     // https://www.sqlite.org/speed.html
+    // https://www.sqlite.org/optoverview.html
     // https://www.sqlite.org/pragma.html#pragma_journal_mode
     // https://www.sqlite.org/withoutrowid.html
     // https://www.sqlite.org/pragma.html#pragma_optimize
     // https://github.com/rusqlite/rusqlite/issues/393#issuecomment-1313587354
+    // https://www.powersync.co/blog/sqlite-optimizations-for-ultra-high-performance
     let sqls = [
         // improve writing by `WAL` mode, the `TRUNCATE` is alternative
         "PRAGMA journal_mode=WAL",

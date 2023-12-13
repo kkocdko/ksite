@@ -15,15 +15,13 @@ pub fn service() -> Router {
     Router::new()
         .route(
             "/meet",
-            MethodRouter::new().get(|| async {
-                (
-                    #[cfg(debug_assertions)]
-                    [(CACHE_CONTROL, HeaderValue::from_static("no-store"))],
-                    #[cfg(not(debug_assertions))]
-                    [(CACHE_CONTROL, HeaderValue::from_static("max-age=300"))],
-                    Html((include_src!("page.html") as [_; 1])[0]),
-                )
-            }),
+            MethodRouter::new().get((
+                #[cfg(debug_assertions)]
+                [(CACHE_CONTROL, HeaderValue::from_static("no-store"))],
+                #[cfg(not(debug_assertions))]
+                [(CACHE_CONTROL, HeaderValue::from_static("max-age=300"))],
+                Html((include_src!("page.html") as [_; 1])[0]),
+            )),
         )
         .route("/meet/post/:room", CHAT_SERVER.post_router())
         .route("/meet/sse/:room", CHAT_SERVER.sse_router())
