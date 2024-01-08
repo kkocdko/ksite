@@ -1,21 +1,14 @@
 use anyhow::Result;
+use axum::body::Body;
 use axum::body::Bytes;
-use axum::http::header::HeaderMap;
-use axum::response::{IntoResponse, Response};
-use hyper::body::HttpBody;
-use hyper::{Body, Request};
+use axum::http::header::HOST;
+use axum::http::Request;
 use std::future::Future;
-use std::pin::Pin;
 use std::sync::OnceLock;
-use std::task::ready;
-use std::task::{Context, Poll};
 use std::time::Duration;
 use std::time::UNIX_EPOCH;
-use tokio::fs::File;
-use tokio::io;
-use tokio::sync::mpsc;
 
-/// [`std::sync::LazyLock`](https://doc.rust-lang.org/stable/std/sync/struct.LazyLock.html)
+/// While [`std::sync::LazyLock`](https://doc.rust-lang.org/stable/std/sync/struct.LazyLock.html) is still not in stable.
 pub struct LazyLock<T> {
     f: fn() -> T,
     v: OnceLock<T>,
@@ -131,50 +124,35 @@ pub fn html_escape(v: &str) -> String {
 
 pub fn str2req(s: impl AsRef<str>) -> Request<Body> {
     let uri = encode_uri(s.as_ref());
-    Request::get(uri).body(Body::empty()).unwrap()
+    let uri = axum::http::Uri::try_from(uri).unwrap();
+    Request::get(&uri)
+        .header(HOST, uri.host().unwrap())
+        .body(Body::empty())
+        .unwrap()
 }
 
-/// Send a `Request` and return the response. Allow both HTTPS and HTTP.
-///
-/// This function is used to replace `reqwest` crate to reduce binary size.
-/// But unlike `reqwest`, this function dose not follow redirect.
-pub use tlsimple::fetch;
+// The HTTP/HTTPS client.
+pub static CLIENT: LazyLock<tls_http::Client> = LazyLock::new(tls_http::Client::default);
 
 /// Fetch a URI, returns as `Vec<u8>`.
-pub async fn fetch_data(request: Request<Body>) -> Result<Vec<u8>> {
-    // Simpler than `hyper::body::to_bytes`.
-    async fn read_body(mut body: Body) -> Vec<u8> {
-        // TODO: reimplement?
-        let mut v = Vec::new();
-        while let Some(Ok(bytes)) = body.data().await {
-            v.append(&mut bytes.into());
-            // 2 MiB
-            if v.len() > 2048 * 1024 {
-                v.clear();
-                break;
-            }
-        }
-        v
-    }
-    let response = fetch(request).await?;
-    let body = read_body(response.into_body()).await;
-    // log!("finish: {a}");
-    Ok(body)
+pub async fn fetch_data(req: Request<Body>) -> Result<Bytes> {
+    let res = CLIENT.fetch(req).await?;
+    let body = res.into_body();
+    Ok(axum::body::to_bytes(axum::body::Body::new(body), usize::MAX).await?)
 }
 
-/// Fetch a URI, returns as text.
+/// Fetch a URI, returns as `String`.
 pub async fn fetch_text(request: Request<Body>) -> Result<String> {
     let body = fetch_data(request).await?;
-    Ok(String::from_utf8(body)?)
+    Ok(String::from_utf8(Vec::from(body))?)
 }
 
-/// Fetch a URI which response json, get field by pointer.
+/// Fetch a URI which response json, get field by pointer. Value will be convert to string always.
 ///
 /// # Examples
 ///
 /// ```
-/// // value will be convert to string, the field type is not cared
-/// let v = await fetch_json("https://api.io", "/data/size"));
+/// let v = await fetch_json("https://example.com", "/data/size"));
 /// // is this? { "data": { "size": "1024" } }
 /// // or this? { "data": { "size": 1024 } }
 /// assert_eq!(v, Ok("1024".to_string())); // the same result!
@@ -187,101 +165,6 @@ pub async fn fetch_json(request: Request<Body>, pointer: &str) -> Result<String>
         .ok_or_else(|| anyhow::anyhow!("json field not found"))?
         .to_string();
     Ok(v.trim_matches('"').to_owned())
-}
-
-pub struct MpscResponse<E: Send = io::Error>(mpsc::Receiver<Result<Bytes, E>>);
-
-impl<E: Send> MpscResponse<E> {
-    pub fn new(rx: mpsc::Receiver<Result<Bytes, E>>) -> Self {
-        Self(rx)
-    }
-}
-
-impl<E: Send> HttpBody for MpscResponse<E> {
-    type Data = Bytes;
-    type Error = E;
-
-    fn poll_data(
-        self: Pin<&mut Self>,
-        cx: &mut Context,
-    ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
-        let rx = self.get_mut();
-        let mut rx = Pin::new(&mut rx.0);
-        match ready!(rx.poll_recv(cx)) {
-            Some(v) => Poll::Ready(Some(v)),
-            None => Poll::Ready(None),
-        }
-    }
-
-    fn poll_trailers(
-        self: Pin<&mut Self>,
-        _: &mut Context,
-    ) -> Poll<Result<Option<HeaderMap>, Self::Error>> {
-        Poll::Ready(Ok(None))
-    }
-}
-
-impl<E> IntoResponse for MpscResponse<E>
-where
-    E: Into<axum::BoxError> + Send + 'static,
-{
-    fn into_response(self) -> Response {
-        Response::new(axum::body::boxed(self))
-    }
-}
-
-// https://docs.rs/tower-http/0.3.5/tower_http/services/struct.ServeFile.html
-
-pub struct FileResponse {
-    file: File,
-    buf: Vec<u8>,
-}
-
-impl FileResponse {
-    const BUF_CAPACITY: usize = 16384 + 64;
-
-    pub fn new(file: File) -> Self {
-        FileResponse {
-            file,
-            buf: Vec::with_capacity(Self::BUF_CAPACITY),
-        }
-    }
-}
-
-impl HttpBody for FileResponse {
-    type Data = Bytes;
-    type Error = io::Error;
-
-    fn poll_data(
-        self: Pin<&mut Self>,
-        cx: &mut Context,
-    ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
-        let Self { file, buf } = self.get_mut();
-        let file = Pin::new(file);
-        match ready!(tokio_util::io::poll_read_buf(file, cx, buf))? {
-            0 => Poll::Ready(None),
-            _ => {
-                // if buf.len() != Self::BUF_CAPACITY {
-                //     dbg!(buf.len());
-                // }
-                let next_buf = Vec::with_capacity(Self::BUF_CAPACITY);
-                Poll::Ready(Some(Ok(std::mem::replace(buf, next_buf).into())))
-            }
-        }
-    }
-
-    fn poll_trailers(
-        self: Pin<&mut Self>,
-        _: &mut Context,
-    ) -> Poll<Result<Option<HeaderMap>, Self::Error>> {
-        Poll::Ready(Ok(None))
-    }
-}
-
-impl IntoResponse for FileResponse {
-    fn into_response(self) -> Response {
-        Response::new(axum::body::boxed(self))
-    }
 }
 
 /// (stamp secs) -> (days)

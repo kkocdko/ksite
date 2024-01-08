@@ -8,8 +8,7 @@ use axum::routing::{MethodRouter, Router};
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
-// use once_cell::sync::Lazy;
-// static SYS_VER: Lazy<String> = Lazy::new(|| {
+// static SYS_VER: LazyLock<String> = LazyLock::new(|| {
 //     if cfg!(target_os = "linux") {
 //         std::fs::read_to_string("/proc/version").unwrap()
 //     } else {

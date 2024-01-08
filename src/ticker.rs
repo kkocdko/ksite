@@ -124,9 +124,9 @@ fn get_now() -> u64 {
 // TODO add fuzzle test
 #[allow(unused)]
 fn get_now_fake() -> i64 {
-    use once_cell::sync::Lazy;
+    use crate::utils::LazyLock;
 
-    static V: Lazy<AtomicI64> = Lazy::new(|| {
+    static V: LazyLock<AtomicI64> = LazyLock::new(|| {
         AtomicI64::new(
             httpdate::parse_http_date("Tue, 28 Feb 2023 02:27:50 GMT")
                 .unwrap()

@@ -2,7 +2,7 @@ use crate::utils::{elapse, fetch_json, fetch_text, str2req};
 use anyhow::Result;
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
-use once_cell::sync::Lazy;
+use crate::utils::LazyLock as Lazy;
 use rand::{thread_rng, Rng};
 use ricq::msg::{MessageChain, MessageElem};
 use std::collections::HashMap;

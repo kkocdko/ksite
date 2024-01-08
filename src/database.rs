@@ -1,4 +1,4 @@
-use once_cell::sync::Lazy;
+use crate::utils::LazyLock;
 use rusqlite::Connection;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -8,7 +8,7 @@ fn file_path() -> PathBuf {
     std::env::current_exe().unwrap().with_extension("db")
 }
 
-pub static DB: Lazy<Mutex<Connection>> = Lazy::new(|| {
+pub static DB: LazyLock<Mutex<Connection>> = LazyLock::new(|| {
     // "/home/kkocdko/misc/code/ksite/.vscode/bak/ksite.db".into()
     let db = Connection::open(file_path()).unwrap();
     // https://www.sqlite.org/speed.html

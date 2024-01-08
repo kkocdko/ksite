@@ -5,7 +5,7 @@ use crate::include_src;
 use axum::http::header::{HeaderValue, CACHE_CONTROL};
 use axum::response::Html;
 use axum::routing::{MethodRouter, Router};
-use once_cell::sync::Lazy;
+use crate::utils::LazyLock as Lazy;
 
 static CHAT_SERVER: Lazy<ChatServer> = Lazy::new(Default::default);
 

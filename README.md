@@ -4,15 +4,21 @@ All in one solution for my server.
 
 ## TODO
 
-### 0.9.2
+### 0.10.1
+
+- fast uint to uint map.
+
+### 0.11.0
+
+- `units::oss`: webdav + static serve + pastebin + account.
+
+- `crate::database` an simple wrapper / orm, try proc-macro.
+
+- `crate::database` pre-compile the sql statements and remove sql compiler in sqlite.
 
 - `crate::log` lightweight logging, use `httpdate`. provide a log viewer.
 
-### 0.10.1
-
 - functions like frp
-
-- `units::paste` better performance.
 
 - `units::meet` supports real-time cloud record.
 
@@ -27,12 +33,6 @@ All in one solution for my server.
 - `units::paste_next` (see the comments in its code).
 
 - `units::?` convert office files to PDF by ms office rpc?
-
-### 0.10.0
-
-- `crate::database` an simple wrapper / orm, try proc-macro.
-
-- `crate::database` pre-compile the sql statements and remove sql compiler in sqlite.
 
 ## Build
 

@@ -1,19 +1,19 @@
 // Provide auth middleware.
 
 use crate::include_src;
-use crate::units::admin::db as db_admin;
+use crate::units::admin;
+use crate::utils::LazyLock;
 use axum::body::{Body, Bytes};
 use axum::http::header::{HeaderValue, COOKIE};
 use axum::http::{Request, StatusCode};
 use axum::middleware::Next;
 use axum::response::{Html, IntoResponse, Response};
-use once_cell::sync::Lazy;
 use std::io::Write as _;
 
-static AUTH_COOKIE: Lazy<HeaderValue> = Lazy::new(|| {
+static AUTH_COOKIE: LazyLock<HeaderValue> = LazyLock::new(|| {
     let mut inner = Vec::new();
     inner.extend(b"auth=");
-    match db_admin::get("auth_key") {
+    match admin::db::get("auth_key") {
         Some(v) => inner.extend(v.as_slice()),
         None => write!(&mut inner, "{:x}", rand::random::<u128>()).unwrap(),
     }
@@ -25,7 +25,7 @@ pub fn auth_key() -> &'static str {
     AUTH_COOKIE.to_str().unwrap().split_once('=').unwrap().1
 }
 
-pub async fn auth_layer(req: Request<Body>, next: Next<Body>) -> Response {
+pub async fn auth_layer(req: Request<Body>, next: Next) -> Response {
     const AUTH_PAGE: &str = (include_src!("auth.html") as [_; 1])[0];
     match req
         .headers()

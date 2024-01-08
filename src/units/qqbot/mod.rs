@@ -2,6 +2,7 @@
 
 mod commands;
 use crate::auth::auth_layer;
+use crate::utils::LazyLock;
 use crate::utils::{fetch_text, log_escape, str2req, OptionResult};
 use crate::{care, include_src, log, ticker};
 use anyhow::Result;
@@ -10,12 +11,10 @@ use axum::extract::RawQuery;
 use axum::middleware;
 use axum::response::Html;
 use axum::routing::{MethodRouter, Router};
-use once_cell::sync::Lazy;
 use ricq::client::{Connector as _, DefaultConnector, NetworkStatus};
 use ricq::handler::QEvent;
 use ricq::msg::MessageChain;
 use ricq::{Client, Device, LoginResponse, Protocol, QRCodeState};
-use std::cell::Cell;
 use std::fmt::Write as _;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, UNIX_EPOCH};
@@ -99,7 +98,7 @@ macro_rules! push_log {
 }
 
 static QR: Mutex<Bytes> = Mutex::new(Bytes::new());
-static CLIENT: Lazy<Arc<Client>> = Lazy::new(|| {
+static CLIENT: LazyLock<Arc<Client>> = LazyLock::new(|| {
     push_log!("init client");
     let device = match db::cfg_get_str(db::K_DEVICE) {
         Some(v) => serde_json::from_str(&v).unwrap(),
@@ -112,41 +111,6 @@ static CLIENT: Lazy<Arc<Client>> = Lazy::new(|| {
             device
         }
     };
-    // android watch + android pad
-    const _MIXED_VER_INFO: ricq::version::Version = ricq::version::Version {
-        apk_id: "com.tencent.mobileqq",
-        app_id: 537118044,
-        sub_app_id: 537118044,
-        sort_version_name: "8.8.88.7083",
-        build_ver: "8.8.88.7083",
-        build_time: 1648004515,
-        apk_sign: &[
-            0xA6, 0xB7, 0x45, 0xBF, 0x24, 0xA2, 0xC2, 0x77, 0x52, 0x77, 0x16, 0xF6, 0xF3, 0x6E,
-            0xB6, 0x8D,
-        ],
-        sdk_version: "6.0.0.2497",
-        sso_version: 18,
-        misc_bitmap: 150470524,
-        sub_sig_map: 66560,
-        main_sig_map: 16724722,
-        protocol: Protocol::AndroidPad,
-    };
-    // {
-    //     "apk_id": "com.tencent.mobileqq",
-    //     "app_id": 537118044,
-    //     "sub_app_id": 537118044,
-    //     "app_key": "0S200MNJT807V3GE",
-    //     "sort_version_name": "8.8.88.7083",
-    //     "build_time": 1648004515,
-    //     "apk_sign": "a6b745bf24a2c277527716f6f36eb68d",
-    //     "sdk_version": "6.0.0.2497",
-    //     "sso_version": 18,
-    //     "misc_bitmap": 150470524,
-    //     "main_sig_map": 16724722,
-    //     "sub_sig_map": 66560,
-    //     "dump_time": 1683193286,
-    //     "protocol_type": 6
-    //   }
     let client = Arc::new(Client::new(
         device,
         Protocol::AndroidWatch.into(),
@@ -361,49 +325,35 @@ pub fn service() -> Router {
 }
 
 pub async fn tick() {
-    use std::sync::Mutex;
-    // ticker!(8, "XX:08:00", "XX:38:00");
-
-    // db::log_clean();
-    // Python is a programming language that lets you work quickly and integrate systems more effectively.
-
-    async fn fake_notify(msg: &str) -> Result<()> {
-        // log!(INFO: "fake_notify msg = {msg}");
-        Ok(())
-    }
-    dbg!(
-        fetch_text(str2req(
-            "https://archlinux.org/packages/extra/x86_64/chromium/json/"
-        ))
-        .await
-    );
-    return;
-    macro_rules! foo {
+    ticker!(8, "XX:08:00", "XX:38:00");
+    macro_rules! magic_macro {
         ( $($y:expr),+ ) => {
             const fn ret_one<T>(_:&T)->i32{1}
             const fn ret_mutex<T>(_:&T)->Mutex<String>{Mutex::new(String::new())}
             const LEN: usize = -(-$( ret_one(&$y) )-+) as _;
             static LAST: [Mutex<String>; LEN] = [$( ret_mutex(&$y) ),+];
+            #[allow(clippy::await_holding_lock)] // due to an bug in clippy, this lint all cause false positive
             async fn trigger2((name, desc, url): (&str, &str, &str), i: usize){
                 let v = care!(fetch_text(str2req(url)).await, return);
-                dbg!(&v);
+                // dbg!(&v);
                 let v = v.rsplit_once(".nupkg").and_then(|v| v.0.rsplit_once('/')); // TODO
                 let v = care!(v.e(), return).1;
                 let mut last = LAST[i].lock().unwrap();
                 if last.is_empty() {
                     *last = v.to_string();
+                    drop(last);
                 } else if *last != v {
                     *last = v.to_string();
                     drop(last); // avoid the mutex guard alive cross await point
-                    care!(fake_notify(&format!("{name} {v} released!\n\n{desc}")).await, ());
-                    // care!(notify(&v.to_lowercase()).await, ());
+                    let msg = format!("{name} {v} released!\n\n{desc}");
+                    care!(notify(&msg).await, ());
                 }
             }
             let mut i = 0;
             tokio::join!($( trigger2($y, #[allow(unused_assignments)] { let ret = i; i += 1; ret }) ),+);
         };
     }
-    foo!(
+    magic_macro!(
         ("Chrome", "Chrome is the official web browser from Google, built to be fast, secure, and customizable.", "https://archlinux.org/packages/extra/x86_64/chromium/json/"),
         ("Firefox", "The browsers that put your privacy first — and always have.", "https://archlinux.org/packages/extra/x86_64/firefox/json/"),
         ("VSCode", "Code editing. Redefined.", "https://archlinux.org/packages/extra/x86_64/code/json/"),

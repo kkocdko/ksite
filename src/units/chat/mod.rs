@@ -9,7 +9,7 @@ use axum::response::sse::{Event as SseEvent, Sse};
 use axum::response::Html;
 use axum::routing::{MethodRouter, Router};
 use futures_core::Stream;
-use once_cell::sync::Lazy;
+use crate::utils::LazyLock as Lazy;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;

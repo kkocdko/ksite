@@ -1,15 +1,17 @@
 //! Lazy mirror for caching linux distros' packages.
 
-use crate::utils::{fetch, log_escape, str2req, with_retry, FileResponse, MpscResponse};
+use crate::utils::LazyLock as Lazy;
+use crate::utils::{log_escape, str2req, with_retry, CLIENT};
 use crate::{care, include_src, log};
 use axum::body::HttpBody;
 use axum::extract::Path;
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{MethodRouter, Router};
-use once_cell::sync::Lazy;
 use std::fmt::Write as _;
+use std::future::poll_fn;
 use std::path::PathBuf;
+use std::pin::Pin;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
@@ -89,11 +91,13 @@ fn gen_file_path(rowid: u64) -> PathBuf {
 }
 
 async fn handle(req_path: &str, target: String) -> Response {
-    let fetch_target = || async { care!(with_retry(|| fetch(str2req(&target)), 3, 500).await) };
+    let fetch_target =
+        || async { care!(with_retry(|| CLIENT.fetch(str2req(&target)), 3, 500).await) };
     let db_get_result = db::get(req_path);
     if let Some((rowid, true)) = db_get_result {
         let file = File::open(gen_file_path(rowid)).await.unwrap();
-        return FileResponse::new(file).into_response();
+        let reader_stream = tokio_util::io::ReaderStream::new(file);
+        return axum::body::Body::from_stream(reader_stream).into_response();
     }
     if db_get_result.is_some() {
         return match fetch_target().await {
@@ -117,11 +121,13 @@ async fn handle(req_path: &str, target: String) -> Response {
         let rowid = db::get(&req_path).unwrap().0;
         let file_path = gen_file_path(rowid);
         let mut file = File::create(&file_path).await.unwrap();
-        while let Some(result) = body.data().await {
+        while let Some(result) = poll_fn(|cx| Pin::new(&mut body).poll_frame(cx)).await {
             match result {
-                Ok(buf) => {
-                    file.write_all(&buf).await.unwrap();
-                    tx.send(Ok(buf)).await.ok(); // ignore error if rx closed
+                Ok(frame) if !frame.is_data() => {}
+                Ok(frame) => {
+                    let data = frame.into_data().unwrap();
+                    file.write_all(&data).await.unwrap();
+                    tx.send(Ok(data)).await.ok(); // ignore error if rx closed
                 }
                 Err(e) => {
                     log!(ERRO : "{e:?}");
@@ -139,7 +145,8 @@ async fn handle(req_path: &str, target: String) -> Response {
         }
         db::set_finished(&req_path);
     });
-    MpscResponse::new(rx).into_response()
+    let rx_stream = tokio_stream::wrappers::ReceiverStream::new(rx);
+    axum::body::Body::from_stream(rx_stream).into_response()
 }
 
 pub fn service() -> Router {

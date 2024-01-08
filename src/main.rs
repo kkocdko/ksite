@@ -3,7 +3,6 @@ mod database;
 // mod governor;
 mod launcher;
 mod ticker;
-mod tls;
 mod units;
 mod utils;
 use std::net::SocketAddr;
@@ -11,30 +10,6 @@ use std::time::Duration;
 
 // #[global_allocator]
 // static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc; // or rpmalloc::RpMalloc
-
-async fn aa() {
-    use std::sync::Mutex;
-    // static LIST: [(&str, Mutex<String>); -(0 - 1 - 1) as _] = [
-    //     ("a", Mutex::new(String::new())),
-    //     ("b", Mutex::new(String::new())),
-    // ];
-    macro_rules! foo {
-        ( $($y:expr),+ ) => {
-            const fn ret_one<T>(_:&T)->i32{1}
-            const fn ret_mutex<T>(_:&T)->Mutex<String>{Mutex::new(String::new())}
-            const LEN: usize = -(-$( ret_one(&$y) )-+) as _;
-            static LAST: [Mutex<String>; LEN] = [$( ret_mutex(&$y) ),+];
-            async fn what(i:usize){
-                let last = LAST[i].lock().unwrap();
-            }
-            tokio::join!(
-                $( what(ret_one(&$y) as _) ),+
-            );
-        };
-    }
-    foo!(1, 1, 4, 5, 1, 4);
-    // https://github.com/rust-lang/rust/issues/83527
-}
 
 fn main() {
     launcher::launch(run);
@@ -60,33 +35,56 @@ async fn run() {
             .merge(units::paste::service())
             // .merge(units::paste_next::service())
             // .merge(units::proxy::service())
-            .merge(units::qqbot::service());
+            // .merge(units::qqbot::service())
+            ;
         // .layer(middleware::from_fn(governor::governor_layer))
         // .into_make_service_with_connect_info::<SocketAddr>();
         log!("auth key = {}", auth::auth_key());
         let addr = SocketAddr::from(([0, 0, 0, 0], 9304)); // server address here
         log!("server address = {addr}");
-        axum::Server::bind(&addr)
-            .serve(app.into_make_service())
-            .await
-            .unwrap();
-        // tls::serve(&addr, app).await;
+        let tcp_listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+        let tls_config = {
+            use crate::units::admin;
+            fn get_with_warn(k: &str, default: &[u8]) -> Vec<u8> {
+                admin::db::get(k).unwrap_or_else(|| {
+                    log!(WARN: "using default cert and key");
+                    Vec::from(default)
+                })
+            }
+            mod default_cert {
+                include!("tls.defaults.rs");
+            }
+            let tls_cert_der = get_with_warn("ssl_cert", default_cert::CERT);
+            let tls_key_der = get_with_warn("ssl_key", default_cert::KEY);
+            let mut tls_config = tls_http::ServerConfig::builder()
+                .with_no_client_auth()
+                .with_single_cert(
+                    vec![tls_http::CertificateDer::from(tls_cert_der)],
+                    tls_http::PrivatePkcs8KeyDer::from(tls_key_der).into(),
+                )
+                .unwrap();
+            tls_config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()]; // HTTP2 needs hyper features = ["http2"]
+            tls_config
+        };
+        tls_http::serve(tcp_listener, app, tls_config).await;
     };
 
     let oscillator = async {
         const INTERVAL: Duration = Duration::from_secs(60);
         const TIMEOUT: Duration = Duration::from_secs(45);
         log!("oscillator interval = {INTERVAL:?}, timeout = {TIMEOUT:?}");
+
         async fn tasks() {
             tokio::join!(
-                units::magazine::tick(),
                 // units::paste_next::tick(),
-                units::qqbot::tick()
+                // units::qqbot::tick(),
+                units::magazine::tick(),
+                units::v2exdaily::tick()
             );
         }
         let mut interval = tokio::time::interval(INTERVAL);
         loop {
-            units::qqbot::tick().await;
+            // units::qqbot::tick().await;
             interval.tick().await;
             care!(tokio::time::timeout(TIMEOUT, tasks()).await).ok();
             // let stamp = httpdate::fmt_http_date(std::time::SystemTime::now());
