@@ -97,7 +97,7 @@ pub const fn parse_patterns<const N: usize>(
                     cfgs[i].$vidx = ANY;
                 } else {
                     assert!(b'0' <= p[$pidx] && p[$pidx] < b'9');
-                    assert!(b'0' <= p[$pidx + 1] && p[$pidx + 1] < b'9');
+                    assert!(b'0' <= p[$pidx + 1] && p[$pidx + 1] <= b'9');
                     cfgs[i].$vidx += (p[$pidx] - b'0') as u64 * 10;
                     cfgs[i].$vidx += (p[$pidx + 1] - b'0') as u64;
                 }

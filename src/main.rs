@@ -36,7 +36,7 @@ async fn run() {
             // .merge(units::paste_next::service())
             // .merge(units::proxy::service())
             // .merge(units::qqbot::service())
-            ;
+        ;
         // .layer(middleware::from_fn(governor::governor_layer))
         // .into_make_service_with_connect_info::<SocketAddr>();
         log!("auth key = {}", auth::auth_key());
@@ -73,18 +73,11 @@ async fn run() {
         const INTERVAL: Duration = Duration::from_secs(60);
         const TIMEOUT: Duration = Duration::from_secs(45);
         log!("oscillator interval = {INTERVAL:?}, timeout = {TIMEOUT:?}");
-
         async fn tasks() {
-            tokio::join!(
-                // units::paste_next::tick(),
-                // units::qqbot::tick(),
-                units::magazine::tick(),
-                units::v2exdaily::tick()
-            );
+            tokio::join!(units::magazine::tick(), units::v2exdaily::tick(),);
         }
         let mut interval = tokio::time::interval(INTERVAL);
         loop {
-            // units::qqbot::tick().await;
             interval.tick().await;
             care!(tokio::time::timeout(TIMEOUT, tasks()).await).ok();
             // let stamp = httpdate::fmt_http_date(std::time::SystemTime::now());

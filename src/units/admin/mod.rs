@@ -69,6 +69,9 @@ async fn post_handler(q: RawQuery, body: Bytes) {
         "set_ssl_key" => {
             db::set("ssl_key", &body);
         }
+        "set_v2ex_cookies" => {
+            db::set("v2ex_cookies", &body);
+        }
         _ => {
             log!(ERRO: "units::admin unknown op");
         }
