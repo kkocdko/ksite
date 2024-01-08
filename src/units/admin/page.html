@@ -72,6 +72,6 @@
     } else {
       body = $v.value;
     }
-    await fetch(`/admin?${$k.value}`, { method: "post", body });
+    await fetch(`/admin?${$k.value.split(" ")[0]}`, { method: "post", body });
   };
 </script>

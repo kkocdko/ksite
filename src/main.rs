@@ -54,14 +54,33 @@ async fn run() {
             mod default_cert {
                 include!("tls.defaults.rs");
             }
-            let tls_cert_der = get_with_warn("ssl_cert", default_cert::CERT);
-            let tls_key_der = get_with_warn("ssl_key", default_cert::KEY);
+            fn find_subsequence<T>(haystack: &[T], needle: &[T]) -> Option<usize>
+            where
+                for<'a> &'a [T]: PartialEq,
+            {
+                haystack
+                    .windows(needle.len())
+                    .position(|window| window == needle)
+            }
+            let cert = get_with_warn("ssl_cert", default_cert::CERT);
+            let cert = tls_http::CertificateDer::from(cert);
+            let key = get_with_warn("ssl_key", default_cert::KEY);
+            let key = match () {
+                // https://oidref.com/1.2.840.113549.1.1
+                // https://stackoverflow.com/q/5929050/
+                _ if find_subsequence(&key, &[42, 134, 72, 134, 247, 13, 1]).is_some() => {
+                    tls_http::PrivatePkcs8KeyDer::from(key).into()
+                }
+                _ if find_subsequence(&key, &[2, 130, 1, 1, 0]).is_some() => {
+                    tls_http::PrivatePkcs1KeyDer::from(key).into()
+                }
+                _ => {
+                    unimplemented!("unknown type of private key")
+                }
+            };
             let mut tls_config = tls_http::ServerConfig::builder()
                 .with_no_client_auth()
-                .with_single_cert(
-                    vec![tls_http::CertificateDer::from(tls_cert_der)],
-                    tls_http::PrivatePkcs8KeyDer::from(tls_key_der).into(),
-                )
+                .with_single_cert(vec![cert], key)
                 .unwrap();
             tls_config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()]; // HTTP2 needs hyper features = ["http2"]
             tls_config
@@ -74,7 +93,11 @@ async fn run() {
         const TIMEOUT: Duration = Duration::from_secs(45);
         log!("oscillator interval = {INTERVAL:?}, timeout = {TIMEOUT:?}");
         async fn tasks() {
-            tokio::join!(units::magazine::tick(), units::v2exdaily::tick(),);
+            tokio::join!(
+                // units::qqbot::tick(),
+                units::magazine::tick(),
+                units::v2exdaily::tick(),
+            );
         }
         let mut interval = tokio::time::interval(INTERVAL);
         loop {
