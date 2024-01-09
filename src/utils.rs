@@ -57,7 +57,11 @@ impl<T> OptionResult<T> for Option<T> {
     }
 }
 
-pub async fn with_retry<T, E, FUT>(f: impl Fn() -> FUT, limit: usize, interval: u64) -> Result<T, E>
+pub async fn with_retry<T, E, FUT>(
+    f: impl Fn() -> FUT,
+    limit: usize,
+    interval_ms: u64,
+) -> Result<T, E>
 where
     E: std::fmt::Debug,
     FUT: Future<Output = Result<T, E>>,
@@ -68,7 +72,7 @@ where
             Ok(v) => return Ok(v),
             Err(e) => err = Some(e),
         };
-        tokio::time::sleep(Duration::from_millis(interval)).await;
+        tokio::time::sleep(Duration::from_millis(interval_ms)).await;
     }
     Err(err.unwrap())
 }

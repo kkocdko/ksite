@@ -92,7 +92,7 @@ fn gen_file_path(rowid: u64) -> PathBuf {
 
 async fn handle(req_path: &str, target: String) -> Response {
     let fetch_target =
-        || async { care!(with_retry(|| CLIENT.fetch(str2req(&target)), 3, 500).await) };
+        || async { care!(with_retry(|| CLIENT.fetch(str2req(&target), None), 3, 500).await) };
     let db_get_result = db::get(req_path);
     if let Some((rowid, true)) = db_get_result {
         let file = File::open(gen_file_path(rowid)).await.unwrap();
