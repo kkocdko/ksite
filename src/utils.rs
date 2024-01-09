@@ -132,11 +132,12 @@ pub fn str2req(s: impl AsRef<str>) -> Request<Body> {
 }
 
 // The HTTP/HTTPS client.
-pub static CLIENT: LazyLock<tls_http::Client> = LazyLock::new(tls_http::Client::default);
+pub static CLIENT: LazyLock<tls_http::Client> =
+    LazyLock::new(tls_http::Client::new_with_webpki_roots);
 
 /// Fetch a URI, returns as `Vec<u8>`.
 pub async fn fetch_data(req: Request<Body>) -> Result<Bytes> {
-    let res = CLIENT.fetch(req).await?;
+    let res = CLIENT.fetch(req, None).await?;
     let body = res.into_body();
     Ok(axum::body::to_bytes(axum::body::Body::new(body), usize::MAX).await?)
 }

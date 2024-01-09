@@ -51,8 +51,22 @@ impl std::error::Error for ClientError {}
 /// ```
 pub struct Client(pub Arc<ClientConfig>);
 
-impl Default for Client {
-    fn default() -> Self {
+impl Client {
+    pub fn new_without_verify() -> Self {
+        //         use tokio_rustls::rustls::client::danger::ServerCertVerifier;
+        //         struct EmptyVerifier;
+        //         impl ServerCertVerifier for EmptyVerifier{
+        // fn supported_verify_schemes(&self) -> Vec<tokio_rustls::rustls::SignatureScheme> {
+
+        // }
+        // fn
+        //         }
+        //         let tls_config = ClientConfig::builder().dangerous().with_custom_certificate_verifier(verifier)
+        //         Self(Arc::new(tls_config))
+        unimplemented!()
+    }
+
+    pub fn new_with_webpki_roots() -> Self {
         // let mut ca = Vec::new();
         // for entry in std::fs::read_dir("/etc/ssl/certs").unwrap() {
         //     let entry = entry.unwrap();
@@ -76,17 +90,21 @@ impl Default for Client {
         // }
         // let config = TlsConfig::new_client(Some(ca));
         // let config = TlsConfig::new_client(None);
-        let tls_config = ClientConfig::builder()
+        let mut tls_config = ClientConfig::builder()
             .with_root_certificates(RootCertStore {
                 roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
             })
             .with_no_client_auth();
+        tls_config.alpn_protocols = vec![b"http/1.1".to_vec()];
+        tls_config.enable_sni = false;
         Self(Arc::new(tls_config))
     }
-}
 
-impl Client {
-    pub async fn fetch<B>(&self, req: Request<B>) -> Result<Response<Incoming>, ClientError>
+    pub async fn fetch<B>(
+        &self,
+        req: Request<B>,
+        resolved: Option<String>,
+    ) -> Result<Response<Incoming>, ClientError>
     where
         B: Body + 'static + Send,
         B::Data: Send,
@@ -107,7 +125,7 @@ impl Client {
             None if scheme == Some(&Scheme::HTTPS) => host_and_port += "443",
             None => panic!("unsupported scheme"),
         };
-        let tcp_stream = tokio::net::TcpStream::connect(host_and_port).await?;
+        let tcp_stream = tokio::net::TcpStream::connect(resolved.unwrap_or(host_and_port)).await?;
 
         if scheme == Some(&Scheme::HTTP) {
             let io = TokioIo::new(tcp_stream);
