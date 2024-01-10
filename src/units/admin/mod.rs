@@ -69,6 +69,15 @@ async fn post_handler(q: RawQuery, body: Bytes) {
         "set_ssl_key" => {
             db::set("ssl_key", &body);
         }
+        "set_qqbot_device" => {
+            db::set("qqbot_device", &body);
+        }
+        "set_qqbot_token" => {
+            db::set("qqbot_token", &body);
+        }
+        "set_qqbot_notify_groups" => {
+            db::set("qqbot_notify_groups", &body);
+        }
         "set_v2ex_cookies" => {
             db::set("v2ex_cookies", &body);
         }

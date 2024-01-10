@@ -33,14 +33,14 @@ impl<T> std::ops::Deref for LazyLock<T> {
 #[macro_export]
 macro_rules! log {
     // TRAC | INFO | WARN | ERRO
-    ($level:tt : $($arg:tt)*) => {
+    ($level:tt : $($arg:tt)*) => {{
         let stamp = std::time::UNIX_EPOCH.elapsed().unwrap().as_secs() as u64;
         print!("[{stamp}:{}] ", stringify!($level));
         println!($($arg)*);
-    };
-    ($($arg:tt)*) => {
+    }};
+    ($($arg:tt)*) => {{
         $crate::log!(INFO : $($arg)*);
-    };
+    }};
 }
 
 pub trait OptionResult<T> {

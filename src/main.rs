@@ -16,10 +16,6 @@ fn main() {
 }
 
 async fn run() {
-    // return ticker::test2();
-    // return ticker::fuzzle_test().await;
-    // return units::paste_next::dev().await;
-
     log!("crate::run");
 
     // db_upgrade(); // uncomment this if we need to upgrade database
@@ -31,13 +27,13 @@ async fn run() {
             .merge(units::info::service())
             .merge(units::magazine::service())
             .merge(units::meet::service())
-            // .merge(units::mirror::service())
             .merge(units::paste::service())
-            // .merge(units::paste_next::service())
-            // .merge(units::proxy::service())
-            // .merge(units::qqbot::service())
-        ;
-        // .layer(middleware::from_fn(governor::governor_layer))
+            .merge(units::qqbot::service())
+            .route(
+                "/robots.txt",
+                axum::routing::MethodRouter::new().get("User-agent: *\nDisallow: /\n"),
+            );
+        // .layer(middleware::from_fn(governor::governor_layer));
         // .into_make_service_with_connect_info::<SocketAddr>();
         log!("auth key = {}", auth::auth_key());
         let addr = SocketAddr::from(([0, 0, 0, 0], 9304)); // server address here
@@ -94,8 +90,8 @@ async fn run() {
         log!("oscillator interval = {INTERVAL:?}, timeout = {TIMEOUT:?}");
         async fn tasks() {
             tokio::join!(
-                // units::qqbot::tick(),
                 units::magazine::tick(),
+                units::qqbot::tick(),
                 units::v2exdaily::tick(),
             );
         }

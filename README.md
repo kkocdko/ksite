@@ -6,11 +6,15 @@ All in one solution for my server.
 
 ### 0.10.1
 
+- `units::dav`: webdav + static serve + pastebin + account + remote download + mirror.
+
+- ticker 重写
+
 - fast uint to uint map.
 
 ### 0.11.0
 
-- `units::oss`: webdav + static serve + pastebin + account.
+- `units::reverse`: reverse proxy.
 
 - `crate::database` an simple wrapper / orm, try proc-macro.
 

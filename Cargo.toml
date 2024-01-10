@@ -41,10 +41,9 @@ serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "fs"] }
 tokio-util = { version = "0.7", features = ["io"] }
 tokio-stream = "0.1"
-# ricq = { rev = "034c12258e34160e8ae433761c1d3b59a67ba334", git = "https://github.com/lz1998/ricq" }
+ricq = { rev = "034c12258e34160e8ae433761c1d3b59a67ba334", git = "https://github.com/lz1998/ricq" }
 tls-http = { path = "src/crates/tls-http" }
 
 [patch.crates-io]
-# ricq = { path = "/home/kkocdko/misc/code/ricq/ricq" }
-# prost-build = { path = "src/crates/prost-gen" } # for `ricq-core`
+prost-build = { path = "src/crates/prost-gen" } # for `ricq-core`
 tracing = { path = "src/crates/tracing-fake" }

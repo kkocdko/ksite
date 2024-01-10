@@ -2,16 +2,16 @@
 
 mod commands;
 use crate::auth::auth_layer;
+use crate::units::admin;
 use crate::utils::LazyLock;
 use crate::utils::{fetch_text, log_escape, str2req, OptionResult};
 use crate::{care, include_src, log, ticker};
 use anyhow::Result;
 use axum::body::Bytes;
-use axum::extract::RawQuery;
 use axum::middleware;
 use axum::response::Html;
 use axum::routing::{MethodRouter, Router};
-use ricq::client::{Connector as _, DefaultConnector, NetworkStatus};
+use ricq::client::NetworkStatus;
 use ricq::handler::QEvent;
 use ricq::msg::MessageChain;
 use ricq::{Client, Device, LoginResponse, Protocol, QRCodeState};
@@ -19,124 +19,41 @@ use std::fmt::Write as _;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, UNIX_EPOCH};
 
-mod db {
-    use crate::database::DB;
-    use crate::strip_str;
-    pub const K_DEVICE: &str = "device_json";
-    pub const K_TOKEN: &str = "token_json";
-    pub const K_NOTIFY_GROUPS: &str = "notify_groups";
-    pub fn init() {
-        let db = DB.lock().unwrap();
-        let sqls = [
-            "CREATE TABLE IF NOT EXISTS qqbot_log (time INTEGER, content BLOB)",
-            "CREATE TABLE IF NOT EXISTS qqbot_cfg (k BLOB PRIMARY KEY, v BLOB)",
-            "INSERT OR IGNORE INTO qqbot_cfg VALUES (cast('notify_groups' AS BLOB), X'')",
-        ];
-        for sql in sqls {
-            let mut stmd = db.prepare(sql).unwrap();
-            stmd.execute(()).unwrap();
-        }
-        // format: notify_groups = b"7652318,17931963,123132"
-    }
-    pub fn log_insert(content: &str) {
-        let db = DB.lock().unwrap();
-        let sql = strip_str! {"
-            INSERT INTO qqbot_log VALUES (strftime('%s', 'now'), ?)
-        "};
-        let mut stmd = db.prepare_cached(sql).unwrap();
-        stmd.execute((content.as_bytes(),)).unwrap();
-    }
-    pub fn log_list() -> Vec<(u64, String)> {
-        let db = DB.lock().unwrap();
-        let sql = strip_str! {"
-            SELECT * FROM qqbot_log
-        "};
-        let mut stmd = db.prepare_cached(sql).unwrap();
-        stmd.query_map((), |r| {
-            Ok((r.get(0)?, String::from_utf8(r.get(1)?).unwrap()))
-        })
-        .unwrap()
-        .map(|v| v.unwrap())
-        .collect()
-    }
-    pub fn log_clean() {
-        let db = DB.lock().unwrap();
-        let sql = strip_str! {"
-            DELETE FROM qqbot_log WHERE strftime('%s', 'now') - time > 3600 * 24 * 3
-        "};
-        let mut stmd = db.prepare_cached(sql).unwrap();
-        stmd.execute(()).unwrap();
-    }
-    pub fn cfg_set(k: &str, v: &[u8]) {
-        let db = DB.lock().unwrap();
-        let sql = strip_str! {"
-            REPLACE INTO qqbot_cfg VALUES (?, ?)
-        "};
-        let mut stmd = db.prepare_cached(sql).unwrap();
-        stmd.execute((k.as_bytes(), v)).unwrap();
-    }
-    pub fn cfg_get(k: &str) -> Option<Vec<u8>> {
-        let db = DB.lock().unwrap();
-        let sql = strip_str! {"
-            SELECT v FROM qqbot_cfg WHERE k = ?
-        "};
-        let mut stmd = db.prepare_cached(sql).unwrap();
-        stmd.query_row((k.as_bytes(),), |r| r.get(0)).ok()
-    }
-    pub fn cfg_get_str(k: &str) -> Option<String> {
-        Some(String::from_utf8(cfg_get(k)?).unwrap())
-    }
-}
-
-fn push_log_(v: &str) {
-    db::log_insert(&log_escape(v));
-}
-macro_rules! push_log {
-    ($($arg:tt)*) => {{
-        push_log_(&format!($($arg)*));
-    }};
-}
-
 static QR: Mutex<Bytes> = Mutex::new(Bytes::new());
 static CLIENT: LazyLock<Arc<Client>> = LazyLock::new(|| {
-    push_log!("init client");
-    let device = match db::cfg_get_str(db::K_DEVICE) {
-        Some(v) => serde_json::from_str(&v).unwrap(),
+    log!(INFO: "init client");
+    let device = match admin::db::get("qqbot_device") {
+        Some(v) => serde_json::from_slice(&v).unwrap(),
         None => {
             let device = Device::random();
-            db::cfg_set(
-                db::K_DEVICE,
-                serde_json::to_string(&device).unwrap().as_bytes(),
-            );
+            let device_json = serde_json::to_string(&device).unwrap();
+            admin::db::set("qqbot_device", device_json.as_bytes());
             device
         }
     };
-    let client = Arc::new(Client::new(
-        device,
-        Protocol::AndroidWatch.into(),
-        on_event as fn(_) -> _,
-    ));
+    let client_ver = Protocol::AndroidWatch.into();
+    let client = Arc::new(Client::new(device, client_ver, on_event as fn(_) -> _));
     tokio::spawn(async {
-        tokio::time::sleep(Duration::from_millis(100)).await;
         let mut last = UNIX_EPOCH.elapsed().unwrap().as_secs();
         loop {
+            let addr = "msfwifi.3g.qq.com:8080";
+            let tcp_stream = tokio::net::TcpStream::connect(addr).await.unwrap();
             tokio::select! {
                 _ = async {
-                    CLIENT.start(DefaultConnector.connect(&CLIENT).await?).await;
-                    push_log!("offline, fn start returned");
-                    anyhow::Ok(())
+                    CLIENT.start(tcp_stream).await;
+                    log!(WARN: "offline, fn start returned");
                 } => {}
                 _ = async {
-                    launch().await?;
+                    tokio::time::sleep(Duration::from_millis(200)).await; // waiting for connected
+                    care!(launch().await);
                     CLIENT.do_heartbeat().await;
-                    push_log!("offline, fn do_heartbeat returned");
-                    anyhow::Ok(())
+                    log!(WARN: "offline, fn do_heartbeat returned");
                 } => {}
             };
             CLIENT.stop(NetworkStatus::Unknown);
             let now = UNIX_EPOCH.elapsed().unwrap().as_secs();
             if now - last < 30 {
-                push_log!("reconnection was stopped, overfrequency");
+                log!(WARN: "reconnection was stopped, overfrequency");
                 return;
             }
             last = now;
@@ -147,50 +64,43 @@ static CLIENT: LazyLock<Arc<Client>> = LazyLock::new(|| {
 });
 
 async fn launch() -> Result<()> {
-    // waiting for connected
-    while CLIENT.get_status() != NetworkStatus::Unknown as u8 {
-        tokio::time::sleep(Duration::from_millis(200)).await;
-    }
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    push_log!("server connected");
-
     // # Tips about Login
     // 1. Run on local host, login by qrcode.
     // 2. Run on remote, copy device_json and token_json to database.
     // 3. Restart remote server.
-    if let Some(v) = db::cfg_get_str(db::K_TOKEN) {
-        let token = serde_json::from_str(&v)?;
+    if let Some(v) = admin::db::get("qqbot_token") {
+        let token = serde_json::from_slice(&v)?;
         CLIENT.token_login(token).await?;
-        push_log!("login by token");
+        log!(INFO: "login by token");
     } else {
         let mut qr_resp = CLIENT.fetch_qrcode().await?;
         let mut img_sig = Bytes::new();
         loop {
             match qr_resp {
                 QRCodeState::ImageFetch(inner) => {
-                    push_log!("qrcode fetched");
+                    log!(INFO: "qrcode fetched");
                     *QR.lock().unwrap() = inner.image_data;
                     img_sig = inner.sig;
                 }
                 QRCodeState::Timeout => {
-                    push_log!("qrcode timeout");
+                    log!(INFO: "qrcode timeout");
                     qr_resp = CLIENT.fetch_qrcode().await?;
                     continue;
                 }
                 QRCodeState::Confirmed(inner) => {
-                    push_log!("qrcode confirmed");
+                    log!(INFO: "qrcode confirmed");
                     let login_resp = CLIENT
                         .qrcode_login(&inner.tmp_pwd, &inner.tmp_no_pic_sig, &inner.tgt_qr)
                         .await?;
                     if let LoginResponse::DeviceLockLogin { .. } = login_resp {
                         CLIENT.device_lock_login().await?;
                     }
-                    push_log!("login by qrcode");
+                    log!(INFO: "login by qrcode");
                     break;
                 }
-                QRCodeState::WaitingForScan => push_log!("qrcode waiting for scan"),
-                QRCodeState::WaitingForConfirm => push_log!("qrcode waiting for confirm"),
-                QRCodeState::Canceled => push_log!("qrcode canceled"),
+                QRCodeState::WaitingForScan => log!(INFO: "qrcode waiting for scan"),
+                QRCodeState::WaitingForConfirm => log!(INFO: "qrcode waiting for confirm"),
+                QRCodeState::Canceled => log!(INFO: "qrcode canceled"),
             }
             tokio::time::sleep(Duration::from_secs(1)).await;
             qr_resp = CLIENT.query_qrcode_result(&img_sig).await?;
@@ -200,15 +110,12 @@ async fn launch() -> Result<()> {
     // instead of `ricq::ext::common::after_login`
     CLIENT.register_client().await?;
     CLIENT.refresh_status().await?;
-
     // clear qr code (the `clear()` will not release capacity)
     std::mem::take(&mut *QR.lock().unwrap());
-
     // save new token
     tokio::time::sleep(Duration::from_secs(1)).await;
     let token = CLIENT.gen_token().await;
-    db::cfg_set(db::K_TOKEN, serde_json::to_string(&token)?.as_bytes());
-
+    admin::db::set("qqbot_token", serde_json::to_string(&token)?.as_bytes());
     Ok(())
 }
 
@@ -261,71 +168,58 @@ async fn on_event(event: QEvent) {
         }
         */
         QEvent::Login(uin) => {
-            push_log!("current account = {uin}");
+            log!(INFO: "current account = {uin}");
         }
         _ => {}
     }
 }
 
-pub async fn notify(msg: &str) -> Result<()> {
+async fn notify(msg: &str) -> Result<()> {
     let msg_chain = bot_msg(msg);
-    for part in db::cfg_get_str(db::K_NOTIFY_GROUPS).unwrap().split(',') {
-        if let Ok(group) = part.parse() {
-            CLIENT.send_group_message(group, msg_chain.clone()).await?;
-        }
+    let groups = care!(admin::db::get("qqbot_notify_groups").e())?;
+    let groups = care!(serde_json::from_slice::<Vec<i64>>(&groups))?;
+    for group in groups {
+        CLIENT.send_group_message(group, msg_chain.clone()).await?;
     }
     Ok(())
 }
 
 pub fn service() -> Router {
-    db::init();
+    println!("qqbot::service()");
     CLIENT.get_status(); // init client
-
-    async fn post_handler(q: RawQuery, body: Bytes) {
-        let q = q.0.unwrap();
-        let k = q.as_str();
-        log!("units::qqbot received op {k}");
-        match k {
-            "set_device_json" => {
-                db::cfg_set("device_json", &body);
-            }
-            "set_token_json" => {
-                db::cfg_set("token_json", &body);
-            }
-            "set_notify_groups" => {
-                db::cfg_set("notify_groups", &body);
-            }
-            _ => {
-                log!(ERRO : "units::qqbot unknown op");
-            }
-        }
-    }
-
-    async fn get_handler() -> Html<String> {
-        const PAGE: [&str; 2] = include_src!("page.html");
-        let mut body = String::new();
-        body += PAGE[0];
-        for (time, content) in db::log_list().into_iter().rev() {
-            writeln!(&mut body, "{time} | {content}").unwrap();
-        }
-        body += PAGE[1];
-        Html(body)
-    }
-
     Router::new()
         .route(
             "/qqbot",
-            MethodRouter::new().post(post_handler).get(get_handler),
+            MethodRouter::new().get(Html(
+                "<!DOCTYPE html><html style='color-scheme:light dark'><img src='/qqbot/qr'></html>",
+            )),
         )
         .route(
             "/qqbot/qr",
-            MethodRouter::new().get(|| async { QR.lock().unwrap().clone() }),
+            MethodRouter::new().get(|| async { QR.lock().unwrap().to_owned() }),
         )
         .layer(middleware::from_fn(auth_layer))
+    // tokio::spawn(async {
+    //     let on_event = |mut event: QEvent| async { event = dbg!(event) }; // interesting noop
+    //     let device = Device::random();
+    //     let client_ver = Protocol::AndroidWatch.into();
+    //     let client = Arc::new(Client::new(device, client_ver, on_event as fn(_) -> _));
+    //     let addr = "msfwifi.3g.qq.com:8080";
+    //     let tcp_stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+    //     // let tcp_stream = DefaultConnector.connect(&client).await.unwrap();
+    //     let client_clone = client.clone();
+    //     tokio::spawn(async move {
+    //         client_clone.start(tcp_stream).await;
+    //     });
+    //     tokio::time::sleep(Duration::from_millis(200)).await;
+    //     dbg!(client.get_status());
+    //     let mut qr_resp = client.fetch_qrcode().await.unwrap();
+    //     dbg!(qr_resp);
+    // });
 }
 
 pub async fn tick() {
-    ticker!(8, "XX:08:00", "XX:38:00");
+    // ticker!(8, "XX:08:00", "XX:38:00");
     macro_rules! magic_macro {
         ( $($y:expr),+ ) => {
             const fn ret_one<T>(_:&T)->i32{1}
@@ -335,7 +229,7 @@ pub async fn tick() {
             #[allow(clippy::await_holding_lock)] // due to an bug in clippy, this lint all cause false positive
             async fn trigger2((name, desc, url): (&str, &str, &str), i: usize){
                 let v = care!(fetch_text(str2req(url)).await, return);
-                // dbg!(&v);
+                dbg!(&v);
                 let v = v.rsplit_once(".nupkg").and_then(|v| v.0.rsplit_once('/')); // TODO
                 let v = care!(v.e(), return).1;
                 let mut last = LAST[i].lock().unwrap();
@@ -346,7 +240,8 @@ pub async fn tick() {
                     *last = v.to_string();
                     drop(last); // avoid the mutex guard alive cross await point
                     let msg = format!("{name} {v} released!\n\n{desc}");
-                    care!(notify(&msg).await, ());
+                    dbg!(msg);
+                    // care!(notify(&msg).await, ());
                 }
             }
             let mut i = 0;
