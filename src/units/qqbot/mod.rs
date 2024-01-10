@@ -15,7 +15,6 @@ use ricq::client::NetworkStatus;
 use ricq::handler::QEvent;
 use ricq::msg::MessageChain;
 use ricq::{Client, Device, LoginResponse, Protocol, QRCodeState};
-use std::fmt::Write as _;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, UNIX_EPOCH};
 
@@ -133,7 +132,7 @@ async fn on_event(event: QEvent) {
             let e = e.inner;
             let msg = e.elements.to_string();
             // log!(INFO: "{msg}");
-            if let Some(msg) = msg.strip_prefix('#') {
+            if let Some(msg) = msg.strip_prefix('/') {
                 let msg_parts = msg.split_whitespace().collect();
                 if let Ok(reply) =
                     care!(commands::on_group_msg(e.group_code, msg_parts, &CLIENT).await)
@@ -185,7 +184,6 @@ async fn notify(msg: &str) -> Result<()> {
 }
 
 pub fn service() -> Router {
-    println!("qqbot::service()");
     CLIENT.get_status(); // init client
     Router::new()
         .route(
@@ -218,49 +216,113 @@ pub fn service() -> Router {
     // });
 }
 
-pub async fn tick() {
-    // ticker!(8, "XX:08:00", "XX:38:00");
-    macro_rules! magic_macro {
-        ( $($y:expr),+ ) => {
-            const fn ret_one<T>(_:&T)->i32{1}
-            const fn ret_mutex<T>(_:&T)->Mutex<String>{Mutex::new(String::new())}
-            const LEN: usize = -(-$( ret_one(&$y) )-+) as _;
-            static LAST: [Mutex<String>; LEN] = [$( ret_mutex(&$y) ),+];
-            #[allow(clippy::await_holding_lock)] // due to an bug in clippy, this lint all cause false positive
-            async fn trigger2((name, desc, url): (&str, &str, &str), i: usize){
-                let v = care!(fetch_text(str2req(url)).await, return);
-                dbg!(&v);
-                let v = v.rsplit_once(".nupkg").and_then(|v| v.0.rsplit_once('/')); // TODO
-                let v = care!(v.e(), return).1;
-                let mut last = LAST[i].lock().unwrap();
-                if last.is_empty() {
-                    *last = v.to_string();
-                    drop(last);
-                } else if *last != v {
-                    *last = v.to_string();
-                    drop(last); // avoid the mutex guard alive cross await point
-                    let msg = format!("{name} {v} released!\n\n{desc}");
-                    dbg!(msg);
-                    // care!(notify(&msg).await, ());
-                }
-            }
-            let mut i = 0;
-            tokio::join!($( trigger2($y, #[allow(unused_assignments)] { let ret = i; i += 1; ret }) ),+);
-        };
+async fn update_notify(
+    last_ver: &'static Mutex<String>,
+    fetch_uri: &'static str,
+    trim_tag: fn(&str, &str) -> Option<String>,
+    gen_msg: fn(String) -> String,
+) -> Result<()> {
+    let req = str2req(fetch_uri);
+    let resolved = "20.205.243.166:443".to_string(); // https://api.github.com/meta
+    let res = crate::utils::CLIENT.fetch(req, Some(resolved)).await?;
+    let body = axum::body::to_bytes(axum::body::Body::new(res), usize::MAX).await?;
+    let body = String::from_utf8(Vec::from(body))?;
+    let mut ver = String::new();
+    for (_, tag) in body
+        .split(".tar.gz\"")
+        .filter_map(|part| part.rsplit_once("/tags/"))
+    {
+        if let Some(ret) = trim_tag(tag, &ver) {
+            ver = ret;
+        }
     }
-    magic_macro!(
-        ("Chrome", "Chrome is the official web browser from Google, built to be fast, secure, and customizable.", "https://archlinux.org/packages/extra/x86_64/chromium/json/"),
-        ("Firefox", "The browsers that put your privacy first — and always have.", "https://archlinux.org/packages/extra/x86_64/firefox/json/"),
-        ("VSCode", "Code editing. Redefined.", "https://archlinux.org/packages/extra/x86_64/code/json/"),
-        ("Python", "Python is a programming language that lets you work quickly and integrate systems more effectively.", "https://archlinux.org/packages/core/x86_64/python/json/"),
-        ("Rust", "A language empowering everyone to build reliable and efficient software.", "https://archlinux.org/packages/extra/x86_64/rust/json/"),
-        ("Golang", "Build simple, secure, scalable systems with Go.", "https://archlinux.org/packages/extra/x86_64/go/json/")
-    );
+    if ver.is_empty() {
+        return Err(anyhow::anyhow!("ver.is_empty()"));
+    }
+    let skip = {
+        let mut last = last_ver.lock().unwrap();
+        let skip = last.is_empty() || *last == ver;
+        *last = ver.clone();
+        skip
+    };
+    // dbg!(&gen_msg(ver));
+    if !skip {
+        notify(&gen_msg(ver)).await?;
+    }
+    Ok(())
 }
 
-/*
-https://archlinux.org/packages/?sort=&q=chromium&maintainer=&flagged=
-https://api.winget.run/v2/packages/Google/Chrome
-https://github.com/ScoopInstaller/Extras/blob/master/bucket/vscode.json
-https://github.com/ScoopInstaller/Main/blob/master/bucket/rust.json
-*/
+pub async fn tick() {
+    ticker!(8, "XX:08:00", "XX:38:00");
+    // Golang https://github.com/golang/go/tags
+    // LLVM https://github.com/llvm/llvm-project/tags
+    /*
+    update_notify(
+        {
+            static LAST_VER: Mutex<String> = Mutex::new(String::new());
+            &LAST_VER
+        },
+        "https://github.com/golang/go/tags",
+        |cur, prev| Some(cur.to_string()),
+        |ver| format!("Golang {ver} released!\n\nBuild simple, secure, scalable systems with Go."),
+    )
+    .await;
+    update_notify(
+        {
+            static LAST_VER: Mutex<String> = Mutex::new(String::new());
+            &LAST_VER
+        },
+        "https://github.com/python/cpython/tags",
+        |cur, prev| match () {
+            _ if cur.contains(&['a', 'b', 'r']) => None,
+            _ => Some(cur.split_at(1).1.to_string()),
+        },
+        |ver| format!("Python {ver} released!\n\nPython is a programming language that lets you work quickly and integrate systems more effectively."),
+    )
+    .await;
+    update_notify(
+        {
+            static LAST_VER: Mutex<String> = Mutex::new(String::new());
+            &LAST_VER
+        },
+        "https://github.com/nodejs/node/tags", // TODO: sort
+        |cur, prev| {
+            let cur = cur.split_at(1).1.to_string();
+            let cur_major = cur.split_once('.')?.0.parse::<i32>().ok()?;
+            let prev_major = prev.split_once('.')?.0.parse::<i32>().ok()?;
+            match cur_major > prev_major {
+                true => Some(cur),
+                false => None,
+            }
+        },
+        |ver| format!("Node.js {ver} released!\n\nNode.js is an open-source, cross-platform JavaScript runtime environment."),
+    )
+    .await;
+    */
+    update_notify(
+        {
+            static LAST_VER: Mutex<String> = Mutex::new(String::new());
+            &LAST_VER
+        },
+        "https://github.com/microsoft/vscode/tags",
+        |cur, prev| match prev.is_empty() {
+            true => Some(cur.to_string()),
+            false => None,
+        },
+        |ver| format!("VSCode {ver} released!\n\nCode editing. Redefined."),
+    )
+    .await;
+    update_notify(
+        {
+            static LAST_VER: Mutex<String> = Mutex::new(String::new());
+            &LAST_VER
+        },
+        "https://github.com/rust-lang/rust/tags",
+        |cur, prev| match prev.is_empty() {
+            true => Some(cur.to_string()),
+            false => None,
+        },
+        |ver| format!("Rust {ver} released!\n\nA language empowering everyone to build reliable and efficient software."),
+    )
+    .await;
+}
