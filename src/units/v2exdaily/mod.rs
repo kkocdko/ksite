@@ -17,7 +17,7 @@ async fn do_mission(cookie: &str) -> Result<()> {
     log!(INFO: "v2exdaily::do_mission()");
     async fn fetch_authed(path: &str, cookie: &str) -> Result<String> {
         let uri = format!("https://fast.v2ex.com{path}");
-        let req = Request::get(uri)
+        let mut req = Request::get(uri)
             .header(HOST, "fast.v2ex.com")
             .header(COOKIE, cookie)
             .header(ACCEPT, "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9")
@@ -25,14 +25,12 @@ async fn do_mission(cookie: &str) -> Result<()> {
             .header(REFERER, "https://fast.v2ex.com/mission/daily")
             .header(USER_AGENT, "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0")
             .body(Body::empty())?;
-        let res = CLIENT
-            .fetch(req, Some("104.20.9.218:443".to_string())) // https://www.nslookup.io/domains/fast.v2ex.com/dns-records/
-            .await?;
-        let body = res.into_body();
-        let body = axum::body::to_bytes(axum::body::Body::new(body), usize::MAX).await?;
+        let resolved = "104.20.9.218:443".to_string(); // https://www.nslookup.io/domains/fast.v2ex.com/dns-records/
+        let res = CLIENT.fetch(req, Some(resolved)).await?;
+        let body = axum::body::to_bytes(axum::body::Body::new(res), usize::MAX).await?;
         Ok(String::from_utf8(Vec::from(body))?)
     }
-    let page = fetch_authed("/mission/daily", &cookie).await?;
+    let page = fetch_authed("/mission/daily", cookie).await?;
     let needle = "/mission/daily/redeem?once=";
     let needle_idx = page.find(needle).e()? + needle.len();
     let code: Vec<_> = page
@@ -43,7 +41,7 @@ async fn do_mission(cookie: &str) -> Result<()> {
         .collect();
     let code = std::str::from_utf8(&code)?;
     log!(INFO: "v2exdaily::do_mission() code = {code}");
-    let _ret_page = fetch_authed(&format!("{needle}{code}"), &cookie).await?;
+    let _ret_page = fetch_authed(&format!("{needle}{code}"), cookie).await?;
     Ok(())
 }
 
