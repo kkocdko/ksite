@@ -1,11 +1,21 @@
 //! Protect the process, do auto-restart and more.
 
 use crate::log;
+use crate::utils::LazyLock;
 use std::env;
 use std::fs::File;
 use std::future::Future;
 use std::io::Write as _;
 use std::process::Command;
+
+pub static LOG_FILE: LazyLock<File> = LazyLock::new(|| {
+    File::options()
+        .append(true)
+        .create(true)
+        .read(true) // allow admin unit to read
+        .open(env::current_exe().unwrap().with_extension("log"))
+        .unwrap()
+});
 
 pub fn launch<F, Fut>(main: F)
 where
@@ -27,11 +37,6 @@ where
         " v",
         env!("CARGO_PKG_VERSION"),
     ));
-    let mut log_file = File::options()
-        .append(true)
-        .create(true)
-        .open(env::current_exe().unwrap().with_extension("log"))
-        .unwrap();
     // thread::spawn(|| loop {
     //     let mut buf = [0];
     //     io::stdin().read(&mut buf).unwrap();
@@ -44,10 +49,10 @@ where
     loop {
         let exit_status = Command::new(env::current_exe().unwrap())
             .arg(BARE_SWITCH)
-            .stdout(log_file.try_clone().unwrap())
-            .stderr(log_file.try_clone().unwrap())
+            .stdout(LOG_FILE.try_clone().unwrap())
+            .stderr(LOG_FILE.try_clone().unwrap())
             .status()
             .unwrap();
-        writeln!(&mut log_file, "{exit_status}").unwrap();
+        writeln!(&mut LOG_FILE.try_clone().unwrap(), "{exit_status}").unwrap();
     }
 }

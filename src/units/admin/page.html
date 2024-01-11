@@ -50,10 +50,10 @@
     <button onclick="send().catch(alert)">Send</button>
     <select id="$k">
       <option value hidden>Click to select operation</option>
-      <option>trigger_noop</option>
       <option>trigger_reset_auth_key</option>
       <option>trigger_restart_process</option>
       <option>trigger_backup_database</option>
+      <option>get_recent_log</option>
       <option>set_ssl_cert (pem)</option>
       <option>set_ssl_key (pem)</option>
       <option>set_qqbot_device</option>
@@ -75,6 +75,7 @@
     } else {
       body = $v.value;
     }
-    await fetch(`/admin?${$k.value.split(" ")[0]}`, { method: "post", body });
+    const req = `/admin?${$k.value.split(" ")[0]}`;
+    $v.value = await (await fetch(req, { method: "POST", body })).text();
   };
 </script>

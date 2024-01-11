@@ -45,14 +45,11 @@ pub mod db {
     }
 }
 
-async fn post_handler(q: RawQuery, body: Bytes) {
+async fn post_handler(q: RawQuery, body: Bytes) -> Bytes {
     let q = q.0.unwrap();
     let k = q.as_str();
     log!("units::admin received op {k}");
     match k {
-        "trigger_noop" => {
-            // do nothing
-        }
         "trigger_reset_auth_key" => {
             db::del("auth_key");
             // need restart to take effect
@@ -62,6 +59,17 @@ async fn post_handler(q: RawQuery, body: Bytes) {
         }
         "trigger_backup_database" => {
             crate::database::backup();
+        }
+        "get_recent_log" => {
+            let mut file = crate::launcher::LOG_FILE.try_clone().unwrap();
+            use std::io::{Read, Seek, SeekFrom};
+            let max_len = 16384;
+            let start_pos = file.metadata().unwrap().len().saturating_sub(max_len);
+            file.seek(SeekFrom::Start(start_pos)).unwrap();
+            let mut buf = String::new();
+            file.read_to_string(&mut buf).unwrap();
+            // file.take(max_len).read_to_string(&mut buf).unwrap();
+            return Bytes::from(buf);
         }
         "set_ssl_cert" => {
             db::set("ssl_cert", &body);
@@ -83,8 +91,10 @@ async fn post_handler(q: RawQuery, body: Bytes) {
         }
         _ => {
             log!(ERRO: "units::admin unknown op");
+            return Bytes::from_static(b"unknown op");
         }
     }
+    Bytes::from_static(b"finished")
 }
 
 pub fn service() -> Router {
