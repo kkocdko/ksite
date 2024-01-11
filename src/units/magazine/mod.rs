@@ -87,23 +87,21 @@ async fn refresh() -> Result<()> {
     let expires = httpdate::fmt_http_date(SystemTime::now() + Duration::from_secs(3600));
     async fn rss(p: &str) -> Result<String, ()> {
         let prefixs = [
-            "https://rsshub.moeyy.cn",
-            "https://rsshub.rssforever.com",
-            "http://rsshub.uneasy.win",
             "https://rsshub.feeded.xyz",
+            "https://rsshub.rssforever.com",
+            "https://rsshub.moeyy.cn",
             "https://rsshub.app",
         ];
         for prefix in prefixs {
             let req = str2req(prefix.to_string() + p);
-            match fetch_text(req).await {
-                Ok(v) if v.starts_with("<?xml") => return Ok(v),
-                _ => {}
-            };
+            // log!(INFO: "{prefix}");
+            let v = care!(fetch_text(req).await, continue);
+            return Ok(v);
         }
-        log!(ERRO : "magazine fetch failed, p = {p}");
+        log!(ERRO: "magazine fetch failed, p = {p}");
         Err(())
     }
-    // tokio::task::JoinSe
+    // tokio::task::JoinSet
     let r = tokio::join!(
         rss("/bbc?limit=5"),
         rss("/hackernews?limit=5"), // &mode=fulltext
@@ -114,23 +112,19 @@ async fn refresh() -> Result<()> {
     );
     let mut o = String::new();
     o += PAGE[0];
-    o += &httpdate::fmt_http_date(SystemTime::now());
-    o += "<br><br>";
-    // let o = tokio::task::spawn_blocking(move || {
+    o += &httpdate::fmt_http_date(SystemTime::now() + Duration::from_secs(3600 * 8));
+    o += "+0800\n<br><br>";
     r.0.map(|v| generate(&v, &mut o)).ok();
     r.1.map(|v| generate(&v, &mut o)).ok();
     r.2.map(|v| generate(&v, &mut o)).ok();
     r.3.map(|v| generate(&v, &mut o)).ok();
     r.4.map(|v| generate(&v, &mut o)).ok();
     r.5.map(|v| generate(&v, &mut o)).ok();
-    // care!(r.6.map(|v| generate(&v, &mut o))).ok();
     o += PAGE[1];
     // use std::io::Write as _;
     // let mut enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
     // enc.write_all(o.as_bytes()).unwrap();
     // enc.finish().unwrap()
-    // })
-    // .await?;
     *CACHE.lock().unwrap() = (
         [
             (
