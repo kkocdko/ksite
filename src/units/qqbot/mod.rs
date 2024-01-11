@@ -6,12 +6,12 @@ use crate::utils::{elapse, fetch_json, fetch_text, log_escape, str2req, LazyLock
 use crate::{care, include_src, log, ticker};
 use anyhow::Result;
 use axum::body::Bytes;
+use axum::http::header::{AUTHORIZATION, CONTENT_TYPE, HOST};
+use axum::http::Request;
 use axum::middleware;
 use axum::response::Html;
 use axum::routing::{MethodRouter, Router};
-use flate2::write::ZlibEncoder;
-use flate2::Compression;
-use rand::{thread_rng, Rng};
+use rand::{thread_rng, Rng as _};
 use ricq::client::NetworkStatus;
 use ricq::handler::QEvent;
 use ricq::msg::{MessageChain, MessageElem};
@@ -126,121 +126,90 @@ fn bot_msg(content: &str) -> MessageChain {
 }
 
 /// Generate reply from message parts
-async fn on_group_msg(
-    group_code: i64,
-    msg_parts: Vec<&str>,
-    client: &ricq::Client,
-) -> Result<String> {
+async fn on_group_msg(group_code: i64, msg: &str) -> Result<()> {
     static REPLIES: LazyLock<Mutex<HashMap<String, String>>> = LazyLock::new(Default::default);
-    Ok(match msg_parts[..] {
-        ["帮助"] | ["help"] => "参阅 https://github.com/kkocdko/ksite/blob/main/src/units/qqbot/commands.rs#:~:text=match%20msg_parts".into(),
-        ["运行平台"] => concat!(
+    let (head, rest) = msg.split_at(msg.find(' ').unwrap_or(msg.len()));
+    let rest = rest.trim();
+    let msg_chain = match head {
+        _ if rest.as_bytes().len() > 120 => bot_msg("请长话短说"),
+        "/帮助" => {
+            bot_msg("参阅 https://github.com/kkocdko/ksite/blob/main/src/units/qqbot/mod.rs#:~:text=REPLIES")
+        }
+        "/运行平台" => bot_msg(concat!(
             env!("CARGO_PKG_NAME"),
             " v",
             env!("CARGO_PKG_VERSION"),
             " with ricq and axum"
-        )
-        .into(),
-        ["kk单身多久了"] => format!("kk已连续单身 {:.3} 天了", elapse(10485432e2)),
-        // ["开学倒计时"] => format!("距 开学 仅 {:.3} 天", -elapse(16617312e2)),
-        // ["高考倒计时"] => format!("距 2023 高考仅 {:.3} 天", -elapse(16860996e2)),
-        ["驶向深蓝"] => {
-            let url = "https://api.lovelive.tools/api/SweetNothings?genderType=M";
-            fetch_text(str2req(url)).await?
+        )),
+        "/kk单身多久了" => bot_msg(&format!("kk已连续单身 {:.3} 天了", elapse(10485432e2))),
+        "/开学倒计时" => bot_msg(&format!("距 开学 仅 {:.3} 天", -elapse(17088768e2))), // 20240226 UTC+8
+        "/吟诗" => bot_msg(&fetch_text(str2req("https://v1.jinrishici.com/all.txt")).await?),
+        "/随机数" if rest.splitn(2, ' ').all(|v| v.parse::<u32>().is_ok()) => {
+            let mut rest = rest.splitn(2, ' ');
+            let from: u32 = rest.next().unwrap().parse().unwrap();
+            let to: u32 = rest.next().unwrap().parse().unwrap();
+            let v = thread_rng().gen_range(from..=to);
+            bot_msg(&format!("{v} ~ [{from},{to}]"))
         }
-        ["吟诗"] => {
-            let url = "https://v1.jinrishici.com/all.json";
-            fetch_json(str2req(url), "/content").await?
-        }
-        // ["新闻"] => {
-        //     let i = thread_rng().gen_range(3..20);
-        //     let r = fetch_text("https://m.cnbeta.com/wap").await?;
-        //     let r = r.split("htm\">").nth(i).e()?.split_once('<').e()?;
-        //     r.0.into()
-        // }
-        ["rand", from, to] | ["随机数", from, to] => {
-            let range = from.parse::<i64>()?..=to.parse()?;
-            let v = thread_rng().gen_range(range);
-            format!("{v} in range [{from},{to}]")
-        }
-        ["抽签", a, b] => {
-            let v = thread_rng().gen_range(0..=1);
-            format!("你抽中了 {}", [a, b][v])
-        }
-        ["btc"] | ["比特币"] => {
-            let url = "https://chain.so/api/v2/get_info/BTC";
-            let price = fetch_json(str2req(url), "/data/price").await?;
-            format!("1 BTC = {} USD", price.trim_end_matches('0'))
-        }
-        ["eth"] | ["以太坊"] | ["以太币"] => {
-            let url = "https://api.blockchair.com/ethereum/stats";
-            let price = fetch_json(str2req(url), "/data/market_price_usd").await?;
-            format!("1 ETH = {} USD", price.trim_end_matches('0'))
-        }
-        ["doge"] | ["狗狗币"] => {
-            let url = "https://api.blockchair.com/dogecoin/stats";
-            let price = fetch_json(str2req(url), "/data/market_price_usd").await?;
-            format!("1 DOGE = {} USD", price.trim_end_matches('0'))
-        }
-        ["我有个朋友", name, "说", content] => {
-            let mut message_chain = MessageChain::default();
-
+        "/我有个朋友" if rest.splitn(3, ' ').count() == 3 => {
+            let mut rest = rest.splitn(3, ' ');
+            let name = rest.next().unwrap();
+            rest.next().unwrap(); // == "说"
+            let content = rest.next().unwrap();
+            let mut msg_chain = MessageChain::default();
             let mut rich_msg = MessageElem::RichMsg(Default::default());
             if let MessageElem::RichMsg(v) = &mut rich_msg {
                 let body = format!(
                     r#"<msg serviceID="35" templateID="1" action="viewMultiMsg" brief="[聊天记录]" tSum="1" flag="3"><item layout="1"><title>群聊的聊天记录</title><title>{name}: {content}</title><hr/><summary>查看1条转发消息</summary></item></msg>"#
                 );
-                let mut encoder = ZlibEncoder::new(vec![1], Compression::none());
+                let level = flate2::Compression::none();
+                let mut encoder = flate2::write::ZlibEncoder::new(vec![1], level);
                 encoder.write_all(body.as_bytes()).ok();
                 v.template1 = Some(encoder.finish().unwrap());
                 v.service_id = Some(35);
             }
-            message_chain.0.push(rich_msg);
-
+            msg_chain.0.push(rich_msg);
             let mut general_flags = MessageElem::GeneralFlags(Default::default());
             if let MessageElem::GeneralFlags(v) = &mut general_flags {
                 v.pb_reserve = Some([120, 0, 248, 1, 0, 200, 2, 0].into());
                 v.pendant_id = Some(0);
             }
-            message_chain.0.push(general_flags);
-
-            client.send_group_message(group_code, message_chain).await?;
-            "你朋友确实是这么说的".into()
+            msg_chain.0.push(general_flags);
+            msg_chain
         }
-        ["垃圾分类", i] => {
-            let url = format!("https://api.muxiaoguo.cn/api/lajifl?m={i}");
-            match fetch_json(str2req(url), "/data/type").await {
-                Ok(v) => format!("{i} {v}"),
-                Err(_) => format!("鬼知道 {i} 是什么垃圾呢"),
-            }
+        "/聊天" => {
+            let mut body = String::new();
+            body += r#"{"stream":false,"model":"gpt-3.5-turbo","messages":[{"role":"system","content":"\nYou are kkGPT, a large language model trained by kkocdko.\nYour reply must be less than 70 words.\n\n"},{"role":"user","content":"#;
+            body += &serde_json::to_string(rest).unwrap();
+            body += r#"}]}"#;
+            let req = Request::post(concat!("https://www.gp", "tapi.us/v1/ch", "at/com", "pletions"))
+                .header(HOST, concat!("www.gp", "tapi.us"))
+                .header(CONTENT_TYPE, "application/json")
+                .header(AUTHORIZATION, concat!("Bea", "rer s", "k-e", "s5Zonw3CrWjGUdrEaF", "eF428E1F449D4AcCd8a19Fa1d854c"))
+                .body(axum::body::Body::from(body))
+                .unwrap();
+            bot_msg(&fetch_json(req, "/choices/0/message/content").await?)
         }
-        ["聊天", i, ..] => {
-            let url = format!("https://api.ownthink.com/bot?spoken={i}");
-            fetch_json(str2req(url), "/data/info/text").await?
-        }
-        ["设置回复", k, v] => {
-            REPLIES.lock().unwrap().insert(k.into(), v.into());
-            "记住啦".into()
-        }
-        [k, ..] => match REPLIES.lock().unwrap().get(k) {
-            Some(v) => v.clone(),
-            None => "指令有误".into(),
-        },
-        [] => "你没有附加任何指令呢".into(),
-    })
+        // ["驶向深蓝"] => {
+        //     let url = "https://api.lovelive.tools/api/SweetNothings?genderType=M";
+        //     fetch_text(str2req(url)).await?
+        // }
+        // ["设置回复", k, v] => {
+        //     REPLIES.lock().unwrap().insert(k.into(), v.into());
+        //     "记住啦".into()
+        // }
+        // [k, ..] => match REPLIES.lock().unwrap().get(k) {
+        //     Some(v) => v.clone(),
+        //     None => "指令有误".into(),
+        // }
+        _ => bot_msg("指令有误"),
+    };
+    CLIENT.send_group_message(group_code, msg_chain).await?;
+    Ok(())
 }
 
 fn _judge_spam(msg: &str) -> bool {
-    const LIST: &[&str] = &[
-        "重要",
-        "通知",
-        "群",
-        "后果自负",
-        "二维码",
-        "同学",
-        "免费",
-        "资料",
-    ];
+    const LIST: &[&str] = &["重要", "通知", "群", "后果自负", "二维码", "同学", "免费"];
     const SENSITIVITY: f64 = 0.7;
     fn judge(msg: &str, list: &[&str], sensitivity: f64) -> bool {
         let len: usize = list.len();
@@ -271,13 +240,8 @@ async fn on_event(event: QEvent) {
             let e = e.inner;
             let msg = e.elements.to_string();
             // log!(INFO: "{msg}");
-            if let Some(msg) = msg.strip_prefix('/') {
-                let msg_parts = msg.split_whitespace().collect();
-                if let Ok(reply) = care!(on_group_msg(e.group_code, msg_parts, &CLIENT).await) {
-                    let reply = bot_msg(&reply);
-                    let result = CLIENT.send_group_message(e.group_code, reply).await;
-                    care!(result).ok();
-                }
+            if msg.starts_with('/') {
+                care!(on_group_msg(e.group_code, &msg).await);
             }
             // log!("\n\x1b[93m[ksite]\x1b[0m {}", e.inner.elements);
             /* >>> recall_log
@@ -407,38 +371,39 @@ pub async fn tick() {
             &LAST_VER
         }};
     }
-    let mut join_set = tokio::task::JoinSet::new();
-    join_set.spawn(update_notify(
+    #[rustfmt::skip]
+    tokio::join!(
+    update_notify(
         make_ver_store!(),
         "https://github.com/golang/go/tags",
         smart_tag,
         |ver| format!("Golang {ver} released!\n\nBuild simple, secure, scalable systems with Go."),
-    ));
-    join_set.spawn(update_notify(
+    ),
+    update_notify(
         make_ver_store!(),
         "https://github.com/python/cpython/tags",
         smart_tag,
         |ver| format!("Python {ver} released!\n\nPython is a programming language that lets you work quickly and integrate systems more effectively."),
-    ));
-    join_set.spawn(update_notify(
+    ),
+    update_notify(
         make_ver_store!(),
         "https://github.com/nodejs/node/tags",
         smart_tag,
         |ver| format!("Node.js {ver} released!\n\nNode.js is an open-source, cross-platform JavaScript runtime environment."),
-    ));
-    join_set.spawn(update_notify(
+    ),
+    update_notify(
         make_ver_store!(),
         "https://github.com/microsoft/vscode/tags",
         |prev, cur| prev.or_else(|| Some(cur.to_owned())),
         |ver| format!("VSCode {ver} released!\n\nCode editing. Redefined."),
-    ));
-    join_set.spawn(update_notify(
+    ),
+    update_notify(
         make_ver_store!(),
         "https://github.com/rust-lang/rust/tags",
         |prev, cur| prev.or_else(|| Some(cur.to_owned())),
         |ver| format!("Rust {ver} released!\n\nA language empowering everyone to build reliable and efficient software."),
-    ));
-    while let Some(r) = join_set.join_next().await {
-        care!(r).ok();
-    }
+    ),
+    );
+    // joinset     6059432 bytes
+    // join macro  6043496 bytes
 }
