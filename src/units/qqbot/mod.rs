@@ -390,7 +390,7 @@ async fn update_notify(
 }
 
 pub async fn tick() {
-    ticker!(8, "XX:08:00", "XX:38:00");
+    ticker!(return, 8, "XX:08:00", "XX:38:00");
     // Golang https://github.com/golang/go/tags
     // LLVM https://github.com/llvm/llvm-project/tags
     /*

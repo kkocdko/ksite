@@ -46,7 +46,7 @@ async fn do_mission(cookie: &str) -> Result<()> {
 }
 
 pub async fn tick() {
-    ticker!(8, "08:14:00");
+    ticker!(return, 8, "08:14:00");
     let cookies = care!(admin::db::get("v2ex_cookies").e(), return);
     let cookies = care!(serde_json::from_slice::<Vec<String>>(&cookies), return);
     for cookie in cookies {

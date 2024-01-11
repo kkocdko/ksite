@@ -89,7 +89,7 @@
   const submit = () => {
     const v = eval(`({${$data.value}})`);
     return fetch(`/health?${v.INPUT_L11NMC9H}`, {
-      method: "post",
+      method: "POST",
       body: $password.value + "\n" + JSON.stringify(v),
     });
   };

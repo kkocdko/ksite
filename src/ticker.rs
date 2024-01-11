@@ -1,9 +1,4 @@
-use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
-use std::time::{Duration, UNIX_EPOCH};
-
-// Tue, 05 Sep 2023 15:05:25 GMT
-
-const ANY: u64 = 99; // must >= 60, terser logic?
+use std::sync::atomic::{AtomicU64, Ordering};
 
 fn gen_next(mut now: u64, cfg: (u64, u64, u64)) -> u64 {
     /// Convert time stamp to (hours, minutes, seconds).
@@ -18,9 +13,9 @@ fn gen_next(mut now: u64, cfg: (u64, u64, u64)) -> u64 {
     loop {
         let (h, m, s) = hms(now);
         now = match (
-            h == ch || ch == ANY,
-            m == cm || cm == ANY,
-            s == cs || cs == ANY,
+            h == ch || ch == u64::MAX,
+            m == cm || cm == u64::MAX,
+            s == cs || cs == u64::MAX,
         ) {
             // legal
             (true, true, true) => {
@@ -29,13 +24,13 @@ fn gen_next(mut now: u64, cfg: (u64, u64, u64)) -> u64 {
 
             // generate
             (true, true, _) if s < cs && s < 59 => {
-                floor_by(now, 60) + if cs == ANY { s + 1 } else { cs }
+                floor_by(now, 60) + if cs == u64::MAX { s + 1 } else { cs }
             }
             (true, _, _) if m < cm && m < 59 => {
-                floor_by(now, 60 * 60) + 60 * if cm == ANY { m + 1 } else { cm }
+                floor_by(now, 60 * 60) + 60 * if cm == u64::MAX { m + 1 } else { cm }
             }
             (_, _, _) if h < ch && h < 23 => {
-                floor_by(now, 60 * 60 * 24) + 60 * 60 * if ch == ANY { h + 1 } else { ch }
+                floor_by(now, 60 * 60 * 24) + 60 * 60 * if ch == u64::MAX { h + 1 } else { ch }
             }
 
             // next day
@@ -56,7 +51,6 @@ impl Ticker {
         let now = get_now();
         let next = self.next.load(Ordering::SeqCst);
         let ret = now >= next && next != 0;
-        // log!("now = {now}, next = {next}, ret = {ret}");
         if now >= next {
             let nexts = self.cfgs.iter().map(|&cfg| gen_next(now, cfg));
             self.next.store(nexts.min().unwrap(), Ordering::SeqCst);
@@ -67,7 +61,7 @@ impl Ticker {
 
 #[macro_export]
 macro_rules! ticker {
-    ($zone:literal, $($pattern:expr),*) => {
+    ($if_not_tick:tt, $zone:literal, $($pattern:expr),*) => {{
         use $crate::ticker::*;
         use std::sync::atomic::AtomicU64;
         const N: usize = [$($pattern),*].len();
@@ -77,9 +71,9 @@ macro_rules! ticker {
             cfgs: &CFGS,
         };
         if !TICKER.tick() {
-            return;
+            $if_not_tick;
         }
-    };
+    }};
 }
 
 pub const fn parse_patterns<const N: usize>(
@@ -91,22 +85,21 @@ pub const fn parse_patterns<const N: usize>(
     while i < N {
         let p = patterns[i].as_bytes();
         macro_rules! part_code {
-            ($pidx:expr,$vidx:tt) => {
+            ($pidx:expr, $vidx:tt) => {
                 if p[$pidx] == b'X' {
                     assert!(p[$pidx + 1] == b'X');
-                    cfgs[i].$vidx = ANY;
+                    cfgs[i].$vidx = u64::MAX;
                 } else {
-                    assert!(b'0' <= p[$pidx] && p[$pidx] < b'9');
-                    assert!(b'0' <= p[$pidx + 1] && p[$pidx + 1] <= b'9');
-                    cfgs[i].$vidx += (p[$pidx] - b'0') as u64 * 10;
-                    cfgs[i].$vidx += (p[$pidx + 1] - b'0') as u64;
+                    assert!(matches!(p[$pidx], b'0'..=b'9'));
+                    assert!(matches!(p[$pidx + 1], b'0'..=b'9'));
+                    cfgs[i].$vidx = (p[$pidx] - b'0') as u64 * 10 + (p[$pidx + 1] - b'0') as u64;
                 }
             };
         }
         part_code!(0, 0);
         part_code!(3, 1);
         part_code!(6, 2);
-        if cfgs[i].0 != ANY {
+        if cfgs[i].0 != u64::MAX {
             cfgs[i].0 = ((cfgs[i].0 as i64 + 24 - zone) % 24) as u64;
         }
         i += 1;
@@ -115,86 +108,18 @@ pub const fn parse_patterns<const N: usize>(
 }
 
 fn get_now() -> u64 {
-    UNIX_EPOCH.elapsed().unwrap().as_secs() as _
+    std::time::UNIX_EPOCH.elapsed().unwrap().as_secs() as _
 }
+
+// fn get_now() -> u64 {
+//     static CUR: AtomicU64 = AtomicU64::new(3000000000000);
+//     CUR.fetch_add(1, Ordering::SeqCst)
+// }
+
+// pub fn fuzzle_test() {
+// ticker!()
+// }
 
 // bugtick: Tue, 28 Feb 2023 03:27:50 GMT
 // bugtick: Thu, 09 Mar 2023 16:04:29 GMT
-
-// TODO add fuzzle test
-#[allow(unused)]
-fn get_now_fake() -> i64 {
-    use crate::utils::LazyLock;
-
-    static V: LazyLock<AtomicI64> = LazyLock::new(|| {
-        AtomicI64::new(
-            httpdate::parse_http_date("Tue, 28 Feb 2023 02:27:50 GMT")
-                .unwrap()
-                .elapsed()
-                .unwrap()
-                .as_secs() as _,
-        )
-    });
-    print!("now = {} ", {
-        let t = V.load(Ordering::SeqCst);
-        httpdate::fmt_http_date(UNIX_EPOCH + Duration::from_secs(t as _))
-    });
-    V.fetch_add(1, Ordering::SeqCst)
-}
-#[allow(unused)]
-mod test_helper {
-    use std::time::{Duration, UNIX_EPOCH};
-
-    pub fn date2stamp(s: &str) -> u64 {
-        let t = httpdate::parse_http_date(s).unwrap();
-        t.duration_since(UNIX_EPOCH).unwrap().as_secs()
-    }
-    pub fn stamp2date(t: u64) -> String {
-        httpdate::fmt_http_date(UNIX_EPOCH + Duration::from_secs(t as _))
-    }
-}
-
-#[allow(unused)]
-pub async fn fuzzle_test() {
-    // let c = (3, ANY, 24);
-    // let mut now = test_helper::date2stamp("Mon, 30 Jan 2023 02:27:50 GMT") as i64;
-    // let mut end = test_helper::date2stamp("Tue, 28 Feb 2023 02:27:50 GMT") as i64;
-    // loop {
-    //     let next = gen_next(now, c);
-    //     let next_stupid = gen_next_stupid(now, c);
-    //     if next != next_stupid {
-    //         let v1 = test_helper::stamp2date(next as _);
-    //         let v2 = test_helper::stamp2date(next_stupid as _);
-    //         log!("should be {v2} , not {v1}")
-    //     }
-    //     now = next;
-    //     // let v1 = test_helper::stamp2httpdate(next as _);
-    //     // log!("should be {v1}");
-    //     if now >= end {
-    //         log!("end");
-    //         std::process::exit(0);
-    //     }
-    // }
-
-    // https://crates.io/crates/cron
-    // use std::time::Duration;
-    // let interval = Duration::from_millis(50);
-    // // let interval = Duration::from_secs(1);
-    // log!("oscillator interval = {interval:?}");
-    // let mut interval = tokio::time::interval(interval);
-    // let mut ticker = Ticker::new(&[(-1, 4, 0)], 0);
-    // // let mut ticker = Ticker::new(&[(-1, 12, -1), (3, -1, 24)], 0);
-    // // static TICKER: Lazy<Ticker> = Lazy::new(|| Ticker::new_p8(&[(-1, 4, 0)]));
-    // loop {
-    //     interval.tick().await;
-    //     if ticker.tick() {
-    //         log!("tick");
-    //     } else {
-    //         log!("no-tick");
-    //     }
-    //     // let _ = tokio::join!(
-    //     //     units::magazine::tick(),
-    //     //     units::qqbot::tick(),
-    //     // );
-    // }
-}
+// bugtick: Tue, 05 Sep 2023 15:05:25 GMT

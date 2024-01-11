@@ -161,7 +161,7 @@ pub fn service() -> Router {
 }
 
 pub async fn tick() {
-    ticker!(8, "XX:04:00");
+    ticker!(return, 8, "XX:04:00");
 
     care!(refresh().await).ok();
 }
