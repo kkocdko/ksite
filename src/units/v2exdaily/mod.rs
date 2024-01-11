@@ -1,7 +1,7 @@
 //! Do v2ex.com daily sign-in.
 
 use crate::units::admin;
-use crate::utils::{with_retry, LazyLock, OptionResult, CLIENT};
+use crate::utils::{with_retry, LazyLock, OptionResult, CLIENT_NO_SNI};
 use crate::{care, include_src, log, ticker};
 use anyhow::Result;
 use axum::body::{Body, Bytes};
@@ -26,7 +26,7 @@ async fn do_mission(cookie: &str) -> Result<()> {
             .header(USER_AGENT, "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0")
             .body(Body::empty())?;
         let resolved = "104.20.9.218:443".to_string(); // https://www.nslookup.io/domains/fast.v2ex.com/dns-records/
-        let res = CLIENT.fetch(req, Some(resolved)).await?;
+        let res = CLIENT_NO_SNI.fetch(req, Some(resolved)).await?;
         let body = axum::body::to_bytes(axum::body::Body::new(res), usize::MAX).await?;
         Ok(String::from_utf8(Vec::from(body))?)
     }

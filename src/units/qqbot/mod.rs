@@ -2,7 +2,7 @@
 
 use crate::auth::auth_layer;
 use crate::units::admin;
-use crate::utils::{elapse, fetch_json, fetch_text, log_escape, str2req, LazyLock, OptionResult};
+use crate::utils::{fetch_json, fetch_text, str2req, LazyLock, OptionResult, CLIENT_NO_SNI};
 use crate::{care, include_src, log, ticker};
 use anyhow::Result;
 use axum::body::Bytes;
@@ -130,6 +130,12 @@ async fn on_group_msg(group_code: i64, msg: &str) -> Result<()> {
     static REPLIES: LazyLock<Mutex<HashMap<String, String>>> = LazyLock::new(Default::default);
     let (head, rest) = msg.split_at(msg.find(' ').unwrap_or(msg.len()));
     let rest = rest.trim();
+    /// (stamp secs) -> (days)
+    fn elapse(stamp: f64) -> f64 {
+        // javascript: new Date("2001.01.01 06:00").getTime()/1e3
+        let now = UNIX_EPOCH.elapsed().unwrap().as_secs_f64();
+        (now - stamp) / 864e2 // unit: days
+    }
     let msg_chain = match head {
         _ if rest.as_bytes().len() > 120 => bot_msg("请长话短说"),
         "/帮助" => {
@@ -327,7 +333,7 @@ pub async fn tick() {
     ) -> Result<()> {
         let req = str2req(fetch_uri);
         let resolved = "20.205.243.166:443".to_string(); // https://api.github.com/meta
-        let res = crate::utils::CLIENT.fetch(req, Some(resolved)).await?;
+        let res = CLIENT_NO_SNI.fetch(req, Some(resolved)).await?;
         let body = axum::body::to_bytes(axum::body::Body::new(res), usize::MAX).await?;
         let body = String::from_utf8(Vec::from(body))?;
         let mut ver = body

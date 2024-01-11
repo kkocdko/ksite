@@ -95,8 +95,8 @@ impl Client {
                 roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
             })
             .with_no_client_auth();
-        tls_config.alpn_protocols = vec![b"http/1.1".to_vec()];
-        tls_config.enable_sni = false; // CAUTIONS! some sites needs sni to work
+        tls_config.alpn_protocols = vec![b"http/1.1".to_vec()]; // http 1.1 only currently
+                                                                // tls_config.enable_sni = false; // CAUTIONS! some sites needs sni to work
         Self(Arc::new(tls_config))
     }
 

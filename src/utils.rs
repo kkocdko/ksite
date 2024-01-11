@@ -1,12 +1,10 @@
 use anyhow::Result;
-use axum::body::Body;
-use axum::body::Bytes;
+use axum::body::{Body, Bytes};
 use axum::http::header::HOST;
 use axum::http::Request;
 use std::future::Future;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
-use std::time::UNIX_EPOCH;
 
 /// While [`std::sync::LazyLock`](https://doc.rust-lang.org/stable/std/sync/struct.LazyLock.html) is still not in stable.
 pub struct LazyLock<T> {
@@ -135,9 +133,16 @@ pub fn str2req(s: impl AsRef<str>) -> Request<Body> {
         .unwrap()
 }
 
-// The HTTP/HTTPS client.
+/// The HTTP/HTTPS client.
 pub static CLIENT: LazyLock<tls_http::Client> =
     LazyLock::new(tls_http::Client::new_with_webpki_roots);
+
+/// The HTTP/HTTPS client without TLS SNI.
+pub static CLIENT_NO_SNI: LazyLock<tls_http::Client> = LazyLock::new(|| {
+    let mut tls_config = tls_http::ClientConfig::clone(&CLIENT.0);
+    tls_config.enable_sni = false;
+    tls_http::Client(Arc::new(tls_config))
+});
 
 /// Fetch a URI, returns as `Vec<u8>`.
 pub async fn fetch_data(req: Request<Body>) -> Result<Bytes> {
@@ -170,13 +175,6 @@ pub async fn fetch_json(request: Request<Body>, pointer: &str) -> Result<String>
         .ok_or_else(|| anyhow::anyhow!("json field not found"))?
         .to_string();
     Ok(v.trim_matches('"').to_owned())
-}
-
-/// (stamp secs) -> (days)
-pub fn elapse(stamp: f64) -> f64 {
-    // javascript: new Date("2001.01.01 06:00").getTime()/1e3
-    let now = UNIX_EPOCH.elapsed().unwrap().as_secs_f64();
-    (now - stamp) / 864e2 // unit: days
 }
 
 #[macro_export]
