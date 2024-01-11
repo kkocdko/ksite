@@ -29,7 +29,7 @@ pub async fn auth_layer(req: Request<Body>, next: Next) -> Response {
     const AUTH_PAGE: &str = (include_src!("auth.html") as [_; 1])[0];
     match req
         .headers()
-        .get_all(COOKIE)
+        .get_all(COOKIE) // http2 allows multiple header entries with same name
         .into_iter()
         .any(|v| v == *AUTH_COOKIE)
     {

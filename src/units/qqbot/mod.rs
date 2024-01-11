@@ -353,113 +353,92 @@ pub fn service() -> Router {
     // });
 }
 
-async fn update_notify(
-    last_ver: &'static Mutex<String>,
-    fetch_uri: &'static str,
-    trim_tag: fn(&str, &str) -> Option<String>,
-    gen_msg: fn(String) -> String,
-) -> Result<()> {
-    let req = str2req(fetch_uri);
-    let resolved = "20.205.243.166:443".to_string(); // https://api.github.com/meta
-    let res = crate::utils::CLIENT.fetch(req, Some(resolved)).await?;
-    let body = axum::body::to_bytes(axum::body::Body::new(res), usize::MAX).await?;
-    let body = String::from_utf8(Vec::from(body))?;
-    let mut ver = String::new();
-    for (_, tag) in body
-        .split(".tar.gz\"")
-        .filter_map(|part| part.rsplit_once("/tags/"))
-    {
-        if let Some(ret) = trim_tag(tag, &ver) {
-            ver = ret;
-        }
-    }
-    if ver.is_empty() {
-        return Err(anyhow::anyhow!("ver.is_empty()"));
-    }
-    let skip = {
-        let mut last = last_ver.lock().unwrap();
-        let skip = last.is_empty() || *last == ver;
-        *last = ver.clone();
-        skip
-    };
-    // dbg!(&gen_msg(ver));
-    if !skip {
-        notify(&gen_msg(ver)).await?;
-    }
-    Ok(())
-}
-
 pub async fn tick() {
     ticker!(return, 8, "XX:08:00", "XX:38:00");
-    // Golang https://github.com/golang/go/tags
-    // LLVM https://github.com/llvm/llvm-project/tags
-    /*
-    update_notify(
-        {
+    async fn update_notify(
+        last_ver: &'static Mutex<String>,
+        fetch_uri: &'static str,
+        proc_tag: fn(Option<String>, &str) -> Option<String>,
+        gen_msg: fn(String) -> String,
+    ) -> Result<()> {
+        let req = str2req(fetch_uri);
+        let resolved = "20.205.243.166:443".to_string(); // https://api.github.com/meta
+        let res = crate::utils::CLIENT.fetch(req, Some(resolved)).await?;
+        let body = axum::body::to_bytes(axum::body::Body::new(res), usize::MAX).await?;
+        let body = String::from_utf8(Vec::from(body))?;
+        let mut ver = body
+            .split(".tar.gz\"")
+            .filter_map(|part| Some(part.rsplit_once("/tags/")?.1))
+            .fold(None, proc_tag);
+        let ver = match ver {
+            Some(v) => v,
+            None => return Err(anyhow::anyhow!("ver.is_empty()")),
+        };
+        let skip = {
+            let mut last = last_ver.lock().unwrap();
+            let skip = last.is_empty() || *last == ver;
+            *last = ver.clone();
+            skip
+        };
+        // println!("{fetch_uri} {ver}");
+        if !skip {
+            notify(&gen_msg(ver)).await?;
+        }
+        Ok(())
+    }
+    fn smart_tag(prev: Option<String>, cur: &str) -> Option<String> {
+        let cur = cur.trim_start_matches(|c: char| !c.is_ascii_digit());
+        if cur.contains(['a', 'b', 'r']) {
+            return prev;
+        }
+        if prev.is_none() {
+            return Some(cur.to_owned());
+        }
+        let cur_major = cur.split_once('.')?.0.parse::<i32>().ok()?;
+        let prev_major = prev.as_ref()?.split_once('.')?.0.parse::<i32>().ok()?;
+        match cur_major > prev_major {
+            true => Some(cur.to_owned()),
+            false => prev,
+        }
+    };
+    macro_rules! make_ver_store {
+        () => {{
             static LAST_VER: Mutex<String> = Mutex::new(String::new());
             &LAST_VER
-        },
+        }};
+    }
+    let mut join_set = tokio::task::JoinSet::new();
+    join_set.spawn(update_notify(
+        make_ver_store!(),
         "https://github.com/golang/go/tags",
-        |cur, prev| Some(cur.to_string()),
+        smart_tag,
         |ver| format!("Golang {ver} released!\n\nBuild simple, secure, scalable systems with Go."),
-    )
-    .await;
-    update_notify(
-        {
-            static LAST_VER: Mutex<String> = Mutex::new(String::new());
-            &LAST_VER
-        },
+    ));
+    join_set.spawn(update_notify(
+        make_ver_store!(),
         "https://github.com/python/cpython/tags",
-        |cur, prev| match () {
-            _ if cur.contains(&['a', 'b', 'r']) => None,
-            _ => Some(cur.split_at(1).1.to_string()),
-        },
+        smart_tag,
         |ver| format!("Python {ver} released!\n\nPython is a programming language that lets you work quickly and integrate systems more effectively."),
-    )
-    .await;
-    update_notify(
-        {
-            static LAST_VER: Mutex<String> = Mutex::new(String::new());
-            &LAST_VER
-        },
-        "https://github.com/nodejs/node/tags", // TODO: sort
-        |cur, prev| {
-            let cur = cur.split_at(1).1.to_string();
-            let cur_major = cur.split_once('.')?.0.parse::<i32>().ok()?;
-            let prev_major = prev.split_once('.')?.0.parse::<i32>().ok()?;
-            match cur_major > prev_major {
-                true => Some(cur),
-                false => None,
-            }
-        },
+    ));
+    join_set.spawn(update_notify(
+        make_ver_store!(),
+        "https://github.com/nodejs/node/tags",
+        smart_tag,
         |ver| format!("Node.js {ver} released!\n\nNode.js is an open-source, cross-platform JavaScript runtime environment."),
-    )
-    .await;
-    */
-    update_notify(
-        {
-            static LAST_VER: Mutex<String> = Mutex::new(String::new());
-            &LAST_VER
-        },
+    ));
+    join_set.spawn(update_notify(
+        make_ver_store!(),
         "https://github.com/microsoft/vscode/tags",
-        |cur, prev| match prev.is_empty() {
-            true => Some(cur.to_string()),
-            false => None,
-        },
+        |prev, cur| prev.or_else(|| Some(cur.to_owned())),
         |ver| format!("VSCode {ver} released!\n\nCode editing. Redefined."),
-    )
-    .await;
-    update_notify(
-        {
-            static LAST_VER: Mutex<String> = Mutex::new(String::new());
-            &LAST_VER
-        },
+    ));
+    join_set.spawn(update_notify(
+        make_ver_store!(),
         "https://github.com/rust-lang/rust/tags",
-        |cur, prev| match prev.is_empty() {
-            true => Some(cur.to_string()),
-            false => None,
-        },
+        |prev, cur| prev.or_else(|| Some(cur.to_owned())),
         |ver| format!("Rust {ver} released!\n\nA language empowering everyone to build reliable and efficient software."),
-    )
-    .await;
+    ));
+    while let Some(r) = join_set.join_next().await {
+        care!(r).ok();
+    }
 }
