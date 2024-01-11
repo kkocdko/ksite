@@ -7,6 +7,7 @@ use axum::extract::RawQuery;
 use axum::middleware;
 use axum::response::Html;
 use axum::routing::{MethodRouter, Router};
+use std::time::{Duration, UNIX_EPOCH};
 
 pub mod db {
     use crate::database::DB;
@@ -55,7 +56,10 @@ async fn post_handler(q: RawQuery, body: Bytes) -> Bytes {
             // need restart to take effect
         }
         "trigger_restart_process" => {
-            std::process::exit(0);
+            std::thread::spawn(|| {
+                std::thread::sleep(Duration::from_millis(500));
+                std::process::exit(0);
+            });
         }
         "trigger_backup_database" => {
             crate::database::backup();
@@ -94,7 +98,10 @@ async fn post_handler(q: RawQuery, body: Bytes) -> Bytes {
             return Bytes::from_static(b"unknown op");
         }
     }
-    Bytes::from_static(b"finished")
+    Bytes::from(format!(
+        "finished, now = {}",
+        UNIX_EPOCH.elapsed().unwrap().as_secs()
+    ))
 }
 
 pub fn service() -> Router {
