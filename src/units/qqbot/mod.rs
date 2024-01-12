@@ -2,8 +2,8 @@
 
 use crate::auth::auth_layer;
 use crate::units::admin;
-use crate::utils::{fetch_json, fetch_text, str2req, LazyLock, OptionResult, CLIENT_NO_SNI};
-use crate::{care, include_src, log, ticker};
+use crate::utils::{fetch_json, fetch_text, str2req, LazyLock, OptionResult};
+use crate::{care, log, ticker};
 use anyhow::Result;
 use axum::body::Bytes;
 use axum::http::header::{AUTHORIZATION, CONTENT_TYPE, HOST};
@@ -12,11 +12,9 @@ use axum::middleware;
 use axum::response::Html;
 use axum::routing::{MethodRouter, Router};
 use rand::{thread_rng, Rng as _};
-use ricq::client::NetworkStatus;
 use ricq::handler::QEvent;
 use ricq::msg::{MessageChain, MessageElem};
-use ricq::{Client, Device, LoginResponse, Protocol, QRCodeState};
-use std::collections::HashMap;
+use ricq::{Client, LoginResponse, Protocol, QRCodeState};
 use std::io::Write as _;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, UNIX_EPOCH};
@@ -24,15 +22,12 @@ use std::time::{Duration, UNIX_EPOCH};
 static QR: Mutex<Bytes> = Mutex::new(Bytes::new());
 static CLIENT: LazyLock<Arc<Client>> = LazyLock::new(|| {
     log!(INFO: "init client");
-    let device = match admin::db::get("qqbot_device") {
-        Some(v) => serde_json::from_slice(&v).unwrap(),
-        None => {
-            let device = Device::random();
-            let device_json = serde_json::to_string(&device).unwrap();
-            admin::db::set("qqbot_device", device_json.as_bytes());
-            device
-        }
-    };
+    let device = admin::db::get("qqbot_device").unwrap_or_else(|| {
+        let default_device = br#"{"display":"OPPO.WATCH.3.12345","product":"mywatch","device":"watchthird","board":"eomam","model":"OPPO Watch 3","finger_print":"oppo/watch/watchthird:12/eomam.200122.001/3713053:user/release-keys","boot_id":"c551a017-7b25-a29c-d017-f5669c99f3f6","proc_version":"Linux 5.4.0-54-generic-JT1rcT5R (android-build@oppo.com)","imei":"596383386086907","brand":"Oppo","bootloader":"U-boot","base_band":"","version":{"incremental":"5891938","release":"12","codename":"REL","sdk":31},"sim_info":"T-Mobile","os_type":"android","mac_address":"00:50:56:C0:00:09","ip_address":[10,0,1,3],"wifi_bssid":"00:50:56:C0:00:09","wifi_ssid":"mywifi","imsi_md5":[168,95,162,8,95,25,127,174,97,161,163,42,13,203,28,159],"android_id":"c307656af5d64cba","apn":"wifi","vendor_name":"ColorOS Watch","vendor_os_name":"ColorOS Watch"}"#; // or ricq::Device::random()
+        admin::db::set("qqbot_device", default_device);
+        default_device.to_vec()
+    });
+    let device = serde_json::from_slice(&device).unwrap();
     let client_ver = Protocol::AndroidWatch.into();
     let client = Arc::new(Client::new(device, client_ver, on_event as fn(_) -> _));
     tokio::spawn(async {
@@ -52,7 +47,7 @@ static CLIENT: LazyLock<Arc<Client>> = LazyLock::new(|| {
                     log!(WARN: "offline, fn do_heartbeat returned");
                 } => {}
             };
-            CLIENT.stop(NetworkStatus::Unknown);
+            CLIENT.stop(ricq::client::NetworkStatus::Unknown);
             let now = UNIX_EPOCH.elapsed().unwrap().as_secs();
             if now - last < 30 {
                 log!(WARN: "reconnection was stopped, overfrequency");
@@ -66,10 +61,7 @@ static CLIENT: LazyLock<Arc<Client>> = LazyLock::new(|| {
 });
 
 async fn launch() -> Result<()> {
-    // # Tips about Login
-    // 1. Run on local host, login by qrcode.
-    // 2. Run on remote, copy device_json and token_json to database.
-    // 3. Restart remote server.
+    // Login by qrcode locally, then copy qqbot_device and qqbot_token to remote and login by token
     if let Some(v) = admin::db::get("qqbot_token") {
         let token = serde_json::from_slice(&v)?;
         CLIENT.token_login(token).await?;
@@ -126,20 +118,18 @@ fn bot_msg(content: &str) -> MessageChain {
 }
 
 /// Generate reply from message parts
-async fn on_group_msg(group_code: i64, msg: &str) -> Result<()> {
-    static REPLIES: LazyLock<Mutex<HashMap<String, String>>> = LazyLock::new(Default::default);
+async fn on_group_msg(group_code: i64, msg: String) -> Result<()> {
     let (head, rest) = msg.split_at(msg.find(' ').unwrap_or(msg.len()));
     let rest = rest.trim();
-    /// (stamp secs) -> (days)
+    /// (stamp secs) -> (days) , javascript: `new Date("2001.01.01 06:00").getTime() / 1e3`
     fn elapse(stamp: f64) -> f64 {
-        // javascript: new Date("2001.01.01 06:00").getTime()/1e3
         let now = UNIX_EPOCH.elapsed().unwrap().as_secs_f64();
         (now - stamp) / 864e2 // unit: days
     }
     let msg_chain = match head {
-        _ if rest.as_bytes().len() > 120 => bot_msg("请长话短说"),
+        _ if rest.len() > 120 => bot_msg("请长话短说"),
         "/帮助" => {
-            bot_msg("参阅 https://github.com/kkocdko/ksite/blob/main/src/units/qqbot/mod.rs#:~:text=REPLIES")
+            bot_msg("参阅 https://github.com/kkocdko/ksite/blob/main/src/units/qqbot/mod.rs#L132")
         }
         "/运行平台" => bot_msg(concat!(
             env!("CARGO_PKG_NAME"),
@@ -162,7 +152,6 @@ async fn on_group_msg(group_code: i64, msg: &str) -> Result<()> {
             let name = rest.next().unwrap();
             rest.next().unwrap(); // == "说"
             let content = rest.next().unwrap();
-            let mut msg_chain = MessageChain::default();
             let mut rich_msg = MessageElem::RichMsg(Default::default());
             if let MessageElem::RichMsg(v) = &mut rich_msg {
                 let body = format!(
@@ -174,20 +163,19 @@ async fn on_group_msg(group_code: i64, msg: &str) -> Result<()> {
                 v.template1 = Some(encoder.finish().unwrap());
                 v.service_id = Some(35);
             }
-            msg_chain.0.push(rich_msg);
             let mut general_flags = MessageElem::GeneralFlags(Default::default());
             if let MessageElem::GeneralFlags(v) = &mut general_flags {
                 v.pb_reserve = Some([120, 0, 248, 1, 0, 200, 2, 0].into());
                 v.pendant_id = Some(0);
             }
-            msg_chain.0.push(general_flags);
-            msg_chain
+            MessageChain(vec![rich_msg, general_flags])
         }
         "/聊天" => {
             let mut body = String::new();
             body += r#"{"stream":false,"model":"gpt-3.5-turbo","messages":[{"role":"system","content":"\nYou are kkGPT, a large language model trained by kkocdko.\nYour reply must be less than 70 words.\n\n"},{"role":"user","content":"#;
             body += &serde_json::to_string(rest).unwrap();
             body += r#"}]}"#;
+            #[rustfmt::skip]
             let req = Request::post(concat!("https://www.gp", "tapi.us/v1/ch", "at/com", "pletions"))
                 .header(HOST, concat!("www.gp", "tapi.us"))
                 .header(CONTENT_TYPE, "application/json")
@@ -196,18 +184,6 @@ async fn on_group_msg(group_code: i64, msg: &str) -> Result<()> {
                 .unwrap();
             bot_msg(&fetch_json(req, "/choices/0/message/content").await?)
         }
-        // ["驶向深蓝"] => {
-        //     let url = "https://api.lovelive.tools/api/SweetNothings?genderType=M";
-        //     fetch_text(str2req(url)).await?
-        // }
-        // ["设置回复", k, v] => {
-        //     REPLIES.lock().unwrap().insert(k.into(), v.into());
-        //     "记住啦".into()
-        // }
-        // [k, ..] => match REPLIES.lock().unwrap().get(k) {
-        //     Some(v) => v.clone(),
-        //     None => "指令有误".into(),
-        // }
         _ => bot_msg("指令有误"),
     };
     CLIENT.send_group_message(group_code, msg_chain).await?;
@@ -242,14 +218,15 @@ async fn on_event(event: QEvent) {
     static RECENT: Mutex<Vec<(i32, Vec<i32>, String, String, String)>> = Mutex::new(Vec::new());
     */
     match event {
-        QEvent::GroupMessage(e) => {
-            let e = e.inner;
-            let msg = e.elements.to_string();
-            // log!(INFO: "{msg}");
-            if msg.starts_with('/') {
-                care!(on_group_msg(e.group_code, &msg).await);
+        QEvent::GroupMessage(mut e) => {
+            if let Some(MessageElem::Text(v)) = e.inner.elements.0.first_mut() {
+                if let Some(v) = v.str.take() {
+                    if v.starts_with('/') {
+                        care!(on_group_msg(e.inner.group_code, v).await);
+                    }
+                }
             }
-            // log!("\n\x1b[93m[ksite]\x1b[0m {}", e.inner.elements);
+            // log!(INFO: "\n\x1b[93m[qq]\x1b[0m {}", e.inner.elements.to_string());
             /* >>> recall_log
             let mut recent = RECENT.lock().unwrap();
             recent.push((e.time, e.seqs, e.group_name, e.group_card, msg));
@@ -331,6 +308,7 @@ pub async fn tick() {
         proc_tag: fn(Option<String>, &str) -> Option<String>,
         gen_msg: fn(String) -> String,
     ) -> Result<()> {
+        use crate::utils::CLIENT_NO_SNI;
         let req = str2req(fetch_uri);
         let resolved = "20.205.243.166:443".to_string(); // https://api.github.com/meta
         let res = CLIENT_NO_SNI.fetch(req, Some(resolved)).await?;
