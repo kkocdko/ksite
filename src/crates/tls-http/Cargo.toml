@@ -1,6 +1,6 @@
 [package]
 name = "tls-http"
-version = "0.1.0"
+version = "0.2.1"
 edition = "2021"
 description = "A HTTPS client and server, use rustls 0.22 + hyper 1 + tower-service 0.3"
 

@@ -6,6 +6,7 @@ use hyper_util::service::TowerToHyperService;
 use std::convert::Infallible;
 use std::future::poll_fn;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::io;
 use tokio::io::AsyncWriteExt;
 pub use tokio_rustls::rustls::pki_types::*;
@@ -95,8 +96,8 @@ impl Client {
                 roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
             })
             .with_no_client_auth();
+        // tls_config.enable_sni = false; // CAUTIONS! some sites needs sni to work
         tls_config.alpn_protocols = vec![b"http/1.1".to_vec()]; // http 1.1 only currently
-                                                                // tls_config.enable_sni = false; // CAUTIONS! some sites needs sni to work
         Self(Arc::new(tls_config))
     }
 
@@ -181,7 +182,8 @@ pub async fn serve<S, B>(
         };
         // dbg!(socket_addr);
         let tls_acceptor = tls_acceptor.clone();
-        tokio::spawn(async move {
+        // https://github.com/tokio-rs/axum/discussions/2115
+        tokio::spawn(tokio::time::timeout(TIMEOUT, async move {
             // redirect HTTP to HTTPS
             let mut flag = [0]; // expect 0x16, TLS handshake
             let mut buf = tokio::io::ReadBuf::new(&mut flag);
@@ -201,9 +203,12 @@ pub async fn serve<S, B>(
                 // .serve_connection_with_upgrades(io, service)
                 .await
                 .ok();
-        });
+        }));
     }
 }
 
-// TODO: Use HSTS?
-const TO_HTTPS_PAGE: &[u8] = b"HTTP/1.1 200 OK\r\ncontent-type:text/html\r\n\r\n<script>location=location.href.replace(':','s:')</script><h2>Please visit this site using HTTPS.</h2>\r\n\r\n\0";
+/// The default value from nginx https://nginx.org/en/docs/http/ngx_http_core_module.html#keepalive_timeout
+const TIMEOUT: Duration = Duration::from_secs(75);
+
+/// Just use js to redirect, eliminating the request parsing on server. TODO: Use HSTS?
+const TO_HTTPS_PAGE: &[u8] = b"HTTP/1.1 200 OK\r\ncontent-type:text/html\r\n\r\n<html style=\"color-scheme:light dark\">Please visit with HTTPS.<script>location.protocol=\"https:\"</script>\r\n\r\n\0";
