@@ -97,9 +97,12 @@ async fn post_handler(mut req: Request<Body>) -> impl IntoResponse {
         .body(req.into_body())
         .unwrap();
     let mut res = CLIENT.fetch(remote_req, None).await.unwrap();
+    let is_sse = res.headers().get(CONTENT_LENGTH).is_none();
     let mut set_header = |k, v| res.headers_mut().insert(k, HeaderValue::from_static(v));
     set_header(ACCESS_CONTROL_ALLOW_ORIGIN, "*");
-    set_header(CONTENT_TYPE, "text/event-stream; charset=utf-8");
+    if is_sse {
+        set_header(CONTENT_TYPE, "text/event-stream; charset=utf-8");
+    }
     Ok(res)
 }
 
@@ -107,6 +110,7 @@ pub fn service() -> Router {
     Router::new().route(
         "/copilotgpt/v1/chat/completions",
         MethodRouter::new().post(post_handler).options([
+            // for Preflight https://developer.mozilla.org/en-US/docs/Glossary/Preflight_request
             (ACCESS_CONTROL_ALLOW_ORIGIN, "*"),
             (ACCESS_CONTROL_ALLOW_HEADERS, "*"),
         ]),
