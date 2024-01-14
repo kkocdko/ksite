@@ -49,6 +49,10 @@ async fn post_handler(mut req: Request<Body>) -> impl IntoResponse {
         return Err("only the token in database is allowed.");
     };
 
+    if let Some(Ok(v)) = req.headers().get(CONTENT_LENGTH).map(|v| v.to_str()) {
+        log!(INFO: "request content-length = {v}")
+    }
+
     // cache the auth header
     static AUTH_HEADER_CACHE: Mutex<(String, u64)> = Mutex::new((String::new(), 0));
     let now = UNIX_EPOCH.elapsed().unwrap().as_secs();
@@ -107,5 +111,4 @@ pub fn service() -> Router {
             (ACCESS_CONTROL_ALLOW_HEADERS, "*"),
         ]),
     )
-    // TODO: add a length limit middleware
 }
