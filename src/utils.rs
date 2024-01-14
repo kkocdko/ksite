@@ -137,7 +137,7 @@ pub fn str2req(s: impl AsRef<str>) -> Request<Body> {
 pub static CLIENT: LazyLock<tls_http::Client> =
     LazyLock::new(tls_http::Client::new_with_webpki_roots);
 
-/// The HTTP/HTTPS client without TLS SNI.
+/// The HTTP/HTTPS client without TLS SNI. Used to bypass GFW's SNI blocking. https://gfw.report/blog/gfw_esni_blocking/en/
 pub static CLIENT_NO_SNI: LazyLock<tls_http::Client> = LazyLock::new(|| {
     let mut tls_config = tls_http::ClientConfig::clone(&CLIENT.0);
     tls_config.enable_sni = false;
@@ -147,8 +147,7 @@ pub static CLIENT_NO_SNI: LazyLock<tls_http::Client> = LazyLock::new(|| {
 /// Fetch a URI, returns as `Vec<u8>`.
 pub async fn fetch_data(req: Request<Body>) -> Result<Bytes> {
     let res = CLIENT.fetch(req, None).await?;
-    let body = res.into_body();
-    Ok(axum::body::to_bytes(axum::body::Body::new(body), usize::MAX).await?)
+    Ok(axum::body::to_bytes(axum::body::Body::new(res), usize::MAX).await?)
 }
 
 /// Fetch a URI, returns as `String`.

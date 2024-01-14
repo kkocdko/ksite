@@ -310,7 +310,7 @@ pub async fn tick() {
     ) -> Result<()> {
         use crate::utils::CLIENT_NO_SNI;
         let req = str2req(fetch_uri);
-        let resolved = "20.205.243.166:443".to_string(); // https://api.github.com/meta
+        let resolved = "20.200.245.247:443".to_string(); // https://api.github.com/meta | https://ip.tool.chinaz.com/20.200.245.245 | time curl --insecure -H "Host: github.com" https://20.200.245.247:443/nodejs/node/tags > /dev/null
         let res = CLIENT_NO_SNI.fetch(req, Some(resolved)).await?;
         let body = axum::body::to_bytes(axum::body::Body::new(res), usize::MAX).await?;
         let body = String::from_utf8(Vec::from(body))?;
