@@ -1,6 +1,5 @@
 mod auth;
 mod database;
-// mod governor;
 mod launcher;
 mod ticker;
 mod units;
@@ -28,13 +27,11 @@ async fn run() {
             .merge(units::magazine::service())
             .merge(units::meet::service())
             .merge(units::paste::service())
-            .merge(units::qqbot::service())
+            // .merge(units::qqbot::service())
             .route(
                 "/robots.txt",
                 axum::routing::MethodRouter::new().get("User-agent: *\nDisallow: /\n"),
             );
-        // .layer(middleware::from_fn(governor::governor_layer));
-        // .into_make_service_with_connect_info::<SocketAddr>();
         log!("auth key = {}", auth::auth_key());
         let addr = SocketAddr::from(([0, 0, 0, 0], 9304)); // server address here
         log!("server address = {addr}");
@@ -82,6 +79,7 @@ async fn run() {
             tls_config
         };
         tls_http::serve(tcp_listener, app, tls_config).await;
+        // axum::serve(tcp_listener, app).await.unwrap();
     };
 
     let oscillator = async {

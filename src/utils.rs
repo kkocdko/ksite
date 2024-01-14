@@ -4,7 +4,7 @@ use axum::http::header::HOST;
 use axum::http::Request;
 use std::future::Future;
 use std::sync::{Arc, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// While [`std::sync::LazyLock`](https://doc.rust-lang.org/stable/std/sync/struct.LazyLock.html) is still not in stable.
 pub struct LazyLock<T> {
@@ -168,9 +168,8 @@ pub async fn fetch_text(request: Request<Body>) -> Result<String> {
 /// assert_eq!(v, Ok("1024".to_string())); // the same result!
 /// ```
 pub async fn fetch_json(request: Request<Body>, pointer: &str) -> Result<String> {
-    let text = fetch_text(request).await?;
-    let v = serde_json::from_str::<serde_json::Value>(&text)?;
-    let v = v
+    let body = fetch_data(request).await?;
+    let v = serde_json::from_slice::<serde_json::Value>(&body)?
         .pointer(pointer)
         .ok_or_else(|| anyhow::anyhow!("json field not found"))?
         .to_string();
@@ -193,6 +192,49 @@ macro_rules! care {
             _ => $if_err,
         }
     }};
+}
+
+/// A RateLimiter that uses the generic cell-rate algorithm.
+///
+/// # Examples
+///
+/// ```
+/// let mut limiter = GcraRateLimiter {
+///     theoretical_arrival_time: Instant::now(),
+///     emission_interval: Duration::from_millis(100),
+///     delay_variation_tolerance: Duration::from_millis(300),
+/// };
+/// for _ in 0..17 {
+///     print!("{} ", UNIX_EPOCH.elapsed().unwrap().as_millis() % 100000);
+///     println!("{}", limiter.check(1));
+///     std::thread::sleep(Duration::from_millis(50));
+/// }
+/// ```
+pub struct GcraRateLimiter {
+    pub theoretical_arrival_time: Instant,
+    pub emission_interval: Duration,
+    pub delay_variation_tolerance: Duration,
+    // https://github.com/benwis/tower-governor
+    // https://juejin.cn/post/7056000911893594148
+    // https://github.com/antifuchs/governor/blob/master/governor/README.md
+    // https://github.com/throttled/throttled
+    // https://leungyukshing.cn/archives/Rate-Limit-Algorithm.html
+}
+
+#[allow(dead_code)]
+impl GcraRateLimiter {
+    pub fn check(&mut self, quantity: u32) -> bool {
+        let now = Instant::now();
+        let increment = quantity * self.emission_interval;
+        let new_tat = self.theoretical_arrival_time.max(now) + increment;
+        let allow_at = new_tat - self.delay_variation_tolerance;
+        if now < allow_at {
+            false
+        } else {
+            self.theoretical_arrival_time = new_tat;
+            true
+        }
+    }
 }
 
 /// # Use macros instead of call inner functions directly!
