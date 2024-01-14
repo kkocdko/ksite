@@ -569,7 +569,7 @@ dependencies = [
 
 [[package]]
 name = "ksite"
-version = "0.10.3"
+version = "0.10.4"
 dependencies = [
  "anyhow",
  "askama_escape",

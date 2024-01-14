@@ -6,8 +6,6 @@ All in one solution for my server.
 
 ### 0.11.0
 
-- governor.
-
 - reverse proxy.
 
 - webdav + static serve + pastebin + account + remote download + mirror.
