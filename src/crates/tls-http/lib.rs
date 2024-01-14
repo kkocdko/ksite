@@ -158,7 +158,7 @@ impl Client {
     }
 }
 
-pub async fn serve<S, B>(
+pub async fn serve<B, S>(
     tcp_listener: tokio::net::TcpListener,
     service: S,
     tls_config: ServerConfig,
@@ -175,19 +175,19 @@ pub async fn serve<S, B>(
     let tls_acceptor = TlsAcceptor::from(Arc::new(tls_config));
     let service = TowerToHyperService::new(service);
     loop {
-        let service = service.clone();
         let (mut tcp_stream, _socket_addr) = match tcp_listener.accept().await {
             Ok(v) => v,
             _ => continue, // ignore error here?
         };
         // dbg!(socket_addr);
         let tls_acceptor = tls_acceptor.clone();
+        let service = service.clone();
         // https://github.com/tokio-rs/axum/discussions/2115
         tokio::spawn(tokio::time::timeout(TIMEOUT, async move {
             // redirect HTTP to HTTPS
             let mut flag = [0]; // expect 0x16, TLS handshake
             let mut buf = tokio::io::ReadBuf::new(&mut flag);
-            poll_fn(|cx| tcp_stream.poll_peek(cx, &mut buf)).await.ok();
+            poll_fn(|cx| tcp_stream.poll_peek(cx, &mut buf)).await.ok(); // ignore errors
             if flag[0] != 0x16 {
                 tcp_stream.write_all(TO_HTTPS_PAGE).await.ok();
                 tcp_stream.shutdown().await.ok(); // remember to close stream
