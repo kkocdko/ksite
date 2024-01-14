@@ -1,6 +1,7 @@
 #![allow(unused)]
 pub mod admin;
 pub mod chat;
+pub mod copilotgpt;
 pub mod info;
 pub mod magazine;
 pub mod meet;

@@ -81,6 +81,12 @@ async fn post_handler(q: RawQuery, body: Bytes) -> Bytes {
         "set_ssl_key" => {
             db::set("ssl_key", &body);
         }
+        "set_copilot_token" => {
+            db::set("copilot_token", &body);
+        }
+        "set_copilot_machineid" => {
+            db::set("copilot_machineid", &body);
+        }
         "set_qqbot_device" => {
             db::set("qqbot_device", &body);
         }
