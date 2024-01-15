@@ -2,10 +2,10 @@
 
 use super::chat::ChatServer;
 use crate::include_src;
+use crate::utils::LazyLock as Lazy;
 use axum::http::header::{HeaderValue, CACHE_CONTROL};
 use axum::response::Html;
 use axum::routing::{MethodRouter, Router};
-use crate::utils::LazyLock as Lazy;
 
 static CHAT_SERVER: Lazy<ChatServer> = Lazy::new(Default::default);
 

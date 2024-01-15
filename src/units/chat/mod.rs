@@ -1,6 +1,7 @@
 //! Simple chat rooms, client-to-client encrypted.
 
 use crate::include_src;
+use crate::utils::LazyLock as Lazy;
 use anyhow::Result;
 use axum::extract::Path;
 use axum::http::header::CACHE_CONTROL;
@@ -9,7 +10,6 @@ use axum::response::sse::{Event as SseEvent, Sse};
 use axum::response::Html;
 use axum::routing::{MethodRouter, Router};
 use futures_core::Stream;
-use crate::utils::LazyLock as Lazy;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
