@@ -2,27 +2,26 @@
 
 use crate::include_src;
 use crate::units::admin;
-use crate::utils::LazyLock;
+use crate::utils::{rand_id, LazyLock};
 use axum::body::Body;
 use axum::http::header::COOKIE;
 use axum::http::{Request, StatusCode};
 use axum::middleware::Next;
 use axum::response::{Html, IntoResponse, Response};
-use std::fmt::Write as _;
 
-static AUTH_COOKIE: LazyLock<String> = LazyLock::new(|| {
-    let mut inner = String::new();
-    inner += "auth=";
+static AUTH_COOKIE: LazyLock<Vec<u8>> = LazyLock::new(|| {
+    let mut inner = Vec::new();
+    inner.extend(b"auth=");
     match admin::db::get("auth_key") {
-        Some(v) => inner += std::str::from_utf8(&v).unwrap(),
-        None => write!(&mut inner, "{:x}", rand::random::<u128>()).unwrap(),
+        Some(v) => inner.extend(v),
+        None => inner.extend(rand_id(&[32])),
     }
     inner
 });
 
 pub fn auth_key() -> &'static str {
     // because this is a low frequency operation
-    AUTH_COOKIE.split_once('=').unwrap().1
+    std::str::from_utf8(&AUTH_COOKIE[b"auth=".len()..]).unwrap()
 }
 
 pub async fn auth_layer(req: Request<Body>, next: Next) -> Response {
@@ -31,13 +30,68 @@ pub async fn auth_layer(req: Request<Body>, next: Next) -> Response {
         .headers()
         .get_all(COOKIE) // http2 allows multiple header entries with same name
         .into_iter()
-        .any(|v| match v.to_str() {
-            Ok(v) if v.find(&*AUTH_COOKIE).is_some() => true,
-            _ => false,
-        }) {
+        .any(|v| cookie_match(v.as_bytes(), &AUTH_COOKIE))
+    {
         true => next.run(req).await,
         false => (StatusCode::UNAUTHORIZED, Html(AUTH_PAGE)).into_response(),
     }
 }
 
 // https://docs.rs/axum/latest/axum/middleware/fn.from_fn.html
+
+fn cookie_match(mut v: &[u8], needle: &[u8]) -> bool {
+    loop {
+        if v.starts_with(needle) {
+            return true;
+        }
+        loop {
+            match v.first() {
+                None => return false,
+                Some(&c) => {
+                    v = &v[1..];
+                    if c == b';' && v.first().is_some() {
+                        v = &v[1..];
+                        break;
+                    }
+                }
+            };
+        }
+    }
+}
+
+fn cookie_match_slow(v: &[u8], needle: &[u8]) -> bool {
+    for mut part in v.split(|&c| c == b';') {
+        if part.first() == Some(&b' ') {
+            part = &part[1..];
+        }
+        if part.starts_with(needle) {
+            return true;
+        }
+    }
+    false
+}
+
+#[allow(dead_code)]
+fn test_cookie_match() {
+    let cases = &[
+        "auth=xxx",
+        "  auth=xxx  ",
+        "; auth=xxx  ",
+        " ;auth=xxx  ",
+        " ; auth=xxx  ",
+        ";;auth=xxx  ",
+        "some;auth=xxx",
+        "some ;auth=xxx",
+        "some; auth=xxx",
+        "some ; auth=xxx",
+    ];
+
+    for v in cases {
+        println!(
+            "{:?} {:?} {:?}",
+            cookie_match_slow(v.as_bytes(), b"auth=xxx"),
+            cookie_match(v.as_bytes(), b"auth=xxx"),
+            v
+        );
+    }
+}

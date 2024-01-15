@@ -28,7 +28,7 @@ async fn run() {
             .merge(units::magazine::service())
             .merge(units::meet::service())
             .merge(units::paste::service())
-            // .merge(units::qqbot::service())
+            .merge(units::qqbot::service())
             .route(
                 "/robots.txt",
                 axum::routing::MethodRouter::new().get("User-agent: *\nDisallow: /\n"),
