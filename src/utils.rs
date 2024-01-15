@@ -236,6 +236,23 @@ impl GcraRateLimiter {
     }
 }
 
+/// This function supports non-standard UUID, which is required in GitHub Copilot
+pub fn rand_id(sections: &[usize]) -> Vec<u8> {
+    debug_assert!(!sections.is_empty() && sections.iter().all(|&v| v != 0));
+    let mut ret = Vec::with_capacity(64);
+    for section in sections {
+        for _ in 0..*section {
+            ret.push(match rand::random::<u8>() >> 4 {
+                d @ 0..=9 => d + b'0',
+                d @ 10.. => d - 10 + b'a',
+            });
+        }
+        ret.push(b'-');
+    }
+    ret.pop();
+    ret
+}
+
 /// # Use macros instead of call inner functions directly!
 ///
 /// Operations about const string.

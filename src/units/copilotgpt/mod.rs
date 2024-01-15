@@ -2,7 +2,7 @@
 
 use crate::log;
 use crate::units::admin;
-use crate::utils::{CLIENT, CLIENT_NO_SNI};
+use crate::utils::{rand_id, CLIENT, CLIENT_NO_SNI};
 use axum::body::Body;
 use axum::http::header::*;
 use axum::http::Request;
@@ -11,30 +11,11 @@ use axum::routing::{MethodRouter, Router};
 use std::sync::Mutex;
 use std::time::UNIX_EPOCH;
 
-fn rand_id(sections: &[usize]) -> Vec<u8> {
-    let mut ret = Vec::new();
-    for section in sections {
-        for _ in 0..*section {
-            ret.push(match rand::random::<u8>() >> 4 {
-                d @ 0..=9 => d + b'0',
-                d @ 10..=255 => d - 10 + b'a',
-            });
-        }
-        ret.push(b'-');
-    }
-    if ret.last() == Some(&b'-') {
-        ret.pop();
-    }
-    ret
-}
-
 async fn post_handler(mut req: Request<Body>) -> impl IntoResponse {
     // verify the token is our own token, then we can `unwrap()` everywhere
     let Ok(Some((copilot_token, copilot_machineid))) = tokio::task::spawn_blocking(|| {
-        Some((
-            admin::db::get("copilot_token")?,
-            admin::db::get("copilot_machineid")?,
-        ))
+        let get = admin::db::get;
+        Some((get("copilot_token")?, get("copilot_machineid")?))
     })
     .await
     else {
@@ -69,8 +50,8 @@ async fn post_handler(mut req: Request<Body>) -> impl IntoResponse {
         let res = CLIENT_NO_SNI.fetch(req, resolved).await.unwrap();
         let body = axum::body::to_bytes(axum::body::Body::new(res), usize::MAX).await;
         let body = serde_json::from_slice::<serde_json::Value>(&body.unwrap()).unwrap();
-        let expires_at = body.pointer("/expires_at").unwrap().as_u64().unwrap(); // it's +30 minutes usually
-        let auth_header = "Bearer ".to_string() + body.pointer("/token").unwrap().as_str().unwrap();
+        let expires_at = body.get("expires_at").unwrap().as_u64().unwrap(); // it's +30 minutes usually
+        let auth_header = "Bearer ".to_string() + body.get("token").unwrap().as_str().unwrap();
         *AUTH_HEADER_CACHE.lock().unwrap() = (auth_header, expires_at);
         log!(INFO: "reissued auth header, expires_at = {expires_at}");
     };
