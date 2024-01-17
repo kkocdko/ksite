@@ -120,6 +120,6 @@ pub fn service() -> Router {
         MethodRouter::new()
             .get(Html((include_src!("page.html") as [_; 1])[0]))
             .post(post_handler)
-            .layer(middleware::from_fn(auth_layer)),
+            .route_layer(middleware::from_fn(auth_layer)),
     )
 }

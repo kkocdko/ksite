@@ -138,7 +138,7 @@ pub fn service() -> Router {
             "/health",
             MethodRouter::new()
                 .post(post_handler)
-                .layer(middleware::from_fn(auth_layer)) // require auth only for post
+                .route_layer(middleware::from_fn(auth_layer)) // require auth only for post
                 .get(get_handler),
         )
         .route(
@@ -148,7 +148,7 @@ pub fn service() -> Router {
                     care!(check_in().await).ok();
                     Redirect::to("/health")
                 })
-                .layer(middleware::from_fn(auth_layer)),
+                .route_layer(middleware::from_fn(auth_layer)),
         )
 }
 

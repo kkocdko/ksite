@@ -111,5 +111,5 @@ mod db {
         ret
     }),
 )
-.layer(middleware::from_fn(auth_layer))
+.route_layer(middleware::from_fn(auth_layer))
 */

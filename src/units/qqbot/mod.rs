@@ -280,7 +280,7 @@ pub fn service() -> Router {
             "/qqbot/qr",
             MethodRouter::new().get(|| async { QR.lock().unwrap().to_owned() }),
         )
-        .layer(middleware::from_fn(auth_layer))
+        .route_layer(middleware::from_fn(auth_layer))
     // tokio::spawn(async {
     //     let on_event = |mut event: QEvent| async { event = dbg!(event) }; // interesting noop
     //     let device = Device::random();

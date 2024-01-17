@@ -65,7 +65,7 @@ pub fn service() -> Router {
             "/paste/:id",
             MethodRouter::new().get(get_handler).post(post_handler),
         )
-    // .layer(middleware::from_fn(auth_layer))
+    // .route_layer(middleware::from_fn(auth_layer))
 }
 /*
 # void
