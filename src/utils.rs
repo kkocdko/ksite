@@ -193,6 +193,46 @@ macro_rules! care {
     }};
 }
 
+/*
+mod haha {
+    use axum::body::{Body, Bytes, HttpBody};
+    use axum::http::{Request, Response};
+    use std::pin::Pin;
+    use std::task::Context;
+    use std::task::Poll;
+    use tokio::io::{self, AsyncRead, AsyncWrite, ReadBuf};
+    struct HttpDuplex {
+        req_body: Body,
+    }
+    impl HttpDuplex {
+        pub fn new() {}
+    }
+    impl AsyncRead for HttpDuplex {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context,
+            buf: &mut ReadBuf,
+        ) -> Poll<io::Result<()>> {
+            // the difference is 0, EOF has been reached.
+            match Pin::new(&mut self.req_body).poll_frame(cx) {
+                Poll::Ready(Some(Err(e))) => {
+                    Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e.into_inner())))
+                }
+                Poll::Ready(Some(Ok(frame))) => match frame.into_data() {
+                    Ok(data) => {
+                        unimplemented!()
+                        // buf.
+                    }
+                    Err(_) => Poll::Pending,
+                },
+                Poll::Ready(None) => Poll::Ready(Ok(())),
+                pending => unimplemented!(),
+            }
+        }
+    }
+}
+*/
+
 /// A RateLimiter that uses the generic cell-rate algorithm.
 ///
 /// # Examples

@@ -28,6 +28,7 @@ async fn run() {
             .merge(units::magazine::service())
             .merge(units::meet::service())
             .merge(units::paste::service())
+            // .merge(units::proxy::service())
             .merge(units::qqbot::service())
             .route(
                 "/robots.txt",
