@@ -30,7 +30,6 @@ opt-level = "z"
 
 [dependencies]
 anyhow = "1"
-askama_escape = "0.10"
 axum = { version = "0.7", default-features = false, features = ["http1", "http2", "tokio"] }
 flate2 = "1"
 futures-core = "0.3"

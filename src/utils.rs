@@ -112,25 +112,21 @@ pub fn encode_uri(i: &str) -> String {
     unsafe { String::from_utf8_unchecked(o) }
 }
 
-/// Escape log string into a single line, html safe string.
-///
-/// `[a"foo\nbar]` into `[a&quot;foo\\nbar]`
-pub fn log_escape(s: &str) -> String {
-    html_escape(&s.replace('\n', "\\n"))
-}
-
-/// Escape to HTML safe string.
-pub fn html_escape(v: &str) -> String {
-    askama_escape::escape(v, askama_escape::Html).to_string()
-}
-
-pub fn str2req(s: impl AsRef<str>) -> Request<Body> {
-    let uri = encode_uri(s.as_ref());
+/// Generate an request which GET the uri.
+pub fn str2req(uri: impl AsRef<str>) -> Request<Body> {
+    let uri = encode_uri(uri.as_ref());
     let uri = axum::http::Uri::try_from(uri).unwrap();
     Request::get(&uri)
         .header(HOST, uri.host().unwrap())
         .body(Body::empty())
         .unwrap()
+}
+
+/// Requires escape on the client side to boost server performance, just a check here.
+pub fn escape_check_html(v: &[u8]) -> bool {
+    // https://github.com/djc/askama/blob/0.12.0/askama_escape/src/lib.rs
+    v.iter()
+        .all(|c| !matches!(c, b'<' | b'>' | b'&' | b'"' | b'\''))
 }
 
 /// The HTTP/HTTPS client.

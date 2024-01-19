@@ -2,7 +2,7 @@
 
 use crate::auth::auth_layer;
 use crate::include_src;
-use crate::utils::html_escape;
+use crate::utils::escape_check_html;
 use axum::body::Bytes;
 use axum::extract::Path;
 use axum::middleware;
@@ -51,10 +51,12 @@ async fn get_handler(Path(id): Path<u64>) -> Html<Vec<u8>> {
     Html(body)
 }
 
-async fn post_handler(Path(id): Path<u64>, body: Bytes) {
-    // https://github.com/djc/askama/blob/0.12.0/askama_escape/src/lib.rs
-    // 要求客户端做好escape，这里只作校验
+async fn post_handler(Path(id): Path<u64>, body: Bytes) -> Result<(), &'static str> {
+    if !escape_check_html(&body) {
+        return Err("contains illegal chars, content should be escaped on frontend");
+    }
     tokio::task::spawn_blocking(move || db::set(id, &body));
+    Ok(())
 }
 
 pub fn service() -> Router {
@@ -67,6 +69,7 @@ pub fn service() -> Router {
         )
     // .route_layer(middleware::from_fn(auth_layer))
 }
+
 /*
 # void
 ./bombardier -c 128 http://127.0.0.1:9304/paste/1

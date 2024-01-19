@@ -1,7 +1,7 @@
 //! Lazy mirror for caching linux distros' packages.
 
 use crate::utils::LazyLock as Lazy;
-use crate::utils::{log_escape, str2req, with_retry, CLIENT};
+use crate::utils::{str2req, with_retry, CLIENT};
 use crate::{care, include_src, log};
 use axum::body::HttpBody;
 use axum::extract::Path;
@@ -164,7 +164,7 @@ pub fn service() -> Router {
                 }
                 list.sort_by_key(|v| v.0);
                 for (size, path) in list.into_iter().rev() {
-                    let path = log_escape(&path);
+                    // TODO: escape
                     writeln!(&mut ret, "{size: >12} {path}").unwrap();
                 }
                 ret += PAGE[1];

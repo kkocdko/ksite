@@ -50,7 +50,7 @@
 <body>
   <header>
     <button
-      onclick="fetch(location,{method:'POST',body:$v.value}).catch(alert)"
+      onclick="fetch(location,{method:'POST',body:($v.textContent=$v.value,$v.innerHTML)}).catch(alert)"
     >
       Save
     </button>
