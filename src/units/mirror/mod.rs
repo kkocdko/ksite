@@ -2,7 +2,7 @@
 
 use crate::utils::LazyLock as Lazy;
 use crate::utils::{str2req, with_retry, CLIENT};
-use crate::{care, include_src, log};
+use crate::{care, include_src, log, ticker};
 use axum::body::HttpBody;
 use axum::extract::Path;
 use axum::http::StatusCode;
@@ -60,14 +60,14 @@ mod db {
         let mut stmd = db.prepare_cached(sql).unwrap();
         stmd.execute((path.as_bytes(),)).unwrap();
     }
-    pub fn list() -> Vec<(u64, String)> {
+    pub fn list() -> Vec<(u64, String, u64)> {
         let db = DB.lock().unwrap();
         let sql = strip_str! {"
-            SELECT rowid, path FROM mirror
+            SELECT rowid, path, time FROM mirror
         "};
         let mut stmd = db.prepare_cached(sql).unwrap();
         stmd.query_map((), |r| {
-            Ok((r.get(0)?, String::from_utf8(r.get(1)?).unwrap()))
+            Ok((r.get(0)?, String::from_utf8(r.get(1)?).unwrap(), r.get(1)?))
         })
         .unwrap()
         .map(|v| v.unwrap())
@@ -99,6 +99,7 @@ async fn handle(req_path: &str, target: String) -> Response {
         let reader_stream = tokio_util::io::ReaderStream::new(file);
         return axum::body::Body::from_stream(reader_stream).into_response();
     }
+    // in progress, but not finished, just pipe it
     if db_get_result.is_some() {
         return match fetch_target().await {
             Ok(v) => v.into_response(),
@@ -159,11 +160,11 @@ pub fn service() -> Router {
                 let mut ret = String::new();
                 ret += PAGE[0];
                 let mut list = db::list();
-                for (number, _) in &mut list {
+                for (number, _, _) in &mut list {
                     *number = std::fs::metadata(gen_file_path(*number)).unwrap().len();
                 }
                 list.sort_by_key(|v| v.0);
-                for (size, path) in list.into_iter().rev() {
+                for (size, path, _) in list.into_iter().rev() {
                     // TODO: escape
                     writeln!(&mut ret, "{size: >12} {path}").unwrap();
                 }
@@ -199,4 +200,18 @@ pub fn service() -> Router {
         )
 }
 
-// TODO: clean outdated cache
+pub async fn tick() {
+    ticker!(return, 8, "XX:14:00");
+
+    tokio::task::spawn_blocking(|| {
+        let now = std::time::UNIX_EPOCH.elapsed().unwrap().as_secs();
+        for (id, req_path, time) in db::list() {
+            if now - time < 3600 * 24 {
+                continue;
+            }
+            let file_path = gen_file_path(id);
+            std::fs::remove_file(file_path).unwrap();
+            db::del(&req_path);
+        }
+    });
+}
