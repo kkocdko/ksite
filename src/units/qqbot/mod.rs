@@ -219,11 +219,18 @@ async fn on_event(event: QEvent) {
     */
     match event {
         QEvent::GroupMessage(mut e) => {
-            if let Some(MessageElem::Text(v)) = e.inner.elements.0.first_mut() {
-                if let Some(v) = v.str.take() {
-                    if v.starts_with('/') {
-                        care!(on_group_msg(e.inner.group_code, v).await);
+            // println!("\n\n===== e.inner.elements.0 =====");
+            // for v in &e.inner.elements.0 {
+            //     println!(">>> {:?}", v);
+            // }
+            for el in e.inner.elements.0 {
+                if let MessageElem::Text(mut v) = el {
+                    if let Some(v) = v.str.take() {
+                        if v.starts_with('/') {
+                            care!(on_group_msg(e.inner.group_code, v).await);
+                        }
                     }
+                    break;
                 }
             }
             // log!(INFO: "\n\x1b[93m[qq]\x1b[0m {}", e.inner.elements.to_string());
