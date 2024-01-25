@@ -1,5 +1,5 @@
-use http::uri::Scheme;
 use hyper::body::{Body, Incoming};
+use hyper::http::uri::Scheme;
 use hyper::{Request, Response};
 use hyper_util::rt::tokio::{TokioExecutor, TokioIo};
 use hyper_util::service::TowerToHyperService;
