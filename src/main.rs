@@ -12,6 +12,7 @@ use std::time::Duration;
 
 fn main() {
     launcher::launch(run);
+    // launcher::launch(bench);
 }
 
 async fn run() {
@@ -126,3 +127,144 @@ fn db_upgrade() {
         db!("DROP TABLE health_list").unwrap();
     }
 }
+
+/*
+
+mod mono0 {
+    use tokio::sync::{mpsc, oneshot};
+    pub struct Mono<T: Send + 'static> {
+        tx: mpsc::Sender<Box<dyn FnOnce(&mut T) -> () + Send>>,
+    }
+    impl<T: Send + 'static> Mono<T> {
+        pub fn new(mut v: T) -> Self {
+            let (tx, mut rx) = mpsc::channel::<Box<dyn FnOnce(&mut T) -> () + Send>>(1);
+            std::thread::spawn(move || {
+                while let Some(mut f) = rx.blocking_recv() {
+                    f(&mut v);
+                }
+            });
+            Self { tx }
+        }
+        pub async fn call<R: Send + 'static>(&self, f: impl Fn(&mut T) -> R + Send + 'static) -> R {
+            let (send, response) = oneshot::channel();
+            self.tx
+                .send(Box::new(move |s| {
+                    // f may be inlined, it's fine
+                    send.send(f(s));
+                }))
+                .await;
+            // std::thread::scope(f)
+            // tokio::task::spawn_blocking(f)
+            return response.await.unwrap();
+        }
+    }
+    async fn main_async() {
+        // tokio::task::local
+        // let a = tokio::runtime::Handle::current().block_on(async {});
+        let mono = Mono::new("abc".to_string());
+        let v = mono
+            .call(|s| {
+                *s += " modified";
+                s.to_string()
+            })
+            .await;
+        dbg!(&v);
+        // tokio::spawn(async{}).
+        // tokio::block_
+    }
+}
+
+mod mono1 {
+    use tokio::sync::{mpsc, oneshot};
+    pub struct Mono {
+        tx: mpsc::Sender<Box<dyn FnOnce(&mut String) -> () + Send>>,
+    }
+    impl Mono {
+        pub fn new(mut v: String) -> Self {
+            let (tx, mut rx) = mpsc::channel::<Box<dyn FnOnce(&mut String) -> () + Send>>(1);
+            std::thread::spawn(move || {
+                while let Some(mut f) = rx.blocking_recv() {
+                    f(&mut v);
+                }
+            });
+            Self { tx }
+        }
+        pub async fn call<'env>(
+            &self,
+            f: impl Fn(&mut String) -> String + Send + 'static,
+        ) -> String {
+            let (send, response) = oneshot::channel();
+            self.tx
+                .send(Box::new(move |s| {
+                    // f may be inlined, it's fine
+                    send.send(f(s));
+                }))
+                .await;
+            // std::thread::scope(f)
+            // tokio::task::spawn_blocking(f)
+            return response.await.unwrap();
+        }
+    }
+}
+
+mod mono2 {
+    use tokio::sync::{mpsc, oneshot};
+    use tokio::sync::{Mutex, Semaphore};
+    pub struct Mono {
+        // state: Semaphore,
+        // f: Mutex<Box<dyn FnOnce(&mut String) -> () + Send>>,
+        // ret: Mutex<String>,
+        tx: mpsc::Sender<Box<dyn FnOnce(&mut String) -> () + Send>>,
+    }
+    impl Mono {
+        pub fn new(mut v: String) -> Self {
+            let (tx, mut rx) = mpsc::channel::<Box<dyn FnOnce(&mut String) -> () + Send>>(1);
+            std::thread::spawn(move || {
+                while let Some(mut f) = rx.blocking_recv() {
+                    f(&mut v);
+                }
+            });
+            // panic!()
+            Self { tx }
+        }
+        pub async fn call<'env, F>(&self, f: F) -> String
+        where
+            F: Fn(&mut String) -> String + Send + 'env,
+        {
+            let (send, response) = oneshot::channel();
+            // f(&mut String::new());
+            self.tx
+                .send(Box::new(move |s| {
+                    // f may be inlined, it's fine
+                    send.send(f(s));
+                }))
+                .await;
+            // std::thread::scope(f)
+            // tokio::task::spawn_blocking(f)
+            return response.await.unwrap();
+        }
+    }
+}
+
+async fn bench() {
+    // 方案一：tokio::task::spawn_blocking 解决一切
+    // 方案二：放在单个 std::thread 里运行，mpsc 或者其他方法传入 Fn 取出 Value
+
+    use crate::utils::LazyLock;
+    use mono1::Mono;
+    // tokio::task::local
+    // let a = tokio::runtime::Handle::current().block_on(async {});
+    static MONO: LazyLock<Mono> = LazyLock::new(|| Mono::new("abc".to_string()));
+    // async fn append(appended: &str) -> String {
+    //     MONO.call(|s| {
+    //         *s += appended;
+    //         s.to_string()
+    //     })
+    //     .await
+    // }
+    // tokio::task::spawn_blocking(f)
+    // tokio::spawn(async{}).
+    // tokio::block_
+}
+
+ */
