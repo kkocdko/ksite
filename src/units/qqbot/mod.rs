@@ -2,11 +2,11 @@
 
 use crate::auth::auth_layer;
 use crate::units::admin;
-use crate::utils::{fetch_json, fetch_text, str2req, LazyLock, OptionResult};
+use crate::utils::{block_on, fetch_json, fetch_text, str2req, LazyLock, OptionResult};
 use crate::{care, log, ticker};
 use anyhow::Result;
 use axum::body::Bytes;
-use axum::http::header::{AUTHORIZATION, CONTENT_TYPE, HOST};
+use axum::http::header::*;
 use axum::http::Request;
 use axum::middleware;
 use axum::response::Html;
@@ -22,10 +22,11 @@ use std::time::{Duration, UNIX_EPOCH};
 static QR: Mutex<Bytes> = Mutex::new(Bytes::new());
 static CLIENT: LazyLock<Arc<Client>> = LazyLock::new(|| {
     log!(INFO: "init client");
-    let device = admin::db::get("qqbot_device").unwrap_or_else(|| {
+    let device = block_on(admin::db::get("qqbot_device".to_owned())).unwrap_or_else(|| {
         let default_device = br#"{"display":"OPPO.WATCH.3.12345","product":"mywatch","device":"watchthird","board":"eomam","model":"OPPO Watch 3","finger_print":"oppo/watch/watchthird:12/eomam.200122.001/3713053:user/release-keys","boot_id":"c551a017-7b25-a29c-d017-f5669c99f3f6","proc_version":"Linux 5.4.0-54-generic-JT1rcT5R (android-build@oppo.com)","imei":"596383386086907","brand":"Oppo","bootloader":"U-boot","base_band":"","version":{"incremental":"5891938","release":"12","codename":"REL","sdk":31},"sim_info":"T-Mobile","os_type":"android","mac_address":"00:50:56:C0:00:09","ip_address":[10,0,1,3],"wifi_bssid":"00:50:56:C0:00:09","wifi_ssid":"mywifi","imsi_md5":[168,95,162,8,95,25,127,174,97,161,163,42,13,203,28,159],"android_id":"c307656af5d64cba","apn":"wifi","vendor_name":"ColorOS Watch","vendor_os_name":"ColorOS Watch"}"#; // or ricq::Device::random()
-        admin::db::set("qqbot_device", default_device);
-        default_device.to_vec()
+        let bytes = Bytes::from_static(default_device);
+        block_on(admin::db::set("qqbot_device".to_owned(), bytes.to_owned()));
+        bytes
     });
     let device = serde_json::from_slice(&device).unwrap();
     let client_ver = Protocol::AndroidWatch.into();
@@ -62,7 +63,7 @@ static CLIENT: LazyLock<Arc<Client>> = LazyLock::new(|| {
 
 async fn launch() -> Result<()> {
     // Login by qrcode locally, then copy qqbot_device and qqbot_token to remote and login by token
-    if let Some(v) = admin::db::get("qqbot_token") {
+    if let Some(v) = admin::db::get("qqbot_token".to_owned()).await {
         let token = serde_json::from_slice(&v)?;
         CLIENT.token_login(token).await?;
         log!(INFO: "login by token");
@@ -109,7 +110,8 @@ async fn launch() -> Result<()> {
     // save new token
     tokio::time::sleep(Duration::from_secs(1)).await;
     let token = CLIENT.gen_token().await;
-    admin::db::set("qqbot_token", serde_json::to_string(&token)?.as_bytes());
+    let qqbot_token = serde_json::to_string(&token)?;
+    admin::db::set("qqbot_token".to_owned(), Bytes::from(qqbot_token)).await;
     Ok(())
 }
 
@@ -266,7 +268,7 @@ async fn on_event(event: QEvent) {
 
 async fn notify(msg: &str) -> Result<()> {
     let msg_chain = bot_msg(msg);
-    let groups = care!(admin::db::get("qqbot_notify_groups").e())?;
+    let groups = care!(admin::db::get("qqbot_notify_groups".to_owned()).await.e())?;
     let groups = care!(serde_json::from_slice::<Vec<i64>>(&groups))?;
     for group in groups {
         CLIENT.send_group_message(group, msg_chain.clone()).await?;

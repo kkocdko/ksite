@@ -13,12 +13,9 @@ use std::time::UNIX_EPOCH;
 
 async fn post_handler(mut req: Request<Body>) -> impl IntoResponse {
     // verify the token is our own token, then we can `unwrap()` everywhere
-    let Ok(Some((copilot_token, copilot_machineid))) = tokio::task::spawn_blocking(|| {
-        let get = admin::db::get;
-        Some((get("copilot_token")?, get("copilot_machineid")?))
-    })
-    .await
-    else {
+    let copilot_token = admin::db::get("copilot_token".to_owned()).await;
+    let copilot_machineid = admin::db::get("copilot_machineid".to_owned()).await;
+    let (Some(copilot_token), Some(copilot_machineid)) = (copilot_token, copilot_machineid) else {
         return Err("please set copilot_token and copilot_machineid in database.");
     };
     let Some(true) = req
@@ -69,7 +66,7 @@ async fn post_handler(mut req: Request<Body>) -> impl IntoResponse {
         .header("X-GitHub-Api-Version", "2023-07-07")
         .header("X-Request-Id", rand_id(&[8, 4, 4, 4, 12]))
         .header("Vscode-Sessionid", rand_id(&[8, 4, 4, 4, 25]))
-        .header("Vscode-Machineid", copilot_machineid) // rand_id(&[8, 4, 4, 4, 12])
+        .header("Vscode-Machineid", copilot_machineid.as_ref()) // rand_id(&[8, 4, 4, 4, 12])
         .header("Editor-Version", "vscode/1.85.1")
         .header("Editor-Plugin-Version", "copilot-chat/0.11.0")
         .header("Openai-Organization", "github-copilot")

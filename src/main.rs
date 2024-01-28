@@ -25,10 +25,11 @@ async fn run() {
             .merge(units::admin::service())
             .merge(units::chat::service())
             .merge(units::copilotgpt::service())
+            .merge(units::dav::service())
             .merge(units::info::service())
             .merge(units::magazine::service())
             .merge(units::meet::service())
-            .merge(units::paste::service())
+            // .merge(units::mirror::service())
             // .merge(units::proxy::service())
             .merge(units::qqbot::service())
             .route(
@@ -41,11 +42,14 @@ async fn run() {
         let tcp_listener = tokio::net::TcpListener::bind(addr).await.unwrap();
         let tls_config = {
             use crate::units::admin;
+            use crate::utils::block_on;
             fn get_with_warn(k: &str, default: &[u8]) -> Vec<u8> {
-                admin::db::get(k).unwrap_or_else(|| {
-                    log!(WARN: "using default cert and key");
-                    Vec::from(default)
-                })
+                block_on(admin::db::get(k.to_owned()))
+                    .map(Vec::from)
+                    .unwrap_or_else(|| {
+                        log!(WARN: "using default cert and key");
+                        Vec::from(default)
+                    })
             }
             mod default_cert {
                 include!("tls.defaults.rs");

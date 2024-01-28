@@ -1,14 +1,13 @@
-use crate::utils::LazyLock;
+use crate::utils::{LazyLock, Mono};
 use rusqlite::Connection;
 use std::path::PathBuf;
-use std::sync::Mutex;
 use std::time::UNIX_EPOCH;
 
 fn file_path() -> PathBuf {
     std::env::current_exe().unwrap().with_extension("db")
 }
 
-pub static DB: LazyLock<Mutex<Connection>> = LazyLock::new(|| {
+pub static DB: LazyLock<Mono<Connection>> = LazyLock::new(|| {
     // "/home/kkocdko/misc/code/ksite/.vscode/bak/ksite.db".into()
     let db = Connection::open(file_path()).unwrap();
     // https://www.sqlite.org/speed.html
@@ -35,15 +34,15 @@ pub static DB: LazyLock<Mutex<Connection>> = LazyLock::new(|| {
             e => e.unwrap(),
         };
     }
-    Mutex::new(db)
+    Mono::new(db)
 });
 
-pub fn backup() {
-    let db = DB.lock().unwrap();
-
-    // shrink
-    db.execute("VACUUM", ()).unwrap();
-
+pub async fn backup() {
+    Mono::call(&DB, move |db| {
+        // shrink
+        db.execute("VACUUM", ()).unwrap();
+    })
+    .await;
     std::fs::copy(
         file_path(),
         file_path().with_extension(format!("{}.db", UNIX_EPOCH.elapsed().unwrap().as_secs())),

@@ -1,9 +1,10 @@
+pub use crate::launcher::block_on;
 use anyhow::Result;
 use axum::body::{Body, Bytes};
 use axum::http::header::HOST;
 use axum::http::Request;
 use std::future::Future;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 /// While [`std::sync::LazyLock`](https://doc.rust-lang.org/stable/std/sync/struct.LazyLock.html) is still not in stable.
@@ -25,6 +26,31 @@ impl<T> std::ops::Deref for LazyLock<T> {
     type Target = T;
     fn deref(&self) -> &T {
         self.v.get_or_init(self.f)
+    }
+}
+
+pub struct Mono<I> {
+    inner: Mutex<I>,
+}
+
+impl<I: Send + 'static> Mono<I> {
+    pub fn new(init: I) -> Self {
+        Self {
+            inner: Mutex::new(init),
+        }
+    }
+    pub async fn call<T: Send + 'static>(
+        &'static self,
+        f: impl FnOnce(&mut I) -> T + Send + 'static,
+    ) -> T {
+        let inner = &self.inner;
+        tokio::task::spawn_blocking(move || {
+            let mut inner = inner.lock().unwrap();
+            let inner = &mut *inner;
+            f(inner)
+        })
+        .await
+        .unwrap()
     }
 }
 

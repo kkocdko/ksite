@@ -7,6 +7,8 @@ use std::fs::File;
 use std::future::Future;
 use std::io::Write as _;
 use std::process::Command;
+use std::sync::mpsc::{Receiver as MpscReceiver, SyncSender as MpscSyncSender};
+use std::sync::{Arc, Barrier, Mutex};
 
 pub static LOG_FILE: LazyLock<File> = LazyLock::new(|| {
     File::options()
@@ -16,6 +18,34 @@ pub static LOG_FILE: LazyLock<File> = LazyLock::new(|| {
         .open(env::current_exe().unwrap().with_extension("log"))
         .unwrap()
 });
+
+#[allow(clippy::type_complexity)]
+pub static BLOCK_ON: LazyLock<(
+    MpscSyncSender<Box<dyn Future<Output = ()> + Send>>,
+    Mutex<Option<MpscReceiver<Box<dyn Future<Output = ()> + Send>>>>,
+)> = LazyLock::new(|| {
+    let (tx, rx) = std::sync::mpsc::sync_channel(1);
+    (tx, Mutex::new(Some(rx)))
+});
+
+pub fn block_on<F>(future: F) -> F::Output
+where
+    F: Future + Send + 'static,
+    F::Output: Send,
+{
+    // https://rust-lang.github.io/wg-async/vision/submitted_stories/status_quo/barbara_bridges_sync_and_async.html#is-there-any-way-to-have-kept-aggregate-as-a-synchronous-function
+    let m = Arc::new(Mutex::new(None));
+    let m1 = Arc::clone(&m);
+    let b = Arc::new(Barrier::new(2));
+    let b1 = Arc::clone(&b);
+    let _ = BLOCK_ON.0.send(Box::new(async move {
+        *m1.lock().unwrap() = Some(future.await);
+        b1.wait();
+    }));
+    b.wait();
+    let mut m = m.lock().unwrap();
+    m.take().unwrap()
+}
 
 pub fn launch<F, Fut>(main: F)
 where
@@ -29,7 +59,16 @@ where
             .enable_all()
             .build()
             .unwrap()
-            .block_on(main());
+            .block_on(async {
+                let join_handle = tokio::task::spawn_blocking(|| {
+                    let mut rx = BLOCK_ON.1.lock().unwrap();
+                    let rx = rx.take().expect("get block_on receiver failed");
+                    while let Ok(future) = rx.recv() {
+                        tokio::runtime::Handle::current().block_on(Box::into_pin(future));
+                    }
+                });
+                let _ = tokio::join!(join_handle, main());
+            });
         return;
     }
     log!(concat!(

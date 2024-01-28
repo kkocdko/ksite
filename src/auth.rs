@@ -2,7 +2,7 @@
 
 use crate::include_src;
 use crate::units::admin;
-use crate::utils::{rand_id, LazyLock};
+use crate::utils::{block_on, rand_id, LazyLock};
 use axum::body::Body;
 use axum::http::header::COOKIE;
 use axum::http::{Request, StatusCode};
@@ -12,7 +12,7 @@ use axum::response::{Html, IntoResponse, Response};
 static AUTH_COOKIE: LazyLock<Vec<u8>> = LazyLock::new(|| {
     let mut inner = Vec::new();
     inner.extend(b"auth=");
-    match admin::db::get("auth_key") {
+    match block_on(admin::db::get("auth_key".to_owned())) {
         Some(v) => inner.extend(v),
         None => inner.extend(rand_id(&[32])),
     }
