@@ -563,7 +563,7 @@ dependencies = [
 
 [[package]]
 name = "ksite"
-version = "0.10.7"
+version = "0.10.9"
 dependencies = [
  "anyhow",
  "axum",
