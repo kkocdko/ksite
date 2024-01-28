@@ -1,0 +1,21 @@
+[package]
+name = "sqlite-bench"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "sqlite-bench"
+path = "main.rs"
+
+[profile.dev]
+# debug = false # this switch disabled backtrace
+[profile.dev.package."*"]
+debug = false
+strip = true
+opt-level = "z"
+
+[dependencies]
+rusqlite = { version = "0.30", features = ["bundled"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "fs"] }
+anyhow = "1"
+httpdate = "1"
