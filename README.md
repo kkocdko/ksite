@@ -6,6 +6,8 @@ All in one solution for my server.
 
 ### 0.11.0
 
+- sqlite bench.
+
 - proxy with sni stripper.
 
 - reverse proxy.

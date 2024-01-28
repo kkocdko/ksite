@@ -16,6 +16,7 @@ opt-level = "z"
 
 [dependencies]
 rusqlite = { version = "0.30", features = ["bundled"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "fs"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "fs", "sync"] }
 anyhow = "1"
+once_cell = "1"
 httpdate = "1"
