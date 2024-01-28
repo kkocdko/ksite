@@ -4,10 +4,10 @@ use crate::utils::{fetch_text, str2req, LazyLock, OptionResult};
 use crate::{care, include_src, log, ticker};
 use anyhow::Result;
 use axum::body::Bytes;
-use axum::http::header::{HeaderName, HeaderValue};
-use axum::http::header::{CACHE_CONTROL, EXPIRES, REFRESH};
+use axum::http::header::*;
 use axum::response::Html;
 use axum::routing::{MethodRouter, Router};
+use std::fmt::Write as _;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
@@ -112,7 +112,12 @@ async fn refresh() -> Result<()> {
     );
     let mut o = String::new();
     o += PAGE[0];
-    o += &httpdate::fmt_http_date(SystemTime::now() + Duration::from_secs(3600 * 8));
+    write!(
+        &mut o,
+        "{}",
+        httpdate::HttpDate::from(SystemTime::now() + Duration::from_secs(3600 * 8))
+    )
+    .unwrap();
     o += "+0800\n<br><br>";
     r.0.map(|v| generate(&v, &mut o)).ok();
     r.1.map(|v| generate(&v, &mut o)).ok();
