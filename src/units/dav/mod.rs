@@ -20,11 +20,9 @@ mod db {
     pub const ENTRY_STABLE: u64 = 0b_0000_0000_0100_0000;
     pub async fn init() {
         Mono::call(&DB, |db| {
-            // {
-            //     // TODO
-            //     db.execute("DROP TABLE IF EXISTS dav_users", ()).unwrap();
-            //     db.execute("DROP TABLE IF EXISTS dav_entries", ()).unwrap();
-            // }
+            // TODO
+            // db.execute("DROP TABLE IF EXISTS dav_users", ()).unwrap();
+            // db.execute("DROP TABLE IF EXISTS dav_entries", ()).unwrap();
             // dav_users: uid = "username", auth = "Basic dXNlcm5hbWU6cGFzc3dvcmQ="
             let sql = strip_str! {"
                 CREATE TABLE IF NOT EXISTS dav_users (uid BLOB PRIMARY KEY, auth BLOB UNIQUE)
@@ -128,17 +126,7 @@ mod db {
         })
         .await
     }
-    pub async fn del_entry(eid: String) {
-        Mono::call(&DB, move |db| {
-            let sql = strip_str! {"
-                DELETE FROM dav_entries WHERE eid = ?
-            "};
-            let mut stmd = db.prepare_cached(sql).unwrap();
-            stmd.execute((eid.into_bytes(),)).unwrap();
-        })
-        .await
-    }
-    pub async fn del_entry_dir(eid: String) {
+    pub async fn del_entry_recursive(eid: String) {
         Mono::call(&DB, move |db| {
             let sql = strip_str! {"
                 DELETE FROM dav_entries WHERE eid = ? OR eid LIKE ?
@@ -166,19 +154,11 @@ Authorization: Basic dXNlcm5hbWU6cGFzc3dvcmQ=
 User-Agent: curl/8.2.1
 Accept: *
 
-curl -vvvk -X POST --data-raw '{"op":"create_user","uid":"username","auth":"Basic dXNlcm5hbWU6cGFzc3dvcmQ="}' http://127.0.0.1:9304/dav
-
-curl -vvvk -X PUT --data-raw 'hello' http://username:password@127.0.0.1:9304/dav/a
-
+gio mount dav://127.0.0.1:9304/dav
 curl -vvvk http://username:password@127.0.0.1:9304/dav/a?a
-
-
-
-curl -vvvk --insecure -X POST --data-raw '{"op":"create_user","uid":"username","auth":"Basic dXNlcm5hbWU6cGFzc3dvcmQ="}' -H 'Cookie: auth=b56eaa5302fcaadc442624a009d7a214' https://127.0.0.1:9304/dav
-
+curl -vvvk -X PUT --data-raw 'hello' http://username:password@127.0.0.1:9304/dav/a
+curl -vvvk --insecure -X POST --data-raw '{"op":"signup","uid":"username","auth":"Basic dXNlcm5hbWU6cGFzc3dvcmQ="}' -H 'Cookie: auth=b56eaa5302fcaadc442624a009d7a214' https://127.0.0.1:9304/dav
 curl -vvvk --insecure -X POST --data-raw '{"op":"trigger_flag_recursive","eid":"username:","flag":"64"}' -H 'Cookie: auth=b56eaa5302fcaadc442624a009d7a214' https://127.0.0.1:9304/dav
-
-
 */
 
 async fn dav_handler(prefix: &'static str, mut req: Request) -> anyhow::Result<Response> {
@@ -200,19 +180,18 @@ async fn dav_handler(prefix: &'static str, mut req: Request) -> anyhow::Result<R
         "PUT" | "MKCOL" => {
             let (parent, _cur_name) = eid.rsplit_once('/').e()?;
             let (_, _, flag) = db::get_entry_meta(parent.to_owned()).await.e()?;
+            if flag & db::ENTRY_READ_ONLY != 0 {
+                return Err(anyhow::anyhow!("read only"));
+            }
             if flag & db::ENTRY_DIR == 0 {
                 return Err(anyhow::anyhow!("parent is not dir"));
             }
             let time = UNIX_EPOCH.elapsed().unwrap().as_secs();
             match method {
                 "PUT" => {
-                    let mut flag = 0;
-                    if matches!(req.headers().get(CONTENT_ENCODING), Some(v) if v == "gzip") {
-                        flag |= db::ENTRY_GZIP;
-                    }
-                    let data = axum::body::to_bytes(req.into_body(), 1024 * 1024 * 8).await?;
+                    let data = axum::body::to_bytes(req.into_body(), 1024 * 1024 * 16).await?;
                     let size = data.len() as _;
-                    db::set_entry(eid, data, time, size, flag).await;
+                    db::set_entry(eid, data, time, size, 0).await;
                 }
                 "MKCOL" => {
                     db::set_entry(eid, Bytes::new(), time, 0, db::ENTRY_DIR).await;
@@ -223,16 +202,22 @@ async fn dav_handler(prefix: &'static str, mut req: Request) -> anyhow::Result<R
         }
         "DELETE" => {
             let (time, size, flag) = db::get_entry_meta(eid.to_owned()).await.e()?;
+            if flag & db::ENTRY_READ_ONLY != 0 {
+                return Err(anyhow::anyhow!("read only"));
+            }
             if flag & db::ENTRY_DIR == 0 {
-                db::del_entry(eid.to_owned()).await;
+                db::del_entry_recursive(eid.to_owned()).await;
             } else {
                 // TODO
-                db::del_entry_dir(eid.to_owned()).await;
+                db::del_entry_recursive(eid.to_owned()).await;
             }
             Ok(StatusCode::OK.into_response())
         }
         "COPY" | "MOVE" => {
             let (time, size, flag) = db::get_entry_meta(eid.to_owned()).await.e()?;
+            if flag & db::ENTRY_READ_ONLY != 0 {
+                return Err(anyhow::anyhow!("read only"));
+            }
             #[allow(clippy::unnecessary_to_owned)] // false positive
             let dest = Uri::from_maybe_shared(req.headers().get("Destination").e()?.to_owned())?;
             let dest = dest.path().trim_start_matches(prefix);
@@ -242,7 +227,7 @@ async fn dav_handler(prefix: &'static str, mut req: Request) -> anyhow::Result<R
                 db::set_entry(dest_eid, Bytes::from(data), time, size, flag).await;
                 if method == "MOVE" {
                     // TODO: opti
-                    db::del_entry(eid).await;
+                    db::del_entry_recursive(eid).await;
                 }
             } else {
                 // TODO
@@ -253,7 +238,7 @@ async fn dav_handler(prefix: &'static str, mut req: Request) -> anyhow::Result<R
         "GET" | "HEAD" => {
             let (time, size, flag) = db::get_entry_meta(eid.to_owned()).await.e()?;
             if flag & db::ENTRY_DIR != 0 {
-                return Err(anyhow::anyhow!("is dir, todo"));
+                return Err(anyhow::anyhow!("is dir"));
             }
             if flag & db::ENTRY_HREF != 0 {
                 let data = String::from_utf8(db::get_entry_data(eid).await.e()?)?;
@@ -339,14 +324,14 @@ async fn dav_handler(prefix: &'static str, mut req: Request) -> anyhow::Result<R
     }
 }
 
-// gio mount dav://127.0.0.1:9304/dav
-
-async fn api_handler(body: String) -> anyhow::Result<Response> {
-    let body = serde_json::from_slice::<serde_json::Value>(body.as_bytes())?;
-    let get_field = |k| body.get(k).and_then(|v| v.as_str()).e();
-    Ok(match get_field("op")? {
-        "create_user" => {
-            let uid = get_field("uid")?;
+async fn api_handler(mut req: Request) -> anyhow::Result<Response> {
+    let mut get_field = |k| {
+        let v = req.headers_mut().remove(k);
+        v.and_then(|v| Some(v.to_str().ok()?.to_owned())).e()
+    };
+    Ok(match get_field("op_")?.as_str() {
+        "signup" => {
+            let uid = get_field("uid_")?;
             if !uid
                 .as_bytes()
                 .iter()
@@ -354,16 +339,16 @@ async fn api_handler(body: String) -> anyhow::Result<Response> {
             {
                 return Err(anyhow::anyhow!("uid contains invalid chars"));
             }
-            let auth = get_field("auth")?;
+            let auth = get_field("auth_")?;
             db::set_user(uid.to_owned(), auth.to_owned()).await; // TODO
             let time = UNIX_EPOCH.elapsed().unwrap().as_secs();
             db::set_entry(uid.to_owned() + ":", Bytes::new(), time, 0, db::ENTRY_DIR).await;
             StatusCode::OK.into_response()
         }
         "trigger_flag_recursive" => {
-            let eid = get_field("eid")?;
-            let not = get_field("not").is_ok();
-            let trigger_flag: u64 = get_field("flag")?.parse()?;
+            let eid = get_field("eid_")?;
+            let not = get_field("not_").is_ok();
+            let trigger_flag: u64 = get_field("flag_")?.parse()?;
             for (eid, _, _, mut flag) in db::list_entry_meta(eid.to_owned()).await {
                 if not {
                     db::set_entry_flag(eid, flag & !trigger_flag).await;
@@ -380,20 +365,27 @@ async fn api_handler(body: String) -> anyhow::Result<Response> {
 pub fn service() -> Router {
     tokio::spawn(db::init());
     const DAV_PATH_PREFIX: &str = "/dav";
-    let api_router = axum::routing::any(|body: String| async {
-        match care!(api_handler(body).await) {
+    let api_router = axum::routing::any(|req: Request| async {
+        match care!(api_handler(req).await) {
             Ok(res) => res,
             Err(_) => StatusCode::BAD_REQUEST.into_response(),
         }
     })
     .layer(axum::middleware::from_fn(crate::auth::auth_layer));
     let any_router = axum::routing::any(|req: Request| async {
-        if req.uri().path() == DAV_PATH_PREFIX && matches!(req.method().as_str(), "GET" | "POST") {
-            return api_router.call(req, ()).await;
+        if req.uri().path() == DAV_PATH_PREFIX && req.method() == "GET" {
+            let mut res = Html((include_src!("page.html") as [_; 1])[0]).into_response();
+            let cache_control_value =
+                HeaderValue::from_static("max-age=600,stale-while-revalidate=31536000");
+            res.headers_mut().insert(CACHE_CONTROL, cache_control_value);
+            res
+        } else if req.uri().path() == DAV_PATH_PREFIX && req.method() == "POST" {
+            api_router.call(req, ()).await
         } else if let Ok(res) = care!(dav_handler(DAV_PATH_PREFIX, req).await) {
-            return res;
+            res
+        } else {
+            StatusCode::BAD_REQUEST.into_response()
         }
-        StatusCode::BAD_REQUEST.into_response()
     });
     Router::new()
         .route("/dav", any_router.clone())
