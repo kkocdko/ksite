@@ -157,7 +157,10 @@ Accept: *
 gio mount dav://127.0.0.1:9304/dav
 curl -vvvk http://username:password@127.0.0.1:9304/dav/a?a
 curl -vvvk -X PUT --data-raw 'hello' http://username:password@127.0.0.1:9304/dav/a
-curl -vvvk --insecure -X POST --data-raw '{"op":"signup","uid":"username","auth":"Basic dXNlcm5hbWU6cGFzc3dvcmQ="}' -H 'Cookie: auth=b56eaa5302fcaadc442624a009d7a214' https://127.0.0.1:9304/dav
+curl -vvvk -X POST -H "op_: signup" -H "uid_: username" -H "auth_: Basic dXNlcm5hbWU6cGFzc3dvcmQ=" -H "Cookie: auth=b56eaa5302fcaadc442624a009d7a214" http://127.0.0.1:9304/dav
+curl -vvvk -X PUT --data-raw "hello" http://username:password@127.0.0.1:9304/dav/a
+curl -vvvk -X POST -H "op_: trigger_flag_recursive" -H "eid_: username:/a" -H "flag_: 16" -H "Cookie: auth=b56eaa5302fcaadc442624a009d7a214" http://127.0.0.1:9304/dav
+curl -vvvk http://username:password@127.0.0.1:9304/dav/a
 curl -vvvk --insecure -X POST --data-raw '{"op":"trigger_flag_recursive","eid":"username:","flag":"64"}' -H 'Cookie: auth=b56eaa5302fcaadc442624a009d7a214' https://127.0.0.1:9304/dav
 */
 
@@ -198,7 +201,7 @@ async fn dav_handler(prefix: &'static str, mut req: Request) -> anyhow::Result<R
                 }
                 _ => unreachable!(),
             }
-            Ok(StatusCode::OK.into_response())
+            Ok(StatusCode::CREATED.into_response())
         }
         "DELETE" => {
             let (time, size, flag) = db::get_entry_meta(eid.to_owned()).await.e()?;
@@ -287,6 +290,8 @@ async fn dav_handler(prefix: &'static str, mut req: Request) -> anyhow::Result<R
                 let (uid, pathname) = eid.split_once(':').e()?;
                 if flag & db::ENTRY_DIR == 0 {
                     body += "<D:response><D:href>";
+                    body += prefix;
+                    body += "/";
                     body += pathname;
                     body += "</D:href><D:propstat><D:prop><D:displayname>";
                     body += pathname.rsplit_once('/').e()?.1;
@@ -297,6 +302,8 @@ async fn dav_handler(prefix: &'static str, mut req: Request) -> anyhow::Result<R
                     body += r#"</D:getlastmodified><D:getcontenttype></D:getcontenttype><D:resourcetype></D:resourcetype></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response>"#;
                 } else {
                     body += "<D:response><D:href>";
+                    body += prefix;
+                    body += "/";
                     body += pathname;
                     body += "/";
                     body += "</D:href><D:propstat><D:prop><D:displayname>";
@@ -309,10 +316,7 @@ async fn dav_handler(prefix: &'static str, mut req: Request) -> anyhow::Result<R
                     body += r#"</D:getlastmodified><D:resourcetype><D:collection/></D:resourcetype></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response>"#;
                 }
             }
-            // <D:response><D:href>/dav/local/proxy/</D:href><D:propstat><D:prop><D:displayname>proxy</D:displayname><D:supportedlock><D:lockentry xmlns:D="DAV:"><D:lockscope><D:exclusive/></D:lockscope><D:locktype><D:write/></D:locktype></D:lockentry></D:supportedlock><D:getlastmodified>Mon, 22 Jan 2024 13:30:59 GMT</D:getlastmodified><D:creationdate>Mon, 22 Jan 2024 13:30:59 GMT</D:creationdate><D:resourcetype><D:collection xmlns:D="DAV:"/></D:resourcetype></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response>
-            // <D:response><D:href>/dav/local/proxy/config.jsonc</D:href><D:propstat><D:prop><D:displayname>config.jsonc</D:displayname><D:getcontentlength>39765</D:getcontentlength><D:getlastmodified>Fri, 26 Jan 2024 17:49:04 GMT</D:getlastmodified><D:creationdate>Fri, 26 Jan 2024 17:49:04 GMT</D:creationdate><D:getcontenttype></D:getcontenttype><D:getetag>"17adf6f011f3c2be9b55"</D:getetag><D:resourcetype></D:resourcetype></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response>
             body += r#"</D:multistatus>"#;
-            // dbg!(&body);
             Ok((
                 StatusCode::MULTI_STATUS,
                 [(CONTENT_TYPE, "application/xml; charset=utf-8")],
@@ -348,13 +352,29 @@ async fn api_handler(mut req: Request) -> anyhow::Result<Response> {
         "trigger_flag_recursive" => {
             let eid = get_field("eid_")?;
             let not = get_field("not_").is_ok();
+            let apply_dir = get_field("apply_dir_").is_ok(); // apply flag on dir, or only non-dir
             let trigger_flag: u64 = get_field("flag_")?.parse()?;
-            for (eid, _, _, mut flag) in db::list_entry_meta(eid.to_owned()).await {
-                if not {
-                    db::set_entry_flag(eid, flag & !trigger_flag).await;
-                } else {
-                    db::set_entry_flag(eid, flag | trigger_flag).await;
+            let mut list = Vec::new(); // certainly that std VecDeque will be better, however it's more complex inside
+            list.push(eid);
+            let mut idx = 0;
+            while idx != list.len() {
+                let eid = std::mem::take(&mut list[idx]);
+                let Some((_, _, flag)) = db::get_entry_meta(eid.to_owned()).await else {
+                    continue;
+                };
+                if flag & db::ENTRY_DIR == 0 || apply_dir {
+                    let new_flag = match not {
+                        true => flag & !trigger_flag,
+                        false => flag | trigger_flag,
+                    };
+                    db::set_entry_flag(eid.to_owned(), new_flag).await;
                 }
+                if flag & db::ENTRY_DIR != 0 {
+                    for (eid, _, _, _) in db::list_entry_meta(eid).await {
+                        list.push(eid);
+                    }
+                }
+                idx += 1;
             }
             StatusCode::OK.into_response()
         }
