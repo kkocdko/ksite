@@ -7,251 +7,100 @@
 </head>
 
 <style>
-  :root {
-    --fg: #000;
-    --bg: #fff;
-    --btn-bg-hover: #f2f2f2;
-    --btn-bg-active: #e5e5e5;
-    --border-color: #adadad;
-    --border-lite-color: #cfcfcf;
-    --border: 1px solid var(--border-color);
-    --border-lite: 1px solid var(--border-lite-color);
+  * {
+    appearance: none;
+    margin: 0;
+    font: 14px / 20px sans-serif;
+    color: #000;
+    background: #fff;
   }
   @media (prefers-color-scheme: dark) {
-    :root {
-      --fg: #fff;
-      --bg: #000;
-      --btn-bg-hover: #232323;
-      --btn-bg-active: #464646;
-      --border-color: #5d5d5d;
-      --border-lite-color: #444;
+    * {
+      color: #fff;
+      background: #000;
     }
   }
-
-  * {
-    box-sizing: border-box;
-    margin: 0;
-    /* transition: 0.2s cubic-bezier(0, 0, 0, 1); */
-    font: 14px / 18px sans-serif;
-    color: var(--fg);
-    background: var(--bg);
+  body {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
   }
-
-  [hide_] {
-    display: none;
+  header > *,
+  header ~ * {
+    padding: 8px 10px;
+    border: 0 solid #888;
+    outline: 0;
   }
-
-  prompt_ {
-    -webkit-backdrop-filter: blur(8px);
-    backdrop-filter: blur(8px);
-    width: 100%;
-    height: 100%;
-    position: fixed;
-    left: 0;
-    top: 0;
-    display: none;
+  header > * {
+    float: left;
+    border-right-width: 1px;
   }
-
-  input,
-  button {
-    border: var(--border);
-    border-width: 0 0 1px 0;
-    padding: 5px 11px;
-    min-width: 0;
+  header > :active {
+    background: #8887;
   }
-  input:hover,
-  button:hover,
-  input:focus {
-    background: var(--btn-bg-hover);
+  header ~ * {
+    font-family: monospace;
+    border-top-width: 1px;
   }
-  button {
-    border-radius: 6px;
-    border-width: 1px;
-  }
-  button:active {
-    background: var(--btn-bg-active);
+  textarea {
+    flex: 1;
+    white-space: pre;
   }
   input[type="checkbox"] {
     height: 16px;
     width: 16px;
-    box-shadow: inset 0 0 0 1px var(--border-lite-color),
-      inset 0 0 0 9px var(--bg), inset 0 0 0 9px var(--border-color);
+    box-shadow: inset 0 0 0 1px #444, inset 0 0 0 9px #000,
+      inset 0 0 0 9px #5d5d5d;
   }
   input[type="checkbox"]:checked {
-    box-shadow: inset 0 0 0 1px var(--border-lite-color),
-      inset 0 0 0 4px var(--bg), inset 0 0 0 9px var(--border-color);
+    box-shadow: inset 0 0 0 1px #444, inset 0 0 0 4px #000,
+      inset 0 0 0 9px #5d5d5d;
   }
-
-  top_bar_ {
-    display: flex;
-    gap: 8px;
-    padding: 8px;
-    border-bottom: var(--border-lite); /* def: lite_border */
-  }
-  top_bar_ span {
-    flex-grow: 1;
-  }
-
-  tab_launch_,
-  tab_launch_ div {
-    display: grid;
-    gap: 24px;
-    grid: auto / 2fr 3fr;
-  }
-  tab_launch_ {
-    width: 300px;
-    margin: auto;
-    margin-top: 80px;
-    padding: 24px;
-    border-radius: 8px;
-    border: var(--border);
-  }
-  tab_launch_ > input {
-    grid-column: 1 / 3;
-    margin-top: -4px;
-  }
-
-  tab_files_,
-  tab_edit_ {
-    display: grid;
-    position: fixed;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    grid: auto auto 1fr / auto;
-  }
-  files_list_ table {
-    border-spacing: 0;
-  }
-  files_list_ tr {
-    text-wrap: nowrap;
-  }
-  files_list_ tr > * {
-    padding: 8px 12px;
-    text-align: left;
-  }
-  tab_files_ td:last-child:not(:hover) div {
-    opacity: 0;
-    visibility: hidden;
-  }
-  files_list_ {
-    overflow: auto;
-    overflow: overlay;
-    display: grid;
-    padding-right: 8px;
-  }
-  files_list_ thead tr {
-    position: sticky;
-    top: 0;
-  }
-  files_list_ tr > :first-child {
-    writing-mode: vertical-rl;
-    text-align: center;
-    padding: 0;
-    line-height: 6px;
-    transform: translateX(5px);
-  }
-
-  tab_edit_ textarea {
-    font-family: monospace;
-    white-space: pre;
-    border: none;
-    outline: none;
-    padding: 8px;
-    grid-row-end: 4;
-    resize: none;
-    /* place-content: ; */
-  }
-  tab_edit_ textarea[blank_] {
-    /* because the css `:blank` pseudo have poor supports */
-    /* background: #ccc; */
-  }
-  tab_edit_ textarea[blank_]::before {
-    content: "Input text or upload file";
-  }
-  tab_edit_ #\$fid {
-    max-width: 12em;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  html[stage_auth_] header > :not([stage_auth_]),
+  html[stage_auth_] header ~ :not([stage_auth_]),
+  html[stage_list_] header > :not([stage_list_]),
+  html[stage_list_] header ~ :not([stage_list_]),
+  html[stage_edit_] header > :not([stage_edit_]),
+  html[stage_edit_] header ~ :not([stage_edit_]) {
+    display: none;
   }
 </style>
 
 <body>
-  <tab_launch_ id="$tabLaunch">
-    <input id="$uid" placeholder="Username" />
-    <input id="$upw" placeholder="Password" type="password" />
-    <!-- <input id="$mail" placeholder="Mail" type="email" /> -->
-    <button id="$signup">Sign up</button>
-    <button id="$login">Log in</button>
-  </tab_launch_>
-
-  <tab_files_ id="$tabFiles">
-    <top_bar_>
-      <button id="$info"></button>
-      <span></span>
-      <button id="$create">Create</button>
-      <button id="$delete">Delete</button>
-    </top_bar_>
-    <files_list_>
-      <table>
-        <tbody id="$filesContainer"></tbody>
-        <thead>
-          <tr>
-            <th width="1"></th>
-            <th>ID</th>
-            <th width="1">Size</th>
-            <th width="1">Modified</th>
-          </tr>
-        </thead>
-      </table>
-    </files_list_>
-  </tab_files_>
-
-  <tab_edit_ id="$tabEdit">
-    <top_bar_>
-      <button id="$back">Back</button>
-      <span></span>
-      <button id="$fid"></button>
-      <span></span>
-      <button id="$save">Save</button>
-      <!-- <button id="$upload">Upload</button> -->
-      <!-- <span></span> -->
-      <!-- <button id="$size">0.32 KiB</button> -->
-      <!-- <button id="$meta">Info</button> -->
-      <!-- <button id="$save">Save</button> -->
-    </top_bar_>
-    <textarea id="$editText" placeholder="Input content here"></textarea>
-  </tab_edit_>
-
-  <tab_settings_ id="$tabSettings">
-    <top_bar_>
-      <input type="button" value="@ kkocdko" />
-      <br />
-      <input type="button" value="Create" />
-      <input type="button" value="Delete" />
-      <span></span>
-      <input type="button" value="Settings" />
-    </top_bar_>
-  </tab_settings_>
-
-  <!-- <prompt_><div>Hello</div></prompt_> -->
+  <header>
+    <button stage_auth_ id="$login">Log in</button>
+    <button stage_auth_ id="$signup">Sign up</button>
+    <button stage_list_ id="$create">Create</button>
+    <button stage_list_ id="$delete">Delete</button>
+    <button stage_edit_ id="$save">Save</button>
+  </header>
+  <input stage_auth_ id="$uid" placeholder="User ID" />
+  <input stage_auth_ id="$upw" placeholder="Password" type="password" />
+  <table stage_list_>
+    <tbody id="$list"></tbody>
+    <thead>
+      <tr>
+        <th width="1"></th>
+        <th>Name</th>
+        <th width="1">Size</th>
+        <th width="1">Modified</th>
+      </tr>
+    </thead>
+  </table>
+  <textarea stage_edit_ id="$edit"></textarea>
 </body>
 
 <script>
-  // const toBase64 = (arrbuf) => {
-  //   // https://stackoverflow.com/a/66046176/11338291
-  //   const reader = new FileReader();
-  //   const promise = new Promise((r) => (reader.onload = r));
-  //   reader.readAsDataURL(new Blob([arrbuf]));
-  //   return promise.then(() => reader.result.split(",", 2)[1]);
-  // };
-  // const { $tabLaunch, $tabFiles } = {};
+  "use strict";
 
-  const hideEl = (el) => el.toggleAttribute("hide_", true);
-  const unhideEl = (el) => el.removeAttribute("hide_");
-  const isElHide = (el) => el.hasAttribute("hide_");
+  // url = "https://127.0.0.1:9304/dav#/nextchat/href.txt"
+
+  const setStage = (stage) => {
+    ["stage_auth_", "stage_list_", "stage_edit_"].forEach((v) => {
+      document.documentElement.removeAttribute(v);
+    });
+    document.documentElement.setAttribute(stage, "");
+  };
 
   const readableSize = (v /* bytes */) => {
     let unit = "B";
@@ -265,36 +114,52 @@
     return `${v} ${unit}`;
   };
 
-  const alert = async (msg) => {
-    window.alert(msg); // TODO: replace to no-blocking dialog
-  };
-
-  const prompt = async (msg) => {
-    window.prompt(msg); // TODO: replace to no-blocking dialog
-  };
-
   $signup.onclick = async () => {
     const r = await fetch(location, {
       method: "POST",
       headers: {
         op_: "signup",
         uid_: $uid.value,
-        auth_: (localStorage.auth =
-          "Basic " + btoa($uid.value + "" + $upw.value)),
+        auth_: "Basic " + btoa($uid.value + "" + $upw.value),
       },
     });
     if (!r.ok) throw alert(r.status);
-    $login.onclick();
+    alert("create success");
   };
 
-  // https://127.0.0.1:9304/dav#/a/b
+  $login.onclick = async () => {
+    localStorage.davAuth = "Basic " + btoa($uid.value + "" + $upw.value);
+    location.hash = "#/";
+    onhashchange();
+  };
 
   onhashchange = async () => {
-    const pathname = location.hash.slice(1);
-    const r = await fetch(location, {
+    const pathname = location.pathname + location.hash.slice(1);
+    if (pathname.endsWith("/")) {
+      await asList(pathname);
+      setStage("stage_list_");
+    } else {
+      await asEdit(pathname);
+      setStage("stage_edit_");
+    }
+  };
+
+  const asEdit = async (pathname) => {
+    const r = await fetch(pathname, {
+      method: "GET",
+      headers: {
+        authorization: localStorage.davAuth,
+      },
+    });
+    if (!r.ok) throw alert(r.status);
+    $edit.value = await r.text();
+  };
+
+  const asList = async (pathname) => {
+    const r = await fetch(pathname, {
       method: "PROPFIND",
       headers: {
-        authorization: localStorage.auth,
+        authorization: localStorage.davAuth,
         depth: "1",
         "content-type": "text/xml; charset=utf-8",
       },
@@ -320,157 +185,32 @@
       innerHTML += `
         <tr>
           <td><input type=checkbox></td>
-          <td>${displayname + (collection ? "/" : "")}</td>
+          <td data-href="${href}">${displayname + (collection ? "/" : "")}</td>
           <td>${collection ? "" : readableSize(getcontentlength)}</td>
           <td>${getlastmodified}</td>
         </tr>
       `;
     }
-    $filesContainer.innerHTML = innerHTML;
+    $list.innerHTML = innerHTML;
   };
 
-  /**
-   * @return {a}
-   */
-  const switchTab = (target) => {
-    for (const el of [$tabLaunch, $tabFiles, $tabEdit, $tabSettings])
-      hideEl(el);
-    unhideEl(target);
-  };
-
-  $login.onclick = async () => {
-    localStorage.auth = "Basic " + btoa($uid.value + "" + $upw.value);
-    switchTab($tabFiles);
-    // location.hash
-    await refreshFiles();
-  };
-
-  $create.onclick = async () => {
-    $editText.value = "";
-    hideEl($fid);
-    switchTab($tabEdit);
-  };
-
-  $delete.onclick = async () => {
-    const els = [...$filesContainer.querySelectorAll(":checked")];
-    // TODO: add confirm here
-    const fids = els.map((v) => v.parentNode.nextElementSibling.textContent);
-    for (const fidStr of fids) {
-      const fid = fidDec(fidStr);
-      const r = await fetch("/paste", {
-        method: "POST",
-        headers: { op_: "delete", token_: localStorage.token, fid_: fid },
-      });
-      const type = r.headers.get("type_");
-      if (type !== "ok_default") throw msgbox(type);
-    }
-    const task = refreshFiles();
-    await msgbox("Delete succeed");
-  };
-
-  $editText.oninput = () => {
-    if ($editText.value.length) $editText.removeAttribute("blank_");
-    else $editText.toggleAttribute("blank_");
-  };
-  $editText.oninput();
-
-  $back.onclick = async () => {
-    if (location.hash.startsWith("#=")) {
-      location.hash = "";
-      await refreshFiles();
-    }
-    switchTab($tabFiles);
+  $list.onclick = async (e) => {
+    const href = e?.target?.dataset?.href;
+    if (!href) return;
+    location.hash = "#" + href;
+    onhashchange();
   };
 
   $save.onclick = async () => {
-    const enc = new TextEncoder();
-    const body = new Uint8Array(enc.encode($editText.value));
-    if (isElHide($fid)) {
-      // create
-      const r = await fetch("/paste", {
-        method: "POST",
-        headers: {
-          op_: "create",
-          token_: localStorage.token,
-          desc_: "default test",
-          mime_: "text/plain",
-          size_: body.length,
-        },
-        body,
-      });
-      const type = r.headers.get("type_");
-      if (type !== "ok_default") throw msgbox(type);
-      await refreshFiles();
-      switchTab($tabFiles);
-    } else {
-      // replace
-      const fid = fidDec($fid.textContent);
-      // console.log(fid)
-      const r = await fetch("/paste", {
-        method: "POST",
-        headers: {
-          op_: "replace",
-          token_: localStorage.token,
-          fid_: fid,
-          size_: body.length,
-        },
-        body,
-      });
-      const type = r.headers.get("type_");
-      if (type !== "ok_default") throw msgbox(type);
-      await refreshFiles(); // refresh size info
-    }
-  };
-
-  const loadFile = async (fidStr) => {
-    const fid = fidDec(fidStr);
-    const r = await fetch("/paste", {
-      method: "POST",
-      headers: { op_: "download", token_: localStorage.token, fid_: fid },
+    const pathname = location.pathname + location.hash.slice(1);
+    const r = await fetch(pathname, {
+      method: "PUT",
+      headers: {
+        authorization: localStorage.davAuth,
+      },
+      body: $edit.value,
     });
-    const type = r.headers.get("type_");
-    if (type !== "ok_default") throw msgbox(type);
-    // r.body.getReader
-    $fid.textContent = fidStr;
-    // $fid.textContent = `${fidStr} : ${r.headers.get("desc_")}`;
-    unhideEl($fid);
-    $editText.value = await r.text();
-    switchTab($tabEdit);
+    if (!r.ok) throw alert(r.status);
+    alert("save success");
   };
-
-  $filesContainer.onclick = async ({ target }) => {
-    if (target.childElementCount || target instanceof HTMLInputElement) return;
-    if (target instanceof HTMLTableCellElement) target = target.parentNode;
-    const fidStr = target.children[1].textContent;
-    await loadFile(fidStr);
-    location.hash = `#=${fidStr}`;
-  };
-
-  // the Main
-  (async () => {
-    if (localStorage.auth) {
-      switchTab($tabFiles);
-      onhashchange();
-      // await refreshFiles();
-
-      // const hashAttrs = {};
-      // for (const entry of location.hash.slice(1).split("?")) {
-      //   const [k, v] = entry.split("=", 2);
-      //   hashAttrs[k] = v;
-      // }
-      // const fidStr = hashAttrs[""]; // https://127.0.0.1:9304/paste#=fc3s2a
-      // if (fidStr) {
-      //   await loadFile(fidStr);
-      // } else {
-      //   await refreshFiles();
-      //   switchTab($tabFiles);
-      // }
-    } else {
-      switchTab($tabLaunch);
-    }
-
-    // setInterval(() => {
-    //   login();
-    // }, 30 * 60 * 1000);
-  })();
 </script>
