@@ -7,7 +7,7 @@ use axum::body::{Body, Bytes};
 use axum::extract::{Path, Request};
 use axum::handler::Handler;
 use axum::http::{header::*, StatusCode, Uri};
-use axum::response::{Html, IntoResponse, Redirect, Response};
+use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{MethodRouter, Router};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -249,34 +249,33 @@ async fn dav_handler(prefix: &'static str, mut req: Request) -> anyhow::Result<R
                 return Err(anyhow::anyhow!("is dir"));
             }
             if flag & db::ENTRY_HREF != 0 {
-                let data = String::from_utf8(db::get_entry_data(eid).await.e()?)?;
-                return Ok(Redirect::temporary(&data).into_response());
+                let v = HeaderValue::try_from(db::get_entry_data(eid).await.e()?)?;
+                return Ok((StatusCode::TEMPORARY_REDIRECT, [(LOCATION, v)]).into_response());
+            }
+            let not_modified = req.headers().get(IF_MODIFIED_SINCE).and_then(|v| {
+                let t = httpdate::parse_http_date(v.to_str().ok()?).ok()?;
+                let t = t.duration_since(UNIX_EPOCH).ok()?.as_secs();
+                (if t >= time { Some(()) } else { None })
+            });
+            if not_modified.is_some() {
+                return Ok(StatusCode::NOT_MODIFIED.into_response());
             }
             let mut res = match method {
-                "GET" => {
-                    let not_modified = req.headers().get(IF_MODIFIED_SINCE).and_then(|v| {
-                        let t = httpdate::parse_http_date(v.to_str().ok()?).ok()?;
-                        let t = t.duration_since(UNIX_EPOCH).ok()?.as_secs();
-                        (if t >= time { Some(()) } else { None })
-                    });
-                    if not_modified.is_some() {
-                        return Ok(StatusCode::NOT_MODIFIED.into_response());
-                    }
-                    axum::body::Body::from(db::get_entry_data(eid).await.e()?)
-                }
+                "GET" => axum::body::Body::from(db::get_entry_data(eid).await.e()?),
                 "HEAD" => axum::body::Body::empty(),
                 _ => unreachable!(),
             }
             .into_response();
-            let mut set_header = |k, v: &str| res.headers_mut().insert(k, v.try_into().unwrap());
             let stamp = httpdate::fmt_http_date(UNIX_EPOCH + Duration::from_secs(time));
-            set_header(LAST_MODIFIED, &stamp);
-            set_header(CONTENT_LENGTH, &size.to_string());
-            if flag & db::ENTRY_GZIP != 0 && method == "GET" {
-                set_header(CONTENT_ENCODING, "gzip");
+            res.headers_mut().insert(LAST_MODIFIED, stamp.try_into()?);
+            res.headers_mut().insert(CONTENT_LENGTH, size.into());
+            if flag & db::ENTRY_GZIP != 0 {
+                let v = HeaderValue::from_static("gzip");
+                res.headers_mut().insert(CONTENT_ENCODING, v);
             }
             if flag & db::ENTRY_STABLE != 0 {
-                set_header(CACHE_CONTROL, "max-age=600,stale-while-revalidate=31536000");
+                let v = HeaderValue::from_static("max-age=600,stale-while-revalidate=31536000");
+                res.headers_mut().insert(CACHE_CONTROL, v);
             }
             Ok(res)
         }
@@ -322,7 +321,7 @@ async fn dav_handler(prefix: &'static str, mut req: Request) -> anyhow::Result<R
             body += r#"</D:multistatus>"#;
             Ok((
                 StatusCode::MULTI_STATUS,
-                [(CONTENT_TYPE, "application/xml; charset=utf-8")],
+                [(CONTENT_TYPE, "text/xml; charset=utf-8")],
                 body,
             )
                 .into_response())
