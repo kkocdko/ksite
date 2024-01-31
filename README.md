@@ -6,7 +6,9 @@ All in one solution for my server.
 
 ### 0.11.0
 
-- webdav + static serve + pastebin + account + remote download + mirror.
+- dav: process filenames properly.
+
+- dav: remote download + mirror.
 
 ### 0.12.0
 

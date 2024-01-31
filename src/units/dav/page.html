@@ -8,10 +8,10 @@
 
 <style>
   * {
-    appearance: none;
     margin: 0;
     font: 14px / 20px sans-serif;
     color: #000;
+    appearance: none;
     background: #fff;
   }
   @media (prefers-color-scheme: dark) {
@@ -24,6 +24,7 @@
     display: flex;
     flex-direction: column;
     height: 100vh;
+    overflow: hidden;
   }
   header > *,
   header ~ * {
@@ -39,29 +40,64 @@
     background: #8887;
   }
   header ~ * {
-    font-family: monospace;
     border-top-width: 1px;
   }
   textarea {
     flex: 1;
+    font-family: monospace;
     white-space: pre;
   }
   input[type="checkbox"] {
-    width: 14px;
-    height: 14px;
+    width: 15px;
+    height: 15px;
+    vertical-align: middle;
     border: 3px solid #0000;
     box-shadow: 0 0 0 1px #888;
-    vertical-align: middle;
   }
   input[type="checkbox"]:checked {
     box-shadow: 0 0 0 1px #888, inset 0 0 0 8px #888;
   }
   table {
-    padding: 4px 0;
+    padding: 0;
   }
-  td {
+  tr > * {
     padding: 4px 8px;
+    text-align: left;
     text-wrap: nowrap;
+  }
+  thead > :first-child {
+    position: absolute;
+    left: calc(50vw - 180px);
+    display: none;
+    width: 360px;
+    height: 180px;
+    padding: 0;
+    margin-top: 6px;
+    overflow: hidden;
+    box-shadow: 0 0 0 2px #888;
+  }
+  thead > :first-child::before {
+    position: absolute;
+    width: 100%;
+    height: 180px;
+    font-family: monospace;
+    font-size: 22px;
+    line-height: 170px;
+    text-align: center;
+    content: "\00a0\00a0\00a0\00a0 Files\00a0\00a0\00a0\00a0\00a0\00a0\00a0 Directory\00a0\00a0";
+    background: linear-gradient(
+      to right,
+      #0000 calc(50% - 1px),
+      #888 calc(50% - 1px),
+      #888 calc(50% + 1px),
+      #0000 calc(50% + 1px)
+    );
+  }
+  thead > :first-child th {
+    display: grid;
+    grid: 1fr / 1fr 1fr;
+    padding: 0;
+    opacity: 0;
   }
   html:not([stage_auth_], [stage_list_], [stage_edit_]) {
     display: none;
@@ -82,8 +118,9 @@
     <button stage_auth_ id="$signup">Sign up</button>
     <button stage_list_ id="$logout">Log out</button>
     <button stage_list_ id="$create">Create</button>
+    <button stage_list_ id="$upload">Upload</button>
     <button stage_list_ id="$delete">Delete</button>
-    <button stage_list_ id="$flag">Flag</button>
+    <!-- <button stage_list_ id="$flag">Flag</button> -->
     <button stage_edit_ id="$save">Save</button>
   </header>
   <input stage_auth_ id="$uid" placeholder="User ID" />
@@ -91,6 +128,12 @@
   <table stage_list_>
     <tbody id="$list"></tbody>
     <thead>
+      <tr>
+        <th>
+          <input id="$putFile" type="file" multiple />
+          <input id="$putDir" type="file" multiple directory webkitdirectory />
+        </th>
+      </tr>
       <tr>
         <th width="1"></th>
         <th>Name</th>
@@ -124,6 +167,13 @@
     v = ("" + v).slice(0, 4);
     if (v.endsWith(".")) v = v.slice(0, 3);
     return `${v} ${unit}`;
+  };
+
+  const timeStamp = (t) => {
+    const v = new Date(t);
+    const zp = (n) => (n + "").padStart(2, "0");
+    const d = `${v.getFullYear()}.${zp(v.getMonth() + 1)}.${zp(v.getDate())}`;
+    return d + ` ${zp(v.getHours())}:${zp(v.getMinutes())}`;
   };
 
   $signup.onclick = async () => {
@@ -189,7 +239,7 @@
     const resDoc = new DOMParser().parseFromString(await r.text(), "text/xml");
     let innerHTML = "";
     const select = (entry, k) => entry.querySelector(k)?.textContent;
-    const entries = [...resDoc.children[0].children].sort((a, b) => {
+    const entries = [...resDoc.children[0].children].slice(1).sort((a, b) => {
       const an = select(a, "displayname");
       const ad = typeof select(a, "collection") === "string";
       const bn = select(b, "displayname");
@@ -207,7 +257,7 @@
           <td><input type=checkbox></td>
           <td data-href="${href}">${displayname + (collection ? "/" : "")}</td>
           <td>${collection ? "" : readableSize(getcontentlength)}</td>
-          <td>${getlastmodified}</td>
+          <td>${timeStamp(getlastmodified)}</td>
         </tr>
       `;
     }
@@ -234,6 +284,75 @@
     onhashchange();
   };
 
+  $list.parentNode.ondragover = () => {
+    $putFile.parentNode.parentNode.style.display = "grid";
+  };
+
+  $putFile.parentNode.ondragleave = () => {
+    $putFile.parentNode.parentNode.style.display = "";
+  };
+
+  $upload.onclick = $list.parentNode.ondragover;
+
+  $putFile.onchange = async (e) => {
+    const dir = location.hash.slice(1);
+    for (const file of $putFile.files) {
+      const r = await fetch(location.pathname + dir + file.name, {
+        method: "PUT",
+        headers: { authorization: localStorage.davAuth },
+        body: file,
+      });
+      if (!r.ok) throw alert(r.status);
+    }
+    $putFile.value = null;
+    onhashchange();
+    $putFile.parentNode.ondragleave();
+  };
+
+  $putDir.onchange = async (e) => {
+    const dir = location.hash.slice(1);
+    const files = [...$putDir.files].sort((a, b) => {
+      a = a.webkitRelativePath.split("/");
+      b = b.webkitRelativePath.split("/");
+      while (a.length > 1 && b.length > 1) {
+        if (a[0] !== b[0]) return a[0] < b[0] ? -1 : 1;
+        a.shift(), b.shift();
+      }
+      return a.length - b.length;
+    });
+    // const upDir = files[0].webkitRelativePath.split("/")[0]; // fetch HEAD?
+    let createdDir = new Set();
+    for (let { webkitRelativePath: p } of files) {
+      for (let i = 0; (i = p.indexOf("/", i + 1)), i != -1; ) {
+        const d = p.slice(0, i);
+        if (createdDir.has(d)) continue;
+        createdDir.add(d);
+        const r = await fetch(location.pathname + dir + d, {
+          method: "MKCOL",
+          headers: { authorization: localStorage.davAuth },
+        });
+        if (!r.ok) throw alert(r.status);
+      }
+    }
+    const dual = [Promise.resolve(0), Promise.resolve(1)]; // dual thread is enough, quad is too much
+    for (const file of files) {
+      const pathname = location.pathname + dir + file.webkitRelativePath;
+      const i = await Promise.race(dual);
+      dual[i] = fetch(pathname, {
+        method: "PUT",
+        headers: { authorization: localStorage.davAuth },
+        body: file,
+      }).then((r) => {
+        if (!r.ok) throw alert(r.status);
+        return i;
+      });
+    }
+    await Promise.all(dual);
+    $putDir.value = null;
+    onhashchange();
+    $putFile.parentNode.ondragleave();
+  };
+
   $create.onclick = async () => {
     const dir = location.hash.slice(1);
     if (!dir.endsWith("/")) throw alert("current must be dir");
@@ -242,7 +361,6 @@
     const r = await fetch(location.pathname + dir + entryName, {
       method: entryName.endsWith("/") ? "MKCOL" : "PUT",
       headers: { authorization: localStorage.davAuth },
-      body: "",
     });
     if (!r.ok) throw alert(r.status);
     onhashchange();
