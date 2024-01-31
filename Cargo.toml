@@ -1,6 +1,6 @@
 [package]
 name = "ksite"
-version = "0.10.9"
+version = "0.10.11"
 edition = "2021"
 
 [profile.release]

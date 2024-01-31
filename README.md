@@ -6,13 +6,15 @@ All in one solution for my server.
 
 ### 0.11.0
 
-- sqlite bench.
+- webdav + static serve + pastebin + account + remote download + mirror.
 
-- proxy with sni stripper.
+### 0.12.0
 
 - reverse proxy.
 
-- webdav + static serve + pastebin + account + remote download + mirror.
+- sqlite bench.
+
+- proxy with sni stripper.
 
 - fast uint to uint map.
 
