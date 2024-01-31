@@ -181,6 +181,11 @@ async fn dav_handler(prefix: &'static str, mut req: Request) -> anyhow::Result<R
     let eid = uid.to_owned() + ":" + pathname.trim_end_matches('/');
     match method {
         "PUT" | "MKCOL" => {
+            if let Some((_, _, flag)) = db::get_entry_meta(eid.to_owned()).await {
+                if flag & db::ENTRY_READ_ONLY != 0 {
+                    return Err(anyhow::anyhow!("read only"));
+                }
+            }
             let (parent, _cur_name) = eid.rsplit_once('/').e()?;
             let (_, _, flag) = db::get_entry_meta(parent.to_owned()).await.e()?;
             if flag & db::ENTRY_READ_ONLY != 0 {
@@ -204,7 +209,7 @@ async fn dav_handler(prefix: &'static str, mut req: Request) -> anyhow::Result<R
             Ok(StatusCode::CREATED.into_response())
         }
         "DELETE" => {
-            let (time, size, flag) = db::get_entry_meta(eid.to_owned()).await.e()?;
+            let (_, _, flag) = db::get_entry_meta(eid.to_owned()).await.e()?;
             if flag & db::ENTRY_READ_ONLY != 0 {
                 return Err(anyhow::anyhow!("read only"));
             }
@@ -291,7 +296,6 @@ async fn dav_handler(prefix: &'static str, mut req: Request) -> anyhow::Result<R
                 if flag & db::ENTRY_DIR == 0 {
                     body += "<D:response><D:href>";
                     body += prefix;
-                    body += "/";
                     body += pathname;
                     body += "</D:href><D:propstat><D:prop><D:displayname>";
                     body += pathname.rsplit_once('/').e()?.1;
@@ -303,7 +307,6 @@ async fn dav_handler(prefix: &'static str, mut req: Request) -> anyhow::Result<R
                 } else {
                     body += "<D:response><D:href>";
                     body += prefix;
-                    body += "/";
                     body += pathname;
                     body += "/";
                     body += "</D:href><D:propstat><D:prop><D:displayname>";
