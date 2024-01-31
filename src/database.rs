@@ -40,7 +40,9 @@ pub static DB: LazyLock<Mono<Connection>> = LazyLock::new(|| {
 pub async fn backup() {
     Mono::call(&DB, move |db| {
         // shrink
+        db.execute("PRAGMA journal_mode=TRUNCATE", ()).unwrap();
         db.execute("VACUUM", ()).unwrap();
+        db.execute("PRAGMA journal_mode=WAL", ()).unwrap();
     })
     .await;
     std::fs::copy(
