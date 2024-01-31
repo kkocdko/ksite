@@ -47,14 +47,24 @@
     white-space: pre;
   }
   input[type="checkbox"] {
-    height: 16px;
-    width: 16px;
-    box-shadow: inset 0 0 0 1px #444, inset 0 0 0 9px #000,
-      inset 0 0 0 9px #5d5d5d;
+    width: 14px;
+    height: 14px;
+    border: 3px solid #0000;
+    box-shadow: 0 0 0 1px #888;
+    vertical-align: middle;
   }
   input[type="checkbox"]:checked {
-    box-shadow: inset 0 0 0 1px #444, inset 0 0 0 4px #000,
-      inset 0 0 0 9px #5d5d5d;
+    box-shadow: 0 0 0 1px #888, inset 0 0 0 8px #888;
+  }
+  table {
+    padding: 4px 0;
+  }
+  td {
+    padding: 4px 8px;
+    text-wrap: nowrap;
+  }
+  html:not([stage_auth_], [stage_list_], [stage_edit_]) {
+    display: none;
   }
   html[stage_auth_] header > :not([stage_auth_]),
   html[stage_auth_] header ~ :not([stage_auth_]),
@@ -70,8 +80,10 @@
   <header>
     <button stage_auth_ id="$login">Log in</button>
     <button stage_auth_ id="$signup">Sign up</button>
+    <button stage_list_ id="$logout">Log out</button>
     <button stage_list_ id="$create">Create</button>
     <button stage_list_ id="$delete">Delete</button>
+    <button stage_list_ id="$flag">Flag</button>
     <button stage_edit_ id="$save">Save</button>
   </header>
   <input stage_auth_ id="$uid" placeholder="User ID" />
@@ -120,17 +132,27 @@
       headers: {
         op_: "signup",
         uid_: $uid.value,
-        auth_: "Basic " + btoa($uid.value + "" + $upw.value),
+        auth_: "Basic " + btoa($uid.value + ":" + $upw.value),
       },
     });
     if (!r.ok) throw alert(r.status);
-    alert("create success");
+    alert("signup successfully");
   };
 
   $login.onclick = async () => {
-    localStorage.davAuth = "Basic " + btoa($uid.value + "" + $upw.value);
+    localStorage.davAuth = "Basic " + btoa($uid.value + ":" + $upw.value);
     location.hash = "#/";
     onhashchange();
+  };
+
+  $upw.onkeypress = ({ key }) => {
+    if (key === "Enter") $login.click();
+  };
+
+  $logout.onclick = async () => {
+    delete localStorage.davAuth;
+    location.hash = "";
+    location.reload();
   };
 
   onhashchange = async () => {
@@ -147,9 +169,7 @@
   const asEdit = async (pathname) => {
     const r = await fetch(pathname, {
       method: "GET",
-      headers: {
-        authorization: localStorage.davAuth,
-      },
+      headers: { authorization: localStorage.davAuth },
     });
     if (!r.ok) throw alert(r.status);
     $edit.value = await r.text();
@@ -197,7 +217,34 @@
   $list.onclick = async (e) => {
     const href = e?.target?.dataset?.href;
     if (!href) return;
-    location.hash = "#" + href;
+    location.hash = "#" + href.slice(location.pathname.length);
+    onhashchange();
+  };
+
+  $delete.onclick = async () => {
+    for (const el of $list.querySelectorAll("input[type=checkbox]:checked")) {
+      const href = el?.parentElement?.nextElementSibling?.dataset?.href;
+      if (!href) continue;
+      const r = await fetch(href, {
+        method: "DELETE",
+        headers: { authorization: localStorage.davAuth },
+      });
+      if (!r.ok) throw alert(r.status);
+    }
+    onhashchange();
+  };
+
+  $create.onclick = async () => {
+    const dir = location.hash.slice(1);
+    if (!dir.endsWith("/")) throw alert("current must be dir");
+    const entryName = prompt("file name or dir name with '/'", "new-file.txt");
+    if (!entryName) return;
+    const r = await fetch(location.pathname + dir + entryName, {
+      method: entryName.endsWith("/") ? "MKCOL" : "PUT",
+      headers: { authorization: localStorage.davAuth },
+      body: "",
+    });
+    if (!r.ok) throw alert(r.status);
     onhashchange();
   };
 
@@ -205,12 +252,19 @@
     const pathname = location.pathname + location.hash.slice(1);
     const r = await fetch(pathname, {
       method: "PUT",
-      headers: {
-        authorization: localStorage.davAuth,
-      },
+      headers: { authorization: localStorage.davAuth },
       body: $edit.value,
     });
     if (!r.ok) throw alert(r.status);
-    alert("save success");
+    const originText = $save.textContent;
+    $save.textContent = "Saved successfully";
+    setTimeout(() => void ($save.textContent = originText), 1000);
   };
+
+  if (localStorage.davAuth) {
+    location.hash = location.hash || "#/";
+    onhashchange();
+  } else {
+    setStage("stage_auth_");
+  }
 </script>
