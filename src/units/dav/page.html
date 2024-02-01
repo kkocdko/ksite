@@ -8,10 +8,9 @@
 
 <style>
   * {
+    appearance: none;
     margin: 0;
     font: 14px / 20px sans-serif;
-    color: #000;
-    appearance: none;
     background: #fff;
   }
   @media (prefers-color-scheme: dark) {
@@ -65,7 +64,7 @@
     text-align: left;
     text-wrap: nowrap;
   }
-  thead > :first-child {
+  #\$putBox {
     position: absolute;
     left: calc(50vw - 180px);
     display: none;
@@ -75,33 +74,24 @@
     margin-top: 6px;
     overflow: hidden;
     box-shadow: 0 0 0 2px #888;
+    --bg-text: "|\a\a0\a0\a0\a0 Files\a0\a0\a0\a0|\a0\a0 Directory\a0\a0\a|";
   }
-  thead > :first-child::before {
+  #\$putBox::before {
     position: absolute;
     width: 100%;
     height: 180px;
-    font-family: monospace;
-    font-size: 22px;
-    line-height: 170px;
+    font: 22px / 58px monospace;
     text-align: center;
-    content: "\00a0\00a0\00a0\00a0 Files\00a0\00a0\00a0\00a0\00a0\00a0\00a0 Directory\00a0\00a0";
-    background: linear-gradient(
-      to right,
-      #0000 calc(50% - 1px),
-      #888 calc(50% - 1px),
-      #888 calc(50% + 1px),
-      #0000 calc(50% + 1px)
-    );
+    content: var(--bg-text);
+    color: #888;
   }
-  thead > :first-child th {
+  #\$putBox th {
     display: grid;
     grid: 1fr / 1fr 1fr;
     padding: 0;
     opacity: 0;
   }
-  html:not([stage_auth_], [stage_list_], [stage_edit_]) {
-    display: none;
-  }
+  html:not([stage_auth_], [stage_list_], [stage_edit_]),
   html[stage_auth_] header > :not([stage_auth_]),
   html[stage_auth_] header ~ :not([stage_auth_]),
   html[stage_list_] header > :not([stage_list_]),
@@ -128,7 +118,7 @@
   <table stage_list_>
     <tbody id="$list"></tbody>
     <thead>
-      <tr>
+      <tr id="$putBox">
         <th>
           <input id="$putFile" type="file" multiple />
           <input id="$putDir" type="file" multiple directory webkitdirectory />
@@ -151,9 +141,9 @@
   // url = "https://127.0.0.1:9304/dav#/nextchat/href.txt"
 
   const setStage = (stage) => {
-    ["stage_auth_", "stage_list_", "stage_edit_"].forEach((v) => {
-      document.documentElement.removeAttribute(v);
-    });
+    for (const v of document.documentElement.attributes)
+      if (v.name.startsWith("stage_"))
+        document.documentElement.removeAttribute(v.name);
     document.documentElement.setAttribute(stage, "");
   };
 
@@ -175,6 +165,8 @@
     const d = `${v.getFullYear()}.${zp(v.getMonth() + 1)}.${zp(v.getDate())}`;
     return d + ` ${zp(v.getHours())}:${zp(v.getMinutes())}`;
   };
+
+  const curPath = () => location.pathname + location.hash.slice(1);
 
   $signup.onclick = async () => {
     const r = await fetch(location, {
@@ -206,18 +198,17 @@
   };
 
   onhashchange = async () => {
-    const pathname = location.pathname + location.hash.slice(1);
-    if (pathname.endsWith("/")) {
-      await asList(pathname);
+    if (curPath().endsWith("/")) {
+      await asList();
       setStage("stage_list_");
     } else {
-      await asEdit(pathname);
+      await asEdit();
       setStage("stage_edit_");
     }
   };
 
-  const asEdit = async (pathname) => {
-    const r = await fetch(pathname, {
+  const asEdit = async () => {
+    const r = await fetch(curPath(), {
       method: "GET",
       headers: { authorization: localStorage.davAuth },
     });
@@ -225,8 +216,8 @@
     $edit.value = await r.text();
   };
 
-  const asList = async (pathname) => {
-    const r = await fetch(pathname, {
+  const asList = async () => {
+    const r = await fetch(curPath(), {
       method: "PROPFIND",
       headers: {
         authorization: localStorage.davAuth,
@@ -285,32 +276,51 @@
   };
 
   $list.parentNode.ondragover = () => {
-    $putFile.parentNode.parentNode.style.display = "grid";
+    $putBox.style.display = "grid";
   };
 
   $putFile.parentNode.ondragleave = () => {
-    $putFile.parentNode.parentNode.style.display = "";
+    $putBox.style.display = "";
   };
 
   $upload.onclick = $list.parentNode.ondragover;
 
-  $putFile.onchange = async (e) => {
-    const dir = location.hash.slice(1);
-    for (const file of $putFile.files) {
-      const r = await fetch(location.pathname + dir + file.name, {
+  const upload = async (files, pathname) => {
+    console.time("upload");
+    let finished = 0;
+    $putBox.style.setProperty("--bg-text", `"0 / ${files.length}"`);
+    let debounce = Date.now();
+    const pool = Array.from(Array(2), (_, i) => Promise.resolve(i)); // dual thread is enough, quad is too much
+    for (const file of files) {
+      const i = await Promise.race(pool);
+      pool[i] = fetch(pathname(file), {
         method: "PUT",
         headers: { authorization: localStorage.davAuth },
         body: file,
+      }).then((r) => {
+        if (!r.ok) throw alert(r.status);
+        finished++;
+        if (Date.now() - debounce > 200) {
+          debounce = Date.now();
+          const bgText = `"${finished} / ${files.length}"`;
+          $putBox.style.setProperty("--bg-text", bgText);
+        }
+        return i;
       });
-      if (!r.ok) throw alert(r.status);
     }
+    await Promise.all(pool);
+    $putBox.style.removeProperty("--bg-text");
+    console.timeEnd("upload");
+  };
+
+  $putFile.onchange = async (e) => {
+    await upload($putFile.files, (file) => curPath() + file.name);
     $putFile.value = null;
     onhashchange();
     $putFile.parentNode.ondragleave();
   };
 
   $putDir.onchange = async (e) => {
-    const dir = location.hash.slice(1);
     const files = [...$putDir.files].sort((a, b) => {
       a = a.webkitRelativePath.split("/");
       b = b.webkitRelativePath.split("/");
@@ -321,44 +331,31 @@
       return a.length - b.length;
     });
     // const upDir = files[0].webkitRelativePath.split("/")[0]; // fetch HEAD?
-    let createdDir = new Set();
+    $putBox.style.setProperty("--bg-text", `"0 / ${files.length}"`);
+    const createdDir = new Set();
     for (let { webkitRelativePath: p } of files) {
       for (let i = 0; (i = p.indexOf("/", i + 1)), i != -1; ) {
         const d = p.slice(0, i);
         if (createdDir.has(d)) continue;
         createdDir.add(d);
-        const r = await fetch(location.pathname + dir + d, {
+        const r = await fetch(curPath() + d, {
           method: "MKCOL",
           headers: { authorization: localStorage.davAuth },
         });
         if (!r.ok) throw alert(r.status);
       }
     }
-    const dual = [Promise.resolve(0), Promise.resolve(1)]; // dual thread is enough, quad is too much
-    for (const file of files) {
-      const pathname = location.pathname + dir + file.webkitRelativePath;
-      const i = await Promise.race(dual);
-      dual[i] = fetch(pathname, {
-        method: "PUT",
-        headers: { authorization: localStorage.davAuth },
-        body: file,
-      }).then((r) => {
-        if (!r.ok) throw alert(r.status);
-        return i;
-      });
-    }
-    await Promise.all(dual);
+    await upload(files, (file) => curPath() + file.webkitRelativePath);
     $putDir.value = null;
     onhashchange();
     $putFile.parentNode.ondragleave();
   };
 
   $create.onclick = async () => {
-    const dir = location.hash.slice(1);
-    if (!dir.endsWith("/")) throw alert("current must be dir");
+    if (!curPath().endsWith("/")) throw alert("current must be dir");
     const entryName = prompt("file name or dir name with '/'", "new-file.txt");
     if (!entryName) return;
-    const r = await fetch(location.pathname + dir + entryName, {
+    const r = await fetch(curPath() + entryName, {
       method: entryName.endsWith("/") ? "MKCOL" : "PUT",
       headers: { authorization: localStorage.davAuth },
     });
@@ -367,8 +364,7 @@
   };
 
   $save.onclick = async () => {
-    const pathname = location.pathname + location.hash.slice(1);
-    const r = await fetch(pathname, {
+    const r = await fetch(curPath(), {
       method: "PUT",
       headers: { authorization: localStorage.davAuth },
       body: $edit.value,
