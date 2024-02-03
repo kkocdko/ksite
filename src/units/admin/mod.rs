@@ -88,11 +88,14 @@ async fn post_handler(q: RawQuery, body: Bytes) -> Bytes {
             // file.take(max_len).read_to_string(&mut buf).unwrap();
             return Bytes::from(buf);
         }
-        "set_ssl_cert" => {
-            db::set("ssl_cert".to_owned(), body).await;
+        "set_tls_ca" => {
+            db::set("tls_ca".to_owned(), body).await;
         }
-        "set_ssl_key" => {
-            db::set("ssl_key".to_owned(), body).await;
+        "set_tls_cert" => {
+            db::set("tls_cert".to_owned(), body).await;
+        }
+        "set_tls_key" => {
+            db::set("tls_key".to_owned(), body).await;
         }
         "set_copilot_token" => {
             db::set("copilot_token".to_owned(), body).await;

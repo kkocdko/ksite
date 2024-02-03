@@ -54,8 +54,9 @@
       <option>trigger_restart_process</option>
       <option>trigger_backup_database</option>
       <option>get_recent_log</option>
-      <option>set_ssl_cert (pem)</option>
-      <option>set_ssl_key (pem)</option>
+      <option>set_tls_ca (pem)</option>
+      <option>set_tls_cert (pem)</option>
+      <option>set_tls_key (pem)</option>
       <option>set_copilot_token</option>
       <option>set_copilot_machineid</option>
       <option>set_qqbot_device</option>
@@ -70,7 +71,7 @@
 <script>
   const send = async () => {
     let body;
-    if ($k.value.startsWith("set_ssl_")) {
+    if ($k.value.startsWith("set_tls_")) {
       if (!$v.value.startsWith("-----")) throw alert("must be PEM format");
       const base64 = $v.value.split("-----")[2].replaceAll("\n", "");
       body = await fetch(`data:;base64,${base64}`).then((v) => v.blob());

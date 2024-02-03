@@ -41,46 +41,35 @@ async fn run() {
         log!("server address = {addr}");
         let tcp_listener = tokio::net::TcpListener::bind(addr).await.unwrap();
         let tls_config = {
-            use crate::units::admin;
-            use crate::utils::block_on;
-            fn get_with_warn(k: &str, default: &[u8]) -> Vec<u8> {
-                block_on(admin::db::get(k.to_owned()))
-                    .map(Vec::from)
-                    .unwrap_or_else(|| {
-                        log!(WARN: "using default cert and key");
-                        Vec::from(default)
-                    })
+            use tls_http::*;
+            fn get_or_default(k: &str, default: &[u8]) -> Vec<u8> {
+                let got = crate::utils::block_on(crate::units::admin::db::get(k.to_owned()));
+                got.map(Vec::from).unwrap_or_else(|| {
+                    log!(WARN: "fallback to default tls cert, ca and key");
+                    Vec::from(default)
+                })
             }
             mod default_cert {
-                include!("tls.defaults.rs");
+                include!("tls.defaults.rs"); // for local dev, just ignore cert error and continue
             }
-            fn find_subsequence<T>(haystack: &[T], needle: &[T]) -> Option<usize>
-            where
-                for<'a> &'a [T]: PartialEq,
-            {
-                haystack
-                    .windows(needle.len())
-                    .position(|window| window == needle)
+            fn find_subseq<T: PartialEq>(haystack: &[T], needle: &[T]) -> Option<usize> {
+                haystack.windows(needle.len()).position(|w| w == needle)
             }
-            let cert = get_with_warn("ssl_cert", default_cert::CERT);
-            let cert = tls_http::CertificateDer::from(cert);
-            let key = get_with_warn("ssl_key", default_cert::KEY);
-            let key = match () {
-                // https://oidref.com/1.2.840.113549.1.1
-                // https://stackoverflow.com/q/5929050/
-                _ if find_subsequence(&key, &[42, 134, 72, 134, 247, 13, 1]).is_some() => {
-                    tls_http::PrivatePkcs8KeyDer::from(key).into()
+            let ca = CertificateDer::from(get_or_default("tls_ca", default_cert::CA));
+            let cert = CertificateDer::from(get_or_default("tls_cert", default_cert::CERT));
+            let key = match get_or_default("tls_key", default_cert::KEY) {
+                // https://oidref.com/1.2.840.113549.1.1 | https://stackoverflow.com/q/5929050/
+                v if find_subseq(&v, &[42, 134, 72, 134, 247, 13, 1]).is_some() => {
+                    PrivatePkcs8KeyDer::from(v).into()
                 }
-                _ if find_subsequence(&key, &[2, 130, 1, 1, 0]).is_some() => {
-                    tls_http::PrivatePkcs1KeyDer::from(key).into()
+                v if find_subseq(&v, &[2, 130, 1, 1, 0]).is_some() => {
+                    PrivatePkcs1KeyDer::from(v).into()
                 }
-                _ => {
-                    unimplemented!("unknown type of private key")
-                }
+                _ => unimplemented!("unknown type of tls_key"),
             };
-            let mut tls_config = tls_http::ServerConfig::builder()
+            let mut tls_config = ServerConfig::builder()
                 .with_no_client_auth()
-                .with_single_cert(vec![cert], key)
+                .with_single_cert(vec![cert, ca], key)
                 .unwrap();
             tls_config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()]; // HTTP2 needs hyper features = ["http2"]
             tls_config
