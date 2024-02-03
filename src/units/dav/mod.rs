@@ -1,7 +1,7 @@
 //! WebDAV.
 
 use crate::database::DB;
-use crate::utils::{escape_check_html, Mono, OptionResult};
+use crate::utils::{escape_check_html, OptionResult};
 use crate::{care, include_src, strip_str};
 use axum::body::{Body, Bytes};
 use axum::extract::{Path, Request};
@@ -19,8 +19,7 @@ mod db {
     pub const ENTRY_GZIP: u64 = 0b_0000_0000_0001_0000;
     pub const ENTRY_STABLE: u64 = 0b_0000_0000_0100_0000;
     pub async fn init() {
-        Mono::call(&DB, |db| {
-            // TODO
+        DB.call(|db| {
             // db.execute("DROP TABLE IF EXISTS dav_users", ()).unwrap();
             // db.execute("DROP TABLE IF EXISTS dav_entries", ()).unwrap();
             // dav_users: uid = "username", auth = "Basic dXNlcm5hbWU6cGFzc3dvcmQ="
@@ -39,7 +38,7 @@ mod db {
         .await
     }
     pub async fn get_user_uid(auth: String) -> Option<String> {
-        Mono::call(&DB, move |db| {
+        DB.call(move |db| {
             let sql = strip_str! {"
                 SELECT uid FROM dav_users WHERE auth = ?
             "};
@@ -52,7 +51,7 @@ mod db {
         .await
     }
     pub async fn set_user(uid: String, auth: String) {
-        Mono::call(&DB, move |db| {
+        DB.call(move |db| {
             let sql = strip_str! {"
                 REPLACE INTO dav_users VALUES (?, ?)
             "};
@@ -62,7 +61,7 @@ mod db {
         .await
     }
     pub async fn set_entry(eid: String, data: Bytes, time: u64, size: u64, flag: u64) {
-        Mono::call(&DB, move |db| {
+        DB.call(move |db| {
             let sql = strip_str! {"
                 REPLACE INTO dav_entries VALUES (?, ?, ?, ?, ?)
             "};
@@ -73,7 +72,7 @@ mod db {
         .await
     }
     pub async fn set_entry_flag(eid: String, flag: u64) {
-        Mono::call(&DB, move |db| {
+        DB.call(move |db| {
             let sql = strip_str! {"
                 UPDATE dav_entries SET flag = ? WHERE eid = ?
             "};
@@ -83,7 +82,7 @@ mod db {
         .await
     }
     pub async fn get_entry_data(eid: String) -> Option<Vec<u8>> {
-        Mono::call(&DB, move |db| {
+        DB.call(move |db| {
             let sql = strip_str! {"
                 SELECT data FROM dav_entries WHERE eid = ?
             "};
@@ -93,7 +92,7 @@ mod db {
         .await
     }
     pub async fn get_entry_meta(eid: String) -> Option<(u64, u64, u64)> {
-        Mono::call(&DB, move |db| {
+        DB.call(move |db| {
             let sql = strip_str! {"
                 SELECT time, size, flag FROM dav_entries WHERE eid = ?
             "};
@@ -104,7 +103,7 @@ mod db {
         .await
     }
     pub async fn list_entry_meta(eid_prefix: String) -> Vec<(String, u64, u64, u64)> {
-        Mono::call(&DB, move |db| {
+        DB.call(move |db| {
             let sql = strip_str! {"
                 SELECT eid, time, size, flag FROM dav_entries WHERE eid LIKE ? AND eid NOT LIKE ?
             "};
@@ -127,7 +126,7 @@ mod db {
         .await
     }
     pub async fn del_entry_recursive(eid: String) {
-        Mono::call(&DB, move |db| {
+        DB.call(move |db| {
             let sql = strip_str! {"
                 DELETE FROM dav_entries WHERE eid = ? OR eid LIKE ?
             "};
@@ -165,6 +164,7 @@ curl -vvvk --insecure -X POST --data-raw '{"op":"trigger_flag_recursive","eid":"
 */
 
 async fn dav_handler(prefix: &'static str, mut req: Request) -> anyhow::Result<Response> {
+    const MAX_SIZE: usize = 1024 * 1024 * 16;
     let method = req.method().as_str();
     if method == "OPTIONS" {
         return Ok(([
@@ -197,7 +197,7 @@ async fn dav_handler(prefix: &'static str, mut req: Request) -> anyhow::Result<R
             let time = UNIX_EPOCH.elapsed().unwrap().as_secs();
             match method {
                 "PUT" => {
-                    let data = axum::body::to_bytes(req.into_body(), 1024 * 1024 * 16).await?;
+                    let data = axum::body::to_bytes(req.into_body(), MAX_SIZE).await?;
                     let size = data.len() as _;
                     db::set_entry(eid, data, time, size, 0).await;
                 }
@@ -213,12 +213,7 @@ async fn dav_handler(prefix: &'static str, mut req: Request) -> anyhow::Result<R
             if flag & db::ENTRY_READ_ONLY != 0 {
                 return Err(anyhow::anyhow!("read only"));
             }
-            if flag & db::ENTRY_DIR == 0 {
-                db::del_entry_recursive(eid.to_owned()).await;
-            } else {
-                // TODO
-                db::del_entry_recursive(eid.to_owned()).await;
-            }
+            db::del_entry_recursive(eid.to_owned()).await; // TODO
             Ok(StatusCode::OK.into_response())
         }
         "COPY" | "MOVE" => {
@@ -252,13 +247,12 @@ async fn dav_handler(prefix: &'static str, mut req: Request) -> anyhow::Result<R
                 let v = HeaderValue::try_from(db::get_entry_data(eid).await.e()?)?;
                 return Ok((StatusCode::TEMPORARY_REDIRECT, [(LOCATION, v)]).into_response());
             }
-            let not_modified = req.headers().get(IF_MODIFIED_SINCE).and_then(|v| {
-                let t = httpdate::parse_http_date(v.to_str().ok()?).ok()?;
-                let t = t.duration_since(UNIX_EPOCH).ok()?.as_secs();
-                (if t >= time { Some(()) } else { None })
-            });
-            if not_modified.is_some() {
-                return Ok(StatusCode::NOT_MODIFIED.into_response());
+            if let Some(v) = req.headers().get(IF_MODIFIED_SINCE) {
+                let t = httpdate::parse_http_date(v.to_str()?)?;
+                let t = t.duration_since(UNIX_EPOCH)?.as_secs();
+                if t >= time {
+                    return Ok(StatusCode::NOT_MODIFIED.into_response());
+                }
             }
             let mut res = match method {
                 "GET" => axum::body::Body::from(db::get_entry_data(eid).await.e()?),
@@ -413,12 +407,4 @@ pub fn service() -> Router {
         .route("/dav", any_router.clone())
         .route("/dav/", any_router.clone())
         .route("/dav/*path", any_router)
-    // .layer(axum::middleware::from_fn(
-    //     |req: Request<Body>, next: axum::middleware::Next| async {
-    //         println!("================");
-    //         println!("> req > {} {} {:?}", req.method(), req.uri(), req.headers());
-    //         println!("================");
-    //         next.run(req).await
-    //     },
-    // ))
 }

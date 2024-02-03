@@ -35,7 +35,14 @@ async fn run() {
             .route(
                 "/robots.txt",
                 axum::routing::MethodRouter::new().get("User-agent: *\nDisallow: /\n"),
-            );
+            )
+            .layer(axum::middleware::from_fn(
+                |req: axum::extract::Request, next: axum::middleware::Next| async {
+                    log!(TRAC: "request {:?} {} {} {:?}", req.version(), req.method(), req.uri(), req.headers());
+                    next.run(req).await
+                },
+            ))
+            ;
         log!("auth key = {}", auth::auth_key());
         let addr = SocketAddr::from(([0, 0, 0, 0], 9304)); // server address here
         log!("server address = {addr}");
