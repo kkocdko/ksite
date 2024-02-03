@@ -8,9 +8,9 @@
 
 <style>
   * {
-    appearance: none;
     margin: 0;
     font: 14px / 20px sans-serif;
+    appearance: none;
     background: #fff;
   }
   @media (prefers-color-scheme: dark) {
@@ -65,30 +65,29 @@
     text-wrap: nowrap;
   }
   #\$putBox {
+    --bg-text: "|\a\a0\a0\a0\a0 Files\a0\a0\a0\a0|\a0\a0 Directory\a0\a0\a|";
     position: absolute;
     left: calc(50vw - 180px);
     display: none;
+    grid: 1fr / 1fr 1fr;
     width: 360px;
     height: 180px;
+    padding: 0;
     padding: 0;
     margin-top: 6px;
     overflow: hidden;
     box-shadow: 0 0 0 2px #888;
-    --bg-text: "|\a\a0\a0\a0\a0 Files\a0\a0\a0\a0|\a0\a0 Directory\a0\a0\a|";
   }
   #\$putBox::before {
     position: absolute;
     width: 100%;
-    height: 180px;
     font: 22px / 58px monospace;
-    text-align: center;
-    content: var(--bg-text);
     color: #888;
+    text-align: center;
+    white-space: pre;
+    content: var(--bg-text);
   }
-  #\$putBox th {
-    display: grid;
-    grid: 1fr / 1fr 1fr;
-    padding: 0;
+  #\$putBox input {
     opacity: 0;
   }
   html:not([stage_auth_], [stage_list_], [stage_edit_]),
@@ -118,8 +117,8 @@
   <table stage_list_>
     <tbody id="$list"></tbody>
     <thead>
-      <tr id="$putBox">
-        <th>
+      <tr>
+        <th id="$putBox">
           <input id="$putFile" type="file" multiple />
           <input id="$putDir" type="file" multiple directory webkitdirectory />
         </th>
@@ -160,10 +159,9 @@
   };
 
   const timeStamp = (t) => {
-    const v = new Date(t);
-    const zp = (n) => (n + "").padStart(2, "0");
-    const d = `${v.getFullYear()}.${zp(v.getMonth() + 1)}.${zp(v.getDate())}`;
-    return d + ` ${zp(v.getHours())}:${zp(v.getMinutes())}`;
+    const zp = (n) => ("" + n).padStart(2, "0");
+    const d = `${t.getFullYear()}.${zp(t.getMonth() + 1)}.${zp(t.getDate())}`;
+    return d + ` ${zp(t.getHours())}:${zp(t.getMinutes())}`;
   };
 
   const curPath = () => location.pathname + location.hash.slice(1);
@@ -248,7 +246,7 @@
           <td><input type=checkbox></td>
           <td data-href="${href}">${displayname + (collection ? "/" : "")}</td>
           <td>${collection ? "" : readableSize(getcontentlength)}</td>
-          <td>${timeStamp(getlastmodified)}</td>
+          <td>${timeStamp(new Date(getlastmodified))}</td>
         </tr>
       `;
     }
@@ -275,20 +273,22 @@
     onhashchange();
   };
 
-  $list.parentNode.ondragover = () => {
-    $putBox.style.display = "grid";
+  ondragenter = (e) => {
+    if (!e.fromElement) $putBox.style.display = "grid";
   };
 
-  $putFile.parentNode.ondragleave = () => {
-    $putBox.style.display = "";
+  ondragleave = (e) => {
+    if (!e.fromElement) $putBox.style.display = "";
   };
 
-  $upload.onclick = $list.parentNode.ondragover;
+  $upload.onclick = () => {
+    $putBox.style.display = $putBox.style.display ? "" : "grid";
+  };
 
   const upload = async (files, pathname) => {
     console.time("upload");
     let finished = 0;
-    $putBox.style.setProperty("--bg-text", `"0 / ${files.length}"`);
+    $putBox.style.setProperty("--bg-text", `"\\a 0 / ${files.length}"`);
     let debounce = Date.now();
     const pool = Array.from(Array(2), (_, i) => Promise.resolve(i)); // dual thread is enough, quad is too much
     for (const file of files) {
@@ -302,7 +302,7 @@
         finished++;
         if (Date.now() - debounce > 200) {
           debounce = Date.now();
-          const bgText = `"${finished} / ${files.length}"`;
+          const bgText = `"\\a ${finished} / ${files.length}"`;
           $putBox.style.setProperty("--bg-text", bgText);
         }
         return i;
@@ -310,17 +310,19 @@
     }
     await Promise.all(pool);
     $putBox.style.removeProperty("--bg-text");
+    $putBox.style.display = "";
     console.timeEnd("upload");
   };
 
   $putFile.onchange = async (e) => {
+    $putBox.style.setProperty("--bg-text", `"\\a Preparing ...`);
     await upload($putFile.files, (file) => curPath() + file.name);
     $putFile.value = null;
     onhashchange();
-    $putFile.parentNode.ondragleave();
   };
 
   $putDir.onchange = async (e) => {
+    $putBox.style.setProperty("--bg-text", `"\\a Preparing ...`);
     const files = [...$putDir.files].sort((a, b) => {
       a = a.webkitRelativePath.split("/");
       b = b.webkitRelativePath.split("/");
@@ -331,7 +333,6 @@
       return a.length - b.length;
     });
     // const upDir = files[0].webkitRelativePath.split("/")[0]; // fetch HEAD?
-    $putBox.style.setProperty("--bg-text", `"0 / ${files.length}"`);
     const createdDir = new Set();
     for (let { webkitRelativePath: p } of files) {
       for (let i = 0; (i = p.indexOf("/", i + 1)), i != -1; ) {
@@ -348,7 +349,6 @@
     await upload(files, (file) => curPath() + file.webkitRelativePath);
     $putDir.value = null;
     onhashchange();
-    $putFile.parentNode.ondragleave();
   };
 
   $create.onclick = async () => {
