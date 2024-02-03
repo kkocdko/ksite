@@ -2,7 +2,6 @@
 
 use crate::auth::auth_layer;
 use crate::database::DB;
-use crate::utils::Mono;
 use crate::{include_src, log, strip_str};
 use axum::body::Bytes;
 use axum::extract::RawQuery;
@@ -14,7 +13,7 @@ use std::time::{Duration, UNIX_EPOCH};
 pub mod db {
     use super::*;
     pub async fn init() {
-        Mono::call(&DB, |db| {
+        DB.call(|db| {
             let sql = strip_str! {"
                 CREATE TABLE IF NOT EXISTS admin (k BLOB PRIMARY KEY, v BLOB)
             "};
@@ -24,7 +23,7 @@ pub mod db {
         .await
     }
     pub async fn set(k: String, v: Bytes) {
-        Mono::call(&DB, move |db| {
+        DB.call(move |db| {
             let sql = strip_str! {"
                 REPLACE INTO admin VALUES (?, ?)
             "};
@@ -34,7 +33,7 @@ pub mod db {
         .await
     }
     pub async fn get(k: String) -> Option<Bytes> {
-        Mono::call(&DB, move |db| {
+        DB.call(move |db| {
             let sql = strip_str! {"
                 SELECT v FROM admin WHERE k = ?
             "};
@@ -48,7 +47,7 @@ pub mod db {
         .await
     }
     pub async fn del(k: String) {
-        Mono::call(&DB, move |db| {
+        DB.call(move |db| {
             let sql = strip_str! {"
                 DELETE FROM admin WHERE k = ?
             "};
@@ -80,12 +79,11 @@ async fn post_handler(q: RawQuery, body: Bytes) -> Bytes {
         "get_recent_log" => {
             let mut file = crate::launcher::LOG_FILE.try_clone().unwrap();
             use std::io::{Read, Seek, SeekFrom};
-            let max_len = 16384;
+            let max_len = 1024 * 128;
             let start_pos = file.metadata().unwrap().len().saturating_sub(max_len);
             file.seek(SeekFrom::Start(start_pos)).unwrap();
             let mut buf = String::new();
             file.read_to_string(&mut buf).unwrap();
-            // file.take(max_len).read_to_string(&mut buf).unwrap();
             return Bytes::from(buf);
         }
         "set_tls_ca" => {
