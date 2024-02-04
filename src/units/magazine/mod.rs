@@ -94,11 +94,11 @@ async fn refresh() -> Result<()> {
         ];
         for prefix in prefixs {
             let req = str2req(prefix.to_string() + p);
-            // log!(INFO: "{prefix}");
+            // log!(info: "{prefix}");
             let v = care!(fetch_text(req).await, continue);
             return Ok(v);
         }
-        log!(ERRO: "magazine fetch failed, p = {p}");
+        log!(erro: "magazine fetch failed, p = {p}");
         Err(())
     }
     // tokio::task::JoinSet

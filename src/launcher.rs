@@ -71,7 +71,7 @@ where
             });
         return;
     }
-    log!(concat!(
+    log!(info: concat!(
         env!("CARGO_PKG_NAME"),
         " v",
         env!("CARGO_PKG_VERSION"),

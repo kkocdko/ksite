@@ -46,7 +46,7 @@ async fn post_handler(mut req: Request<Body>) -> impl IntoResponse {
         let expires_at = body.get("expires_at").unwrap().as_u64().unwrap(); // it's +30 minutes usually
         let auth_header = "Bearer ".to_string() + body.get("token").unwrap().as_str().unwrap();
         *AUTH_HEADER_CACHE.lock().unwrap() = (auth_header, expires_at);
-        log!(INFO: "reissued auth header, expires_at = {expires_at}");
+        log!(info: "reissued auth header, expires_at = {expires_at}");
     };
     let auth_header = AUTH_HEADER_CACHE.lock().unwrap().0.to_owned();
 

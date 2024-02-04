@@ -14,7 +14,7 @@ use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
 async fn do_mission(cookie: &str) -> Result<()> {
-    log!(INFO: "v2exdaily::do_mission()");
+    log!(info: "v2exdaily::do_mission()");
     async fn fetch_authed(path: &str, cookie: &str) -> Result<String> {
         let uri = format!("https://fast.v2ex.com{path}");
         let mut req = Request::get(uri)
@@ -40,7 +40,7 @@ async fn do_mission(cookie: &str) -> Result<()> {
         .take_while(|c| c.is_ascii_digit())
         .collect();
     let code = std::str::from_utf8(&code)?;
-    log!(INFO: "v2exdaily::do_mission() code = {code}");
+    log!(info: "v2exdaily::do_mission() code = {code}");
     let _ret_page = fetch_authed(&format!("{needle}{code}"), cookie).await?;
     Ok(())
 }

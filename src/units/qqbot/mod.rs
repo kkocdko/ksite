@@ -21,7 +21,7 @@ use std::time::{Duration, UNIX_EPOCH};
 
 static QR: Mutex<Bytes> = Mutex::new(Bytes::new());
 static CLIENT: LazyLock<Arc<Client>> = LazyLock::new(|| {
-    log!(INFO: "init client");
+    log!(info: "init client");
     let device = block_on(admin::db::get("qqbot_device".to_owned())).unwrap_or_else(|| {
         let default_device = br#"{"display":"OPPO.WATCH.3.12345","product":"mywatch","device":"watchthird","board":"eomam","model":"OPPO Watch 3","finger_print":"oppo/watch/watchthird:12/eomam.200122.001/3713053:user/release-keys","boot_id":"c551a017-7b25-a29c-d017-f5669c99f3f6","proc_version":"Linux 5.4.0-54-generic-JT1rcT5R (android-build@oppo.com)","imei":"596383386086907","brand":"Oppo","bootloader":"U-boot","base_band":"","version":{"incremental":"5891938","release":"12","codename":"REL","sdk":31},"sim_info":"T-Mobile","os_type":"android","mac_address":"00:50:56:C0:00:09","ip_address":[10,0,1,3],"wifi_bssid":"00:50:56:C0:00:09","wifi_ssid":"mywifi","imsi_md5":[168,95,162,8,95,25,127,174,97,161,163,42,13,203,28,159],"android_id":"c307656af5d64cba","apn":"wifi","vendor_name":"ColorOS Watch","vendor_os_name":"ColorOS Watch"}"#; // or ricq::Device::random()
         let bytes = Bytes::from_static(default_device);
@@ -39,19 +39,19 @@ static CLIENT: LazyLock<Arc<Client>> = LazyLock::new(|| {
             tokio::select! {
                 _ = async {
                     CLIENT.start(tcp_stream).await;
-                    log!(WARN: "offline, fn start returned");
+                    log!(warn: "offline, fn start returned");
                 } => {}
                 _ = async {
                     tokio::time::sleep(Duration::from_millis(200)).await; // waiting for connected
                     care!(launch().await);
                     CLIENT.do_heartbeat().await;
-                    log!(WARN: "offline, fn do_heartbeat returned");
+                    log!(warn: "offline, fn do_heartbeat returned");
                 } => {}
             };
             CLIENT.stop(ricq::client::NetworkStatus::Unknown);
             let now = UNIX_EPOCH.elapsed().unwrap().as_secs();
             if now - last < 30 {
-                log!(WARN: "reconnection was stopped, overfrequency");
+                log!(warn: "reconnection was stopped, overfrequency");
                 return;
             }
             last = now;
@@ -66,36 +66,36 @@ async fn launch() -> Result<()> {
     if let Some(v) = admin::db::get("qqbot_token".to_owned()).await {
         let token = serde_json::from_slice(&v)?;
         CLIENT.token_login(token).await?;
-        log!(INFO: "login by token");
+        log!(info: "login by token");
     } else {
         let mut qr_resp = CLIENT.fetch_qrcode().await?;
         let mut img_sig = Bytes::new();
         loop {
             match qr_resp {
                 QRCodeState::ImageFetch(inner) => {
-                    log!(INFO: "qrcode fetched");
+                    log!(info: "qrcode fetched");
                     *QR.lock().unwrap() = inner.image_data;
                     img_sig = inner.sig;
                 }
                 QRCodeState::Timeout => {
-                    log!(INFO: "qrcode timeout");
+                    log!(info: "qrcode timeout");
                     qr_resp = CLIENT.fetch_qrcode().await?;
                     continue;
                 }
                 QRCodeState::Confirmed(inner) => {
-                    log!(INFO: "qrcode confirmed");
+                    log!(info: "qrcode confirmed");
                     let login_resp = CLIENT
                         .qrcode_login(&inner.tmp_pwd, &inner.tmp_no_pic_sig, &inner.tgt_qr)
                         .await?;
                     if let LoginResponse::DeviceLockLogin { .. } = login_resp {
                         CLIENT.device_lock_login().await?;
                     }
-                    log!(INFO: "login by qrcode");
+                    log!(info: "login by qrcode");
                     break;
                 }
-                QRCodeState::WaitingForScan => log!(INFO: "qrcode waiting for scan"),
-                QRCodeState::WaitingForConfirm => log!(INFO: "qrcode waiting for confirm"),
-                QRCodeState::Canceled => log!(INFO: "qrcode canceled"),
+                QRCodeState::WaitingForScan => log!(info: "qrcode waiting for scan"),
+                QRCodeState::WaitingForConfirm => log!(info: "qrcode waiting for confirm"),
+                QRCodeState::Canceled => log!(info: "qrcode canceled"),
             }
             tokio::time::sleep(Duration::from_secs(1)).await;
             qr_resp = CLIENT.query_qrcode_result(&img_sig).await?;
@@ -235,7 +235,7 @@ async fn on_event(event: QEvent) {
                     break;
                 }
             }
-            // log!(INFO: "\n\x1b[93m[qq]\x1b[0m {}", e.inner.elements.to_string());
+            // log!(info: "\n\x1b[93m[qq]\x1b[0m {}", e.inner.elements.to_string());
             /* >>> recall_log
             let mut recent = RECENT.lock().unwrap();
             recent.push((e.time, e.seqs, e.group_name, e.group_card, msg));
@@ -260,7 +260,7 @@ async fn on_event(event: QEvent) {
         }
         */
         QEvent::Login(uin) => {
-            log!(INFO: "current account = {uin}");
+            log!(info: "current account = {uin}");
         }
         _ => {}
     }

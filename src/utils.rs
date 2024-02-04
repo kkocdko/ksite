@@ -54,16 +54,24 @@ impl<I: Send + 'static> Mono<I> {
     }
 }
 
+// https://rustcc.cn/article?id=7eb057f0-80a6-477f-94e7-91778172c164
+// https://github.com/nonconvextech/ftlog
+
+// 保持 println 语法
+// 高性能
+// 实现简洁
+
+/// `log!(info: "hello {}", "world");`.
 #[macro_export]
 macro_rules! log {
-    // TRAC | INFO | WARN | ERRO
-    ($level:tt : $($arg:tt)*) => {{
+    // trac | info | warn | erro
+    ($level:tt: $($arg:tt)*) => {{
         let stamp = std::time::UNIX_EPOCH.elapsed().unwrap().as_secs() as u64;
-        print!("[{stamp}:{}] ", stringify!($level));
+        print!(
+            concat!("[", stringify!($level), " {} ", file!(), ":", line!(), "] "),
+            stamp
+        );
         println!($($arg)*);
-    }};
-    ($($arg:tt)*) => {{
-        $crate::log!(INFO : $($arg)*);
     }};
 }
 
@@ -521,7 +529,7 @@ pub fn _detect_str_in_binary() {
         if m {
             let i1 = (i - 8).clamp(0, s.len() - 1);
             let i2 = (i + 64).clamp(0, s.len() - 1);
-            log!(">>> {:?}", String::from_utf8_lossy(&s[i1..=i2]));
+            log!(info: ">>> {:?}", String::from_utf8_lossy(&s[i1..=i2]));
         }
     }
 }

@@ -110,7 +110,7 @@ async fn handle(req_path: &str, target: String) -> Response {
     let mut body = match fetch_target().await {
         Ok(v) => v.into_body(),
         Err(e) => {
-            log!(ERRO : "{e:?}");
+            log!(erro: "{e:?}");
             db::del(req_path);
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
@@ -131,7 +131,7 @@ async fn handle(req_path: &str, target: String) -> Response {
                     tx.send(Ok(data)).await.ok(); // ignore error if rx closed
                 }
                 Err(e) => {
-                    log!(ERRO : "{e:?}");
+                    log!(erro: "{e:?}");
                     let io_err_str = StatusCode::INTERNAL_SERVER_ERROR.as_str();
                     let io_err = std::io::Error::new(std::io::ErrorKind::Other, io_err_str);
                     tx.send(Err(io_err)).await.ok();

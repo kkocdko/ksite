@@ -61,7 +61,7 @@ pub mod db {
 async fn post_handler(q: RawQuery, body: Bytes) -> Bytes {
     let q = q.0.unwrap();
     let k = q.as_str();
-    log!("units::admin received op {k}");
+    log!(info: "units::admin received op {k}");
     match k {
         "trigger_reset_auth_key" => {
             db::del("auth_key".to_owned()).await;
@@ -114,7 +114,7 @@ async fn post_handler(q: RawQuery, body: Bytes) -> Bytes {
             db::set("v2ex_cookies".to_owned(), body).await;
         }
         _ => {
-            log!(ERRO: "units::admin unknown op");
+            log!(erro: "units::admin unknown op");
             return Bytes::from_static(b"unknown op");
         }
     }

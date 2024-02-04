@@ -68,7 +68,7 @@ async fn http_proxy_handler(mut req: Request<Body>, sni: bool) -> Response {
             }
             e => {
                 e.unwrap();
-                // log!(ERRO: "{e}");
+                // log!(erro: "{e}");
             }
         }
     });
@@ -107,7 +107,7 @@ async fn http_proxy_handler(mut req: Request<Body>, sni: bool) -> Response {
     //                     write.write(&data).await.unwrap();
     //                 }
     //                 Err(e) => {
-    //                     log!(ERRO: "{e:?}");
+    //                     log!(erro: "{e:?}");
     //                     return;
     //                 }
     //             }

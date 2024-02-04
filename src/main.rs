@@ -16,7 +16,7 @@ fn main() {
 }
 
 async fn run() {
-    log!("crate::run");
+    log!(info: "crate::run");
 
     // db_upgrade(); // uncomment this if we need to upgrade database
 
@@ -38,21 +38,21 @@ async fn run() {
             )
             .layer(axum::middleware::from_fn(
                 |req: axum::extract::Request, next: axum::middleware::Next| async {
-                    log!(TRAC: "request {:?} {} {} {:?}", req.version(), req.method(), req.uri(), req.headers());
+                    log!(trac: "request {:?} {} {} {:?}", req.version(), req.method(), req.uri(), req.headers());
                     next.run(req).await
                 },
             ))
             ;
-        log!("auth key = {}", auth::auth_key());
+        log!(info: "auth key = {}", auth::auth_key());
         let addr = SocketAddr::from(([0, 0, 0, 0], 9304)); // server address here
-        log!("server address = {addr}");
+        log!(info: "server address = {addr}");
         let tcp_listener = tokio::net::TcpListener::bind(addr).await.unwrap();
         let tls_config = {
             use tls_http::*;
             fn get_or_default(k: &str, default: &[u8]) -> Vec<u8> {
                 let got = crate::utils::block_on(crate::units::admin::db::get(k.to_owned()));
                 got.map(Vec::from).unwrap_or_else(|| {
-                    log!(WARN: "fallback to default tls cert, ca and key");
+                    log!(warn: "fallback to default tls cert, ca and key");
                     Vec::from(default)
                 })
             }
@@ -88,7 +88,7 @@ async fn run() {
     let oscillator = async {
         const INTERVAL: Duration = Duration::from_secs(60);
         const TIMEOUT: Duration = Duration::from_secs(45);
-        log!("oscillator interval = {INTERVAL:?}, timeout = {TIMEOUT:?}");
+        log!(info: "oscillator interval = {INTERVAL:?}, timeout = {TIMEOUT:?}");
         async fn tasks() {
             tokio::join!(
                 units::magazine::tick(),
