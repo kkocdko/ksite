@@ -76,15 +76,6 @@ where
         " v",
         env!("CARGO_PKG_VERSION"),
     ));
-    // thread::spawn(|| loop {
-    //     let mut buf = [0];
-    //     io::stdin().read(&mut buf).unwrap();
-    //     if buf[0] != b'\n' {
-    //         continue;
-    //     }
-    //     // TODO: show the lastest log content here?
-    //     // tail -n16 ksite.log
-    // });
     loop {
         let exit_status = Command::new(env::current_exe().unwrap())
             .arg(BARE_SWITCH)

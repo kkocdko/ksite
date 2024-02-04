@@ -54,17 +54,9 @@ impl<I: Send + 'static> Mono<I> {
     }
 }
 
-// https://rustcc.cn/article?id=7eb057f0-80a6-477f-94e7-91778172c164
-// https://github.com/nonconvextech/ftlog
-
-// 保持 println 语法
-// 高性能
-// 实现简洁
-
-/// `log!(info: "hello {}", "world");`.
+/// `log!(info: "hello {}", "world");`. `trac | info | warn | erro`.
 #[macro_export]
 macro_rules! log {
-    // trac | info | warn | erro
     ($level:tt: $($arg:tt)*) => {{
         let stamp = std::time::UNIX_EPOCH.elapsed().unwrap().as_secs() as u64;
         print!(
@@ -211,7 +203,7 @@ macro_rules! care {
     ($result:expr) => {{
         let result = $result;
         if let Err(e) = &result {
-            $crate::log!(ERRO : "[cared error] {}:{} {:?}", file!(), line!(), e);
+            $crate::log!(erro: "[cared err] {e:?}");
         }
         result
     }};

@@ -6,6 +6,14 @@ All in one solution for my server.
 
 ### 0.11.0
 
+- sqlite bench.
+
+- admin: log view. log use tracing.
+
+- dav: fix gvfs webdav Peer sent fatal TLS alert: Decode error.
+
+- dav: fix windows explorer built-in client support.
+
 - dav: process filenames properly.
 
 - dav: remote download + mirror.
@@ -13,8 +21,6 @@ All in one solution for my server.
 ### 0.12.0
 
 - reverse proxy.
-
-- sqlite bench.
 
 - proxy with sni stripper.
 
