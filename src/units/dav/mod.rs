@@ -1,4 +1,4 @@
-//! WebDAV.
+//! WebDAV. The goal is fast and short, not to implement full RFC4918 + RFC2518.
 
 use crate::database::DB;
 use crate::utils::{escape_check_html, OptionResult};
@@ -138,30 +138,6 @@ mod db {
         .await
     }
 }
-
-/*
-https://datatracker.ietf.org/doc/html/rfc4918
-https://datatracker.ietf.org/doc/html/rfc2518
-https://github.com/sigoden/dufs/blob/main/src/server.rs#L329
-https://en.wikipedia.org/wiki/WebDAV
-
-curl http://username:password@127.0.0.1:9630
-[kkocdko@klf apps]$ ./busybox nc -p 9630 -l
-GET / HTTP/1.1
-Host: 127.0.0.1:9630
-Authorization: Basic dXNlcm5hbWU6cGFzc3dvcmQ=
-User-Agent: curl/8.2.1
-Accept: *
-
-gio mount dav://127.0.0.1:9304/dav
-curl -vvvk http://username:password@127.0.0.1:9304/dav/a?a
-curl -vvvk -X PUT --data-raw 'hello' http://username:password@127.0.0.1:9304/dav/a
-curl -vvvk -X POST -H "op_: signup" -H "uid_: username" -H "auth_: Basic dXNlcm5hbWU6cGFzc3dvcmQ=" -H "Cookie: auth=b56eaa5302fcaadc442624a009d7a214" http://127.0.0.1:9304/dav
-curl -vvvk -X PUT --data-raw "hello" http://username:password@127.0.0.1:9304/dav/a
-curl -vvvk -X POST -H "op_: trigger_flag_recursive" -H "eid_: username:/a" -H "flag_: 16" -H "Cookie: auth=b56eaa5302fcaadc442624a009d7a214" http://127.0.0.1:9304/dav
-curl -vvvk http://username:password@127.0.0.1:9304/dav/a
-curl -vvvk --insecure -X POST --data-raw '{"op":"trigger_flag_recursive","eid":"username:","flag":"64"}' -H 'Cookie: auth=b56eaa5302fcaadc442624a009d7a214' https://127.0.0.1:9304/dav
-*/
 
 async fn dav_handler(prefix: &'static str, mut req: Request) -> anyhow::Result<Response> {
     const MAX_SIZE: usize = 1024 * 1024 * 16;
