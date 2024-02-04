@@ -30,7 +30,7 @@ async fn post_handler(mut req: Request<Body>) -> impl IntoResponse {
     // cache the auth header
     static AUTH_HEADER_CACHE: Mutex<(String, u64)> = Mutex::new((String::new(), 0));
     let now = UNIX_EPOCH.elapsed().unwrap().as_secs();
-    if AUTH_HEADER_CACHE.lock().unwrap().1 < now - 60 {
+    if AUTH_HEADER_CACHE.lock().unwrap().1 < now - 120 {
         let mut get_token_auth = b"token ".to_vec();
         get_token_auth.extend(&req.headers()[AUTHORIZATION].as_bytes()["Bearer ".len()..]);
         let req = Request::get("https://api.github.com/copilot_internal/v2/token")
