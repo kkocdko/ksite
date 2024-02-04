@@ -355,7 +355,7 @@ async fn api_handler(mut req: Request) -> anyhow::Result<Response> {
 }
 
 pub fn service() -> Router {
-    tokio::spawn(db::init());
+    crate::utils::block_on(db::init());
     const DAV_PATH_PREFIX: &str = "/dav";
     let api_router = axum::routing::any(|req: Request| async {
         match care!(api_handler(req).await) {

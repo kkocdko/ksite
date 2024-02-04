@@ -125,7 +125,7 @@ async fn post_handler(q: RawQuery, body: Bytes) -> Bytes {
 }
 
 pub fn service() -> Router {
-    tokio::spawn(async {
+    crate::utils::block_on(async {
         db::init().await;
         if db::get("auth_key".to_owned()).await.is_none() {
             db::set("auth_key".to_owned(), Bytes::from(crate::auth::auth_key())).await;
