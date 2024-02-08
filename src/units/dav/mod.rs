@@ -242,15 +242,14 @@ async fn dav_handler(prefix: &'static str, mut req: Request) -> anyhow::Result<R
             Ok(res)
         }
         "PROPFIND" => {
-            // the "depth" is ignored here
             let mut body = String::new();
             body += r#"<?xml version="1.0" encoding="utf-8" ?><D:multistatus xmlns:D="DAV:">"#;
             let (time, size, flag) = db::get_entry_meta(eid.to_owned()).await.e()?;
             let mut entries = Vec::new();
             entries.push((eid.to_owned(), time, size, flag));
-            if flag & db::ENTRY_DIR == 0 {
-            } else {
-                entries.extend(db::list_entry_meta(eid.to_owned()).await);
+            if flag & db::ENTRY_DIR != 0 && req.headers().get("depth").is_some_and(|v| v != "0") {
+                // depth > 1 is ignored here
+                entries.append(&mut db::list_entry_meta(eid.to_owned(), false).await);
             }
             for (eid, time, size, flag) in entries {
                 let (uid, pathname) = eid.split_once(':').e()?;
