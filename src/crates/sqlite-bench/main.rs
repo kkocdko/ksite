@@ -52,13 +52,13 @@ pub mod mono {
         }
     }
 
-    use tokio::sync::mpsc;
     pub struct MonoM<T> {
-        tx: mpsc::Sender<Box<dyn FnOnce(&mut T) -> () + Send>>,
+        tx: tokio::sync::mpsc::Sender<Box<dyn FnOnce(&mut T) + Send>>,
     }
+
     impl<T: Send + 'static> MonoM<T> {
         pub fn new(mut v: T) -> Self {
-            let (tx, mut rx) = mpsc::channel::<Box<dyn FnOnce(&mut T) -> () + Send>>(1);
+            let (tx, mut rx) = tokio::sync::mpsc::channel::<Box<dyn FnOnce(&mut T) + Send>>(1); // TODO: opti
             std::thread::spawn(move || {
                 // after self.tx drop, the recv() here will cause thread exit, without memory leaking
                 while let Some(f) = rx.blocking_recv() {
@@ -67,15 +67,19 @@ pub mod mono {
             });
             Self { tx }
         }
-        pub async fn call<R: Send + 'static>(&self, f: impl Fn(&mut T) -> R + Send + 'static) -> R {
-            let mut res = Arc::new(tokio::sync::Mutex::const_new(None));
-            let mut guard = res.clone().lock_owned().await;
+
+        pub async fn call<R: Send + 'static>(
+            &self,
+            f: impl FnOnce(&mut T) -> R + Send + 'static,
+        ) -> R {
+            let mutex = Arc::new(tokio::sync::Mutex::const_new(None));
+            let mut guard = mutex.clone().lock_owned().await;
             self.tx
                 .send(Box::new(move |s| *guard = Some(f(s)))) // f may be inlined, it's fine
                 .await
                 .unwrap();
-            let mut g = res.lock().await;
-            g.take().unwrap()
+            let mut guard = mutex.lock().await;
+            guard.take().unwrap()
             // -rwxr-xr-x 2 kkocdko kkocdko 6973600 Feb  7 16:24 target/release/sqlite-bench
 
             // let (send, response) = tokio::sync::oneshot::channel();
