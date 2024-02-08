@@ -147,7 +147,7 @@ async fn dav_handler(prefix: &'static str, mut req: Request) -> anyhow::Result<R
         return Ok((StatusCode::UNAUTHORIZED, [(WWW_AUTHENTICATE, "Basic")]).into_response());
     };
     let uid = db::get_user_uid(auth.to_str()?.to_owned()).await.e()?;
-    let pathname = req.uri().path().trim_start_matches(prefix);
+    let pathname = req.uri().path().trim_start_matches(prefix); // safety: xss will not happen because uri is encoded already
     let eid = uid.to_owned() + ":" + pathname.trim_end_matches('/');
     match method {
         "PUT" | "MKCOL" => {
@@ -247,33 +247,27 @@ async fn dav_handler(prefix: &'static str, mut req: Request) -> anyhow::Result<R
             let (time, size, flag) = db::get_entry_meta(eid.to_owned()).await.e()?;
             let mut entries = Vec::new();
             entries.push((eid.to_owned(), time, size, flag));
-            if flag & db::ENTRY_DIR != 0 && req.headers().get("depth").is_some_and(|v| v != "0") {
-                // depth > 1 is ignored here
+            // depth > 1 is ignored, without depth (like quota-available-bytes) is unsupported
+            if flag & db::ENTRY_DIR != 0 && req.headers().get("depth").e()? != "0" {
                 entries.append(&mut db::list_entry_meta(eid.to_owned(), false).await);
             }
             for (eid, time, size, flag) in entries {
                 let (uid, pathname) = eid.split_once(':').e()?;
+                body += "<D:response><D:href>";
+                body += prefix;
+                body += pathname;
                 if flag & db::ENTRY_DIR == 0 {
-                    body += "<D:response><D:href>";
-                    body += prefix;
-                    body += pathname;
                     body += "</D:href><D:propstat><D:prop><D:displayname>";
-                    body += pathname.rsplit_once('/').e()?.1;
+                    body += pathname.rsplit_once('/').unwrap_or_default().1;
                     body += "</D:displayname><D:getcontentlength>";
                     body += &size.to_string();
                     body += "</D:getcontentlength><D:getlastmodified>";
                     body += &httpdate::fmt_http_date(UNIX_EPOCH + Duration::from_secs(time));
-                    body += r#"</D:getlastmodified><D:getcontenttype></D:getcontenttype><D:resourcetype></D:resourcetype></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response>"#;
+                    body += r#"</D:getlastmodified></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response>"#;
                 } else {
-                    body += "<D:response><D:href>";
-                    body += prefix;
-                    body += pathname;
                     body += "/";
                     body += "</D:href><D:propstat><D:prop><D:displayname>";
-                    body += pathname
-                        .rsplit_once('/')
-                        .map(|(_parent, v)| v)
-                        .unwrap_or_default();
+                    body += pathname.rsplit_once('/').unwrap_or_default().1;
                     body += "</D:displayname><D:getlastmodified>";
                     body += &httpdate::fmt_http_date(UNIX_EPOCH + Duration::from_secs(time));
                     body += r#"</D:getlastmodified><D:resourcetype><D:collection/></D:resourcetype></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response>"#;
