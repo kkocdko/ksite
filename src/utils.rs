@@ -4,7 +4,7 @@ use axum::body::{Body, Bytes};
 use axum::http::header::HOST;
 use axum::http::Request;
 use std::future::Future;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
 /// While [`std::sync::LazyLock`](https://doc.rust-lang.org/stable/std/sync/struct.LazyLock.html) is still not in stable.
@@ -29,28 +29,32 @@ impl<T> std::ops::Deref for LazyLock<T> {
     }
 }
 
-pub struct Mono<I> {
-    inner: Mutex<I>,
+pub struct Mono<T> {
+    #[allow(clippy::type_complexity)]
+    tx: tokio::sync::mpsc::Sender<Box<dyn FnOnce(&mut T) + Send>>,
 }
 
-impl<I: Send + 'static> Mono<I> {
-    pub fn new(init: I) -> Self {
-        Self {
-            inner: Mutex::new(init),
-        }
+impl<T: Send + 'static> Mono<T> {
+    pub fn new(mut v: T) -> Self {
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Box<dyn FnOnce(&mut T) + Send>>(1); // TODO: opti
+        std::thread::spawn(move || {
+            // after self.tx drop, the recv() here will cause thread exit, without memory leaking
+            while let Some(f) = rx.blocking_recv() {
+                f(&mut v);
+            }
+        });
+        Self { tx }
     }
-    pub async fn call<T: Send + 'static>(
-        &'static self,
-        f: impl FnOnce(&mut I) -> T + Send + 'static,
-    ) -> T {
-        let inner = &self.inner;
-        tokio::task::spawn_blocking(move || {
-            let mut inner = inner.lock().unwrap();
-            let inner = &mut *inner;
-            f(inner)
-        })
-        .await
-        .unwrap()
+
+    pub async fn call<R: Send + 'static>(&self, f: impl FnOnce(&mut T) -> R + Send + 'static) -> R {
+        let mutex = Arc::new(tokio::sync::Mutex::const_new(None));
+        let mut guard = mutex.clone().lock_owned().await;
+        self.tx
+            .send(Box::new(move |s| *guard = Some(f(s)))) // f may be inlined, it's fine
+            .await
+            .unwrap();
+        let mut guard = mutex.lock().await;
+        guard.take().unwrap()
     }
 }
 
