@@ -47,7 +47,7 @@ async fn do_mission(cookie: &str) -> Result<()> {
 
 pub async fn tick() {
     ticker!(return, 8, "08:14:00");
-    let cookies = care!(admin::db::get("v2ex_cookies".to_owned()).await.e(), return);
+    let cookies = care!(admin::db::get("v2ex_cookies".to_owned()).await.e(), return); // open F12, copy as nodejs fetch
     let cookies = care!(serde_json::from_slice::<Vec<String>>(&cookies), return);
     for cookie in cookies {
         care!(with_retry(|| do_mission(&cookie), 3, 2000).await, continue);
