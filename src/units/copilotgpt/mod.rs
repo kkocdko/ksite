@@ -81,12 +81,17 @@ async fn post_handler(mut req: Request<Body>) -> impl IntoResponse {
 }
 
 pub fn service() -> Router {
-    Router::new().route(
-        "/copilotgpt/v1/chat/completions",
-        MethodRouter::new().post(post_handler).options([
-            // for Preflight https://developer.mozilla.org/en-US/docs/Glossary/Preflight_request
-            (ACCESS_CONTROL_ALLOW_ORIGIN, "*"),
-            (ACCESS_CONTROL_ALLOW_HEADERS, "*"),
-        ]),
-    )
+    Router::new()
+        .route(
+            "/copilotgpt/v1/models",
+            MethodRouter::new().get(r#"{"data":[{"created":1677610602,"id":"gpt-3.5-turbo","object":"model","owned_by":"openai","parent":null,"permission":[{"allow_create_engine":false,"allow_fine_tuning":false,"allow_logprobs":true,"allow_sampling":true,"allow_search_indices":false,"allow_view":true,"created":1677610602,"group":null,"id":"modelperm-0169379b25a2","is_blocking":false,"object":"model_permission","organization":"*"}],"root":"gpt-3.5-turbo"},{"created":1677610602,"id":"gpt-4","object":"model","owned_by":"openai","parent":null,"permission":[{"allow_create_engine":false,"allow_fine_tuning":false,"allow_logprobs":true,"allow_sampling":true,"allow_search_indices":false,"allow_view":true,"created":1677610602,"group":null,"id":"modelperm-346ef4071a8c","is_blocking":false,"object":"model_permission","organization":"*"}],"root":"gpt-4"}],"object":"list"}"#),
+        )
+        .route(
+            "/copilotgpt/v1/chat/completions",
+            MethodRouter::new().post(post_handler).options([
+                // for Preflight https://developer.mozilla.org/en-US/docs/Glossary/Preflight_request
+                (ACCESS_CONTROL_ALLOW_ORIGIN, "*"),
+                (ACCESS_CONTROL_ALLOW_HEADERS, "*"),
+            ]),
+        )
 }
