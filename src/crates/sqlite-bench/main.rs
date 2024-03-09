@@ -1,5 +1,8 @@
 //！ benchmarks
 
+// https://github.com/the-lean-crate/criner/issues/1
+// https://github.com/rusqlite/rusqlite/issues/393#issuecomment-982806506
+
 use rusqlite::Connection;
 use std::mem::MaybeUninit;
 use std::sync::OnceLock;
@@ -27,15 +30,14 @@ impl<T> std::ops::Deref for LazyLock<T> {
     }
 }
 
+/// Use in async environment, determine the fastest way.
 fn bench_parallel_async() {
-    fn init_db() -> Connection {
-        let db = rusqlite::Connection::open_in_memory().unwrap();
+    fn init_db(db: &mut Connection) {
         db.execute(
             "CREATE TABLE dav_users (uid BLOB PRIMARY KEY, auth BLOB UNIQUE)",
             (),
         )
         .unwrap();
-        db
     }
     fn rw_once(db: &mut Connection, j: u64) {
         let uid = j.to_string();
@@ -58,7 +60,7 @@ fn bench_parallel_async() {
     }
 
     pub mod mono {
-        use std::sync::{Arc, Mutex};
+        use std::sync::Mutex;
 
         pub struct MonoSpawnBlocking<I>(Mutex<I>);
         impl<I: Send + 'static> MonoSpawnBlocking<I> {
@@ -81,12 +83,13 @@ fn bench_parallel_async() {
         }
 
         pub struct Mono<T> {
+            #[allow(clippy::type_complexity)]
             tx: tokio::sync::mpsc::Sender<Box<dyn FnOnce(&mut T) + Send>>,
         }
 
         impl<T: Send + 'static> Mono<T> {
             pub fn new(mut v: T) -> Self {
-                let (tx, mut rx) = tokio::sync::mpsc::channel::<Box<dyn FnOnce(&mut T) + Send>>(1); // TODO: opti
+                let (tx, mut rx) = tokio::sync::mpsc::channel::<Box<dyn FnOnce(&mut T) + Send>>(1);
                 std::thread::spawn(move || {
                     // after self.tx drop, the recv() here will cause thread exit, without memory leaking
                     while let Some(f) = rx.blocking_recv() {
@@ -96,30 +99,22 @@ fn bench_parallel_async() {
                 Self { tx }
             }
 
-            pub async fn call<R: Send + 'static>(
+            pub async fn call<'env, R: Send + 'env>(
                 &self,
-                f: impl FnOnce(&mut T) -> R + Send + 'static,
+                f: impl FnOnce(&mut T) -> R + Send + 'env,
             ) -> R {
-                let mutex = Arc::new(tokio::sync::Mutex::const_new(None));
+                let mutex = std::sync::Arc::new(tokio::sync::Mutex::const_new(None));
                 let mut guard = mutex.clone().lock_owned().await;
-                self.tx
-                    .send(Box::new(move |s| *guard = Some(f(s)))) // f may be inlined, it's fine
-                    .await
-                    .unwrap();
+                // SAFETY: Absolute crazy, but we ensure that `f` has ended by `mutex.lock().await`, so `f` won't be used after dropped at the end of current function
+                let cb: Box<dyn FnOnce(&mut T) + Send> =
+                    Box::new(move |s: &mut _| *guard = Some(f(s))); // f may be inlined, it's fine
+                let cb: Box<dyn FnOnce(&mut T) + Send + 'static> = unsafe {
+                    let raw_ptr = Box::into_raw(cb);
+                    Box::from_raw(std::mem::transmute(raw_ptr)) //  what the fuck
+                };
+                self.tx.send(cb).await.unwrap();
                 let mut guard = mutex.lock().await;
                 guard.take().unwrap()
-                // -rwxr-xr-x 2 kkocdko kkocdko 6973600 Feb  7 16:24 target/release/sqlite-bench
-
-                // let (send, response) = tokio::sync::oneshot::channel();
-                // self.tx
-                //     .send(Box::new(move |s| {
-                //         // f may be inlined, it's fine
-                //         let _ = send.send(f(s));
-                //     }))
-                //     .await
-                //     .unwrap();
-                // response.await.unwrap()
-                // -rwxr-xr-x 2 kkocdko kkocdko 6977832 Feb  7 16:14 target/release/sqlite-bench
             }
         }
     }
@@ -131,13 +126,17 @@ fn bench_parallel_async() {
         .unwrap()
         .block_on(async {
             use mono::Mono;
-            static DB: LazyLock<Mono<Connection>> = LazyLock::new(|| Mono::new(init_db()));
+            static DB: LazyLock<Mono<Connection>> = LazyLock::new(|| {
+                let mut db = Connection::open_in_memory().unwrap();
+                init_db(&mut db);
+                Mono::new(db)
+            });
             let mut h = tokio::task::JoinSet::new();
             for i in 0..16 {
                 h.spawn(async move {
                     let sep = 8 * SCALE;
                     for j in (i * sep)..((i + 1) * sep) {
-                        DB.call(move |db| rw_once(db, j)).await;
+                        DB.call(|db| rw_once(db, j)).await;
                     }
                 });
             }
@@ -163,7 +162,11 @@ fn bench_parallel_async() {
         .unwrap()
         .block_on(async {
             use mono::MonoSpawnBlocking as Mono;
-            static DB: LazyLock<Mono<Connection>> = LazyLock::new(|| Mono::new(init_db()));
+            static DB: LazyLock<Mono<Connection>> = LazyLock::new(|| {
+                let mut db = Connection::open_in_memory().unwrap();
+                init_db(&mut db);
+                Mono::new(db)
+            });
             let mut h = tokio::task::JoinSet::new();
             for i in 0..16 {
                 h.spawn(async move {
@@ -188,11 +191,59 @@ fn bench_parallel_async() {
         begin.elapsed().as_millis()
     );
 
-    // TODO: add rdr2 sqlite
+    #[allow(unused)]
+    let begin = std::time::Instant::now();
+    #[allow(unreachable_code)]
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(async {
+            return; // the rdr2-sqlite with multi thread will cause sqlite_busy error
+            let pool = r2d2::Pool::new(r2d2_sqlite::SqliteConnectionManager::memory()).unwrap();
+            init_db(&mut pool.get().unwrap());
+            let mut h = tokio::task::JoinSet::new();
+            for i in 0..16 {
+                let pool = pool.clone();
+                h.spawn(async move {
+                    let sep = 8 * SCALE;
+                    for j in (i * sep)..((i + 1) * sep) {
+                        rw_once(&mut pool.get().unwrap(), j);
+                    }
+                });
+            }
+            while let Some(r) = h.join_next().await {
+                r.unwrap();
+            }
+        });
+    // println!(
+    //     "> bench_parallel_async:rdr2 = {}",
+    //     begin.elapsed().as_millis()
+    // );
 
-    // https://docs.rs/r2d2_sqlite/latest/r2d2_sqlite/
+    #[allow(unused)]
+    async fn bench_str_async() {
+        use mono::Mono;
+        let data = Mono::new(String::from("01234567"));
+        let append = String::from("abcdefgh");
+        // the goal: borrow vars, send closure to worker thread, receive returns by await
+        tokio::spawn(async move {
+            let out_fut = data.call(|d| {
+                let c = d.pop();
+                if d.is_empty() {
+                    *d += &append;
+                }
+                c
+            });
+            let out = out_fut.await;
+            dbg!(out);
+        });
+        // dbg!(&append); // append is moved, ensured
+    }
+    // tokio::spawn(bench_str_async());
 }
 
+/// The `UNIQUE` constraint will create index automatically, compare it's performance with `CREATE INDEX`.
 fn bench_create_index_vs_unique() {
     fn inner(is_unique: bool) {
         let db = rusqlite::Connection::open_in_memory().unwrap();
