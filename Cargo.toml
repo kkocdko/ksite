@@ -34,8 +34,9 @@ axum = { version = "0.7", default-features = false, features = ["http1", "http2"
 flate2 = "1"
 futures-core = "0.3"
 httpdate = "1"
+percent-encoding = "2"
 rand = "0.8"
-rusqlite = { version = "0.30", features = ["bundled"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "fs"] }
 tokio-util = { version = "0.7", features = ["io"] }

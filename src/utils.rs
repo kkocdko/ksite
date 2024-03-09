@@ -105,46 +105,12 @@ where
     Err(err.unwrap())
 }
 
-/// Same as JavaScript's `encodeURI`.
-pub fn encode_uri(i: &str) -> String {
-    const fn gen_table() -> [bool; TABLE_LEN] {
-        let mut table = [false; TABLE_LEN];
-        let valid_chars =
-            b"!#$&'()*+,-./0123456789:;=?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]_abcdefghijklmnopqrstuvwxyz~";
-        let mut i = 0;
-        while i < valid_chars.len() {
-            table[valid_chars[i] as usize] = true;
-            i += 1;
-        }
-        table
-    }
-
-    const TABLE_LEN: usize = u8::MAX as usize + 1; // == 256
-    const IS_VALID: [bool; TABLE_LEN] = gen_table();
-
-    fn to_hex(d: u8) -> u8 {
-        match d {
-            0..=9 => d + b'0',
-            10..=255 => d - 10 + b'a', // regardless of upper or lower case
-        }
-    }
-
-    let mut o = Vec::with_capacity(i.len());
-    for b in i.as_bytes() {
-        if IS_VALID[*b as usize] {
-            o.push(*b);
-        } else {
-            o.push(b'%');
-            o.push(to_hex(b >> 4));
-            o.push(to_hex(b & 15));
-        }
-    }
-    unsafe { String::from_utf8_unchecked(o) }
-}
-
 /// Generate an request which GET the uri.
 pub fn str2req(uri: impl AsRef<str>) -> Request<Body> {
-    let uri = encode_uri(uri.as_ref());
+    use percent_encoding::*;
+    /// https://url.spec.whatwg.org/#fragment-percent-encode-set
+    const FRAGMENT: &AsciiSet = &CONTROLS.add(b' ').add(b'"').add(b'<').add(b'>').add(b'`');
+    let uri = utf8_percent_encode(uri.as_ref(), FRAGMENT).to_string();
     let uri = axum::http::Uri::try_from(uri).unwrap();
     Request::get(&uri)
         .header(HOST, uri.host().unwrap())
